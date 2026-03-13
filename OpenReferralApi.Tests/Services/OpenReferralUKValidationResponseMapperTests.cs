@@ -134,4 +134,30 @@ public class OpenReferralUKValidationResponseMapperTests
         Assert.That(response.Notifications, Has.Count.EqualTo(1));
         Assert.That(response.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
     }
+
+    [Test]
+    public void MapToOpenReferralUKValidationResponse_UsesMetadataProfileWhenAvailable()
+    {
+        // Arrange
+        var result = new OpenApiValidationResult
+        {
+            Metadata = new CommonValidationMetadata
+            {
+                BaseUrl = "https://api.example.com",
+                Profile = "3.0",
+                ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
+            },
+            SpecificationValidation = new OpenApiSpecificationValidation
+            {
+                Version = "1.0.0"
+            },
+            EndpointTests = new List<EndpointTestResult>()
+        };
+
+        // Act
+        var response = _mapper.MapToOpenReferralUKValidationResponse(result);
+
+        // Assert
+        Assert.That(response.Service.Profile, Is.EqualTo("3.0"));
+    }
 }

@@ -49,7 +49,8 @@ public class OpenReferralUKValidationResponseMapper : IOpenReferralUKValidationR
             {
                 Url = openApiResult?.Metadata?.BaseUrl ?? "",
                 IsValid = isValid,
-                Profile = $"{openApiResult?.SpecificationValidation?.Version ?? "Unknown"}",
+                Profile = openApiResult?.Metadata?.Profile
+                    ?? $"{openApiResult?.SpecificationValidation?.Version ?? "Unknown"}",
                 ProfileReason = openApiResult?.Metadata?.ProfileReason ?? "Unknown"
             },
             TestSuites = testSuites,

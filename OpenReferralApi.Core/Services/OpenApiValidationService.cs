@@ -9,6 +9,7 @@ using Newtonsoft.Json;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Diagnostics;
+using System.Globalization;
 using ValidationError = OpenReferralApi.Core.Models.ValidationError;
 
 namespace OpenReferralApi.Core.Services;
@@ -21,6 +22,22 @@ public interface IOpenApiValidationService
 public class OpenApiValidationService : IOpenApiValidationService
 {
     private static readonly Regex ArrayIndexRegex = new(@"\[[^\]]*\]", RegexOptions.Compiled);
+    private static readonly Regex ProfileReasonVersionRegex = new(@"Standard version \[user:\s*(?<version>[^\]]+)\]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex VersionNumberRegex = new(@"(?<major>\d+)(?:\.(?<minor>\d+))?", RegexOptions.Compiled);
+    private static readonly HashSet<string> SupportedHttpMethods = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "get", "post", "put", "delete", "patch", "head", "options", "trace"
+    };
+
+    // In-memory lookup table for known HSDS baseline schemas by profile version.
+    private static readonly IReadOnlyDictionary<string, string> KnownHsdsSchemaByVersion =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["1.0"] = "https://openreferraluk.org/specifications/1.0/openapi.json",
+            ["2.0"] = "https://openreferraluk.org/specifications/2.0/openapi.json",
+            ["3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json",
+            ["3.1"] = "https://openreferraluk.org/specifications/3.1/openapi.json"
+        };
 
     private readonly ILogger<OpenApiValidationService> _logger;
     private readonly HttpClient _httpClient;
@@ -116,6 +133,61 @@ public class OpenApiValidationService : IOpenApiValidationService
                 result.SpecificationValidation = specValidation;
             }
 
+            var claimedProfileVersion = ExtractClaimedProfileVersion(request.ProfileReason, request.OpenApiSchema?.Url);
+
+            // Compare feed specification against the known HSDS baseline profile, when discoverable.
+            if (request.Options.ValidateSpecification && specValidation != null)
+            {
+                if (!string.IsNullOrWhiteSpace(claimedProfileVersion) &&
+                    KnownHsdsSchemaByVersion.TryGetValue(claimedProfileVersion, out var knownHsdsSchemaUrl))
+                {
+                    if (!isResolved)
+                    {
+                        var resolvedFeedSpec = await _schemaResolverService.ResolveAsync(openApiSpec.ToString(), request.OpenApiSchema?.Url, schemaRequestAuth);
+                        openApiSpec = JObject.Parse(resolvedFeedSpec);
+                        isResolved = true;
+                    }
+
+                    var hsdsSpec = await _specFetcher.FetchOpenApiSpecFromUrlAsync(
+                        knownHsdsSchemaUrl,
+                        null,
+                        cancellationToken,
+                        resolveReferences: false);
+
+                    var resolvedHsdsSpec = await _schemaResolverService.ResolveAsync(hsdsSpec.ToString(), knownHsdsSchemaUrl, null);
+                    hsdsSpec = JObject.Parse(resolvedHsdsSpec);
+
+                    var profileComplianceFindings = CompareFeedSpecAgainstHsdsProfile(openApiSpec, hsdsSpec);
+                    if (profileComplianceFindings.Count > 0)
+                    {
+                        specValidation.Errors = NormalizeAndDeduplicateValidationErrors(
+                            specValidation.Errors.Concat(profileComplianceFindings));
+                        specValidation.IsValid = !specValidation.Errors.Any(e =>
+                            string.Equals(e.Severity, "Error", StringComparison.OrdinalIgnoreCase));
+                    }
+                }
+                else
+                {
+                    var hasProfileContext = !string.IsNullOrWhiteSpace(request.ProfileReason)
+                        || !string.IsNullOrWhiteSpace(request.BaseUrl);
+
+                    if (hasProfileContext)
+                    {
+                        specValidation.Errors = NormalizeAndDeduplicateValidationErrors(
+                            specValidation.Errors.Concat(new[]
+                            {
+                                new ValidationError
+                                {
+                                    Path = "profile",
+                                    Message = "Unable to map feed profile version to a known HSDS schema for baseline comparison.",
+                                    ErrorCode = "HSDS_PROFILE_UNKNOWN",
+                                    Severity = "Warning"
+                                }
+                            }));
+                    }
+                }
+            }
+
             // Test endpoints if requested
             List<EndpointTestResult> endpointTests = new();
             if (request.Options.TestEndpoints && !string.IsNullOrEmpty(request.BaseUrl))
@@ -145,6 +217,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 TestTimestamp = DateTime.UtcNow,
                 TestDuration = stopwatch.Elapsed,
                 UserAgent = "OpenReferral-Validator/1.0",
+                Profile = claimedProfileVersion,
                 ProfileReason = request.ProfileReason
             };
 
@@ -392,7 +465,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
 
         validation.Errors = NormalizeAndDeduplicateValidationErrors(errors);
-        validation.IsValid = !validation.Errors.Any();
+        validation.IsValid = !validation.Errors.Any(e => string.Equals(e.Severity, "Error", StringComparison.OrdinalIgnoreCase));
 
         _logger.LogInformation("OpenAPI specification validation completed. IsValid: {IsValid}, Errors: {ErrorCount}",
             validation.IsValid, validation.Errors.Count);
@@ -1511,13 +1584,15 @@ public class OpenApiValidationService : IOpenApiValidationService
         var failedTests = endpointTests.Count(e =>
             (e.Status == EndpointTestStatus.FailedValidation || e.Status == EndpointTestStatus.Error) &&
             !(shouldIgnoreOptionalFailures && e.IsOptional));
+        var specificationFailures = specValidation?.Errors.Count(e =>
+            string.Equals(e.Severity, "Error", StringComparison.OrdinalIgnoreCase)) ?? 0;
 
         var summary = new OpenApiValidationSummary
         {
             TotalEndpoints = endpointTests.Count,
             TestedEndpoints = endpointTests.Count(e => e.IsTested),
             SuccessfulTests = endpointTests.Count(e => e.Status == EndpointTestStatus.PassedValidation),
-            FailedTests = failedTests,
+            FailedTests = failedTests + specificationFailures,
             SkippedTests = endpointTests.Count(e => e.Status == EndpointTestStatus.NotTested || e.Status == EndpointTestStatus.Skipped),
             TotalRequests = endpointTests.Sum(e => e.TestResults.Count),
             SpecificationValid = specValidation?.IsValid ?? true
@@ -1534,6 +1609,286 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
 
         return summary;
+    }
+
+    private static string? ExtractClaimedProfileVersion(string? profileReason, string? schemaUrl)
+    {
+        if (!string.IsNullOrWhiteSpace(profileReason))
+        {
+            var profileReasonMatch = ProfileReasonVersionRegex.Match(profileReason);
+            if (profileReasonMatch.Success)
+            {
+                var extracted = NormalizeVersion(profileReasonMatch.Groups["version"].Value);
+                if (!string.IsNullOrWhiteSpace(extracted))
+                {
+                    return extracted;
+                }
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(schemaUrl))
+        {
+            var urlMatch = Regex.Match(schemaUrl, @"/specifications/(?<version>[^/]+)/openapi\.json", RegexOptions.IgnoreCase);
+            if (urlMatch.Success)
+            {
+                return NormalizeVersion(urlMatch.Groups["version"].Value);
+            }
+        }
+
+        return null;
+    }
+
+    private static string? NormalizeVersion(string? rawVersion)
+    {
+        if (string.IsNullOrWhiteSpace(rawVersion))
+        {
+            return null;
+        }
+
+        var cleaned = rawVersion
+            .Replace("HSDS-UK-", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("V", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Trim();
+
+        var match = VersionNumberRegex.Match(cleaned);
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        var major = match.Groups["major"].Value;
+        var minor = match.Groups["minor"].Success ? match.Groups["minor"].Value : "0";
+        if (!int.TryParse(major, NumberStyles.None, CultureInfo.InvariantCulture, out var majorNumber) ||
+            !int.TryParse(minor, NumberStyles.None, CultureInfo.InvariantCulture, out var minorNumber))
+        {
+            return null;
+        }
+
+        return $"{majorNumber}.{minorNumber}";
+    }
+
+    private static List<ValidationError> CompareFeedSpecAgainstHsdsProfile(JObject feedSpec, JObject hsdsSpec)
+    {
+        var findings = new List<ValidationError>();
+
+        var feedOperations = GetOperationMap(feedSpec, includeOptionalOperations: true);
+        var hsdsAllOperations = GetOperationMap(hsdsSpec, includeOptionalOperations: true);
+        var hsdsRequiredOperations = GetOperationMap(hsdsSpec, includeOptionalOperations: false);
+
+        foreach (var requiredOperation in hsdsRequiredOperations.Keys)
+        {
+            if (!feedOperations.ContainsKey(requiredOperation))
+            {
+                findings.Add(new ValidationError
+                {
+                    Path = $"paths.{requiredOperation}",
+                    Message = $"Missing required HSDS endpoint: {requiredOperation}",
+                    ErrorCode = "HSDS_MISSING_ENDPOINT",
+                    Severity = "Error"
+                });
+            }
+        }
+
+        foreach (var feedOperation in feedOperations.Keys)
+        {
+            if (!hsdsAllOperations.ContainsKey(feedOperation))
+            {
+                findings.Add(new ValidationError
+                {
+                    Path = $"paths.{feedOperation}",
+                    Message = $"Additional endpoint not defined by HSDS profile: {feedOperation}",
+                    ErrorCode = "HSDS_ADDITIONAL_ENDPOINT",
+                    Severity = "Warning"
+                });
+            }
+        }
+
+        var commonOperations = feedOperations.Keys.Intersect(hsdsRequiredOperations.Keys, StringComparer.OrdinalIgnoreCase);
+        foreach (var operationKey in commonOperations)
+        {
+            var feedSchema = GetPrimarySuccessResponseSchema(feedOperations[operationKey]);
+            var hsdsSchema = GetPrimarySuccessResponseSchema(hsdsRequiredOperations[operationKey]);
+            if (feedSchema == null || hsdsSchema == null)
+            {
+                continue;
+            }
+
+            var hsdsRequiredFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            ExtractRequiredFieldPaths(hsdsSchema, string.Empty, hsdsRequiredFields);
+
+            var feedFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            ExtractAllFieldPaths(feedSchema, string.Empty, feedFields);
+
+            foreach (var requiredField in hsdsRequiredFields)
+            {
+                if (!feedFields.Contains(requiredField))
+                {
+                    findings.Add(new ValidationError
+                    {
+                        Path = $"paths.{operationKey}.response.{requiredField}",
+                        Message = $"Missing required HSDS field '{requiredField}' for endpoint {operationKey}",
+                        ErrorCode = "HSDS_MISSING_REQUIRED_FIELD",
+                        Severity = "Error"
+                    });
+                }
+            }
+
+            var hsdsFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            ExtractAllFieldPaths(hsdsSchema, string.Empty, hsdsFields);
+
+            foreach (var feedField in feedFields)
+            {
+                if (!hsdsFields.Contains(feedField))
+                {
+                    findings.Add(new ValidationError
+                    {
+                        Path = $"paths.{operationKey}.response.{feedField}",
+                        Message = $"Additional field '{feedField}' is not defined in HSDS profile for endpoint {operationKey}",
+                        ErrorCode = "HSDS_ADDITIONAL_FIELD",
+                        Severity = "Warning"
+                    });
+                }
+            }
+        }
+
+        return findings;
+    }
+
+    private static Dictionary<string, JObject> GetOperationMap(JObject spec, bool includeOptionalOperations)
+    {
+        var operationMap = new Dictionary<string, JObject>(StringComparer.OrdinalIgnoreCase);
+        if (spec["paths"] is not JObject paths)
+        {
+            return operationMap;
+        }
+
+        foreach (var pathProperty in paths.Properties())
+        {
+            if (pathProperty.Value is not JObject pathItem)
+            {
+                continue;
+            }
+
+            foreach (var methodProperty in pathItem.Properties())
+            {
+                if (!SupportedHttpMethods.Contains(methodProperty.Name) || methodProperty.Value is not JObject operation)
+                {
+                    continue;
+                }
+
+                if (!includeOptionalOperations && operation.IsOptionalEndpoint())
+                {
+                    continue;
+                }
+
+                var operationKey = $"{methodProperty.Name.ToUpperInvariant()} {pathProperty.Name}";
+                operationMap[operationKey] = operation;
+            }
+        }
+
+        return operationMap;
+    }
+
+    private static JToken? GetPrimarySuccessResponseSchema(JObject operation)
+    {
+        if (operation["responses"] is not JObject responses)
+        {
+            return null;
+        }
+
+        var statusCodeKey = responses.Properties()
+            .Select(p => p.Name)
+            .FirstOrDefault(name => name.StartsWith("2", StringComparison.Ordinal));
+
+        if (statusCodeKey == null)
+        {
+            return null;
+        }
+
+        if (responses[statusCodeKey] is not JObject responseObject ||
+            responseObject["content"] is not JObject contentObject)
+        {
+            return null;
+        }
+
+        var jsonContent = contentObject.Properties()
+            .FirstOrDefault(p => p.Name.Contains("application/json", StringComparison.OrdinalIgnoreCase));
+
+        return jsonContent?.Value?["schema"];
+    }
+
+    private static void ExtractRequiredFieldPaths(JToken schemaToken, string prefix, ISet<string> result)
+    {
+        if (schemaToken is not JObject schemaObject)
+        {
+            return;
+        }
+
+        if (schemaObject["required"] is JArray requiredArray && schemaObject["properties"] is JObject properties)
+        {
+            foreach (var requiredToken in requiredArray)
+            {
+                var requiredName = requiredToken?.ToString();
+                if (string.IsNullOrWhiteSpace(requiredName))
+                {
+                    continue;
+                }
+
+                var fullPath = string.IsNullOrEmpty(prefix) ? requiredName : $"{prefix}.{requiredName}";
+                result.Add(fullPath);
+
+                if (properties[requiredName] != null)
+                {
+                    ExtractRequiredFieldPaths(properties[requiredName]!, fullPath, result);
+                }
+            }
+        }
+
+        if (schemaObject["type"]?.ToString() == "array" && schemaObject["items"] != null)
+        {
+            var arrayPrefix = string.IsNullOrEmpty(prefix) ? "[]" : $"{prefix}[]";
+            ExtractRequiredFieldPaths(schemaObject["items"]!, arrayPrefix, result);
+        }
+
+        if (schemaObject["allOf"] is JArray allOf)
+        {
+            foreach (var subSchema in allOf)
+            {
+                ExtractRequiredFieldPaths(subSchema, prefix, result);
+            }
+        }
+    }
+
+    private static void ExtractAllFieldPaths(JToken schemaToken, string prefix, ISet<string> result)
+    {
+        if (schemaToken is not JObject schemaObject)
+        {
+            return;
+        }
+
+        if (schemaObject["properties"] is JObject properties)
+        {
+            foreach (var property in properties.Properties())
+            {
+                var fullPath = string.IsNullOrEmpty(prefix) ? property.Name : $"{prefix}.{property.Name}";
+                result.Add(fullPath);
+                ExtractAllFieldPaths(property.Value, fullPath, result);
+            }
+        }
+
+        if (schemaObject["type"]?.ToString() == "array" && schemaObject["items"] != null)
+        {
+            var arrayPrefix = string.IsNullOrEmpty(prefix) ? "[]" : $"{prefix}[]";
+            ExtractAllFieldPaths(schemaObject["items"]!, arrayPrefix, result);
+        }
+
+        if (schemaObject["allOf"] is JArray allOf)
+        {
+            foreach (var subSchema in allOf)
+            {
+                ExtractAllFieldPaths(subSchema, prefix, result);
+            }
+        }
     }
 
     /// <summary>

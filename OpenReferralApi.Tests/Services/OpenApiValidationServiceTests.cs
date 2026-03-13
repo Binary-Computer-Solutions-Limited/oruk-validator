@@ -392,6 +392,98 @@ public class OpenApiValidationServiceTests
         Assert.That(result, Is.Not.Null);
     }
 
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_FailsWhenRequiredHsdsEndpointMissing()
+    {
+        // Arrange
+        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false },
+            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
+        };
+
+        SetupHttpMock((httpRequest, ct) =>
+        {
+            var requestUrl = httpRequest.RequestUri?.ToString();
+            if (string.Equals(requestUrl, feedSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateFeedSpecMissingRequiredHsdsEndpoint())
+                };
+            }
+
+            if (string.Equals(requestUrl, hsdsSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateHsdsProfileSpec())
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+        });
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.False);
+        Assert.That(result.SpecificationValidation, Is.Not.Null);
+        Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_MISSING_ENDPOINT"), Is.True);
+        Assert.That(result.Metadata?.Profile, Is.EqualTo("3.0"));
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_ReportsAdditionalHsdsEndpointAsWarningOnly()
+    {
+        // Arrange
+        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false },
+            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
+        };
+
+        SetupHttpMock((httpRequest, ct) =>
+        {
+            var requestUrl = httpRequest.RequestUri?.ToString();
+            if (string.Equals(requestUrl, feedSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateFeedSpecWithAdditionalEndpoint())
+                };
+            }
+
+            if (string.Equals(requestUrl, hsdsSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateHsdsProfileSpec())
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+        });
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.SpecificationValidation, Is.Not.Null);
+        Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_ADDITIONAL_ENDPOINT"), Is.True);
+        Assert.That(result.SpecificationValidation.Errors.Any(e =>
+            e.ErrorCode == "HSDS_ADDITIONAL_ENDPOINT" &&
+            string.Equals(e.Severity, "Warning", StringComparison.OrdinalIgnoreCase)), Is.True);
+    }
+
     #endregion
 
     #region HTTP Response Handling
@@ -2064,6 +2156,107 @@ public class OpenApiValidationServiceTests
             },
             ""paths"": {
                 ""/test"": {
+                    ""get"": {
+                        ""responses"": {
+                            ""200"": { ""description"": ""OK"" }
+                        }
+                    }
+                }
+            }
+        }";
+    }
+
+    private string CreateHsdsProfileSpec()
+    {
+        return @"{
+            ""openapi"": ""3.0.0"",
+            ""info"": {
+                ""title"": ""HSDS Profile"",
+                ""version"": ""3.0""
+            },
+            ""paths"": {
+                ""/organisations"": {
+                    ""get"": {
+                        ""responses"": {
+                            ""200"": {
+                                ""description"": ""OK"",
+                                ""content"": {
+                                    ""application/json"": {
+                                        ""schema"": {
+                                            ""type"": ""array"",
+                                            ""items"": {
+                                                ""type"": ""object"",
+                                                ""required"": [""id"", ""name""],
+                                                ""properties"": {
+                                                    ""id"": { ""type"": ""string"" },
+                                                    ""name"": { ""type"": ""string"" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }";
+    }
+
+    private string CreateFeedSpecMissingRequiredHsdsEndpoint()
+    {
+        return @"{
+            ""openapi"": ""3.0.0"",
+            ""info"": {
+                ""title"": ""Feed API"",
+                ""version"": ""1.0.0""
+            },
+            ""paths"": {
+                ""/services"": {
+                    ""get"": {
+                        ""responses"": {
+                            ""200"": { ""description"": ""OK"" }
+                        }
+                    }
+                }
+            }
+        }";
+    }
+
+    private string CreateFeedSpecWithAdditionalEndpoint()
+    {
+        return @"{
+            ""openapi"": ""3.0.0"",
+            ""info"": {
+                ""title"": ""Feed API"",
+                ""version"": ""1.0.0""
+            },
+            ""paths"": {
+                ""/organisations"": {
+                    ""get"": {
+                        ""responses"": {
+                            ""200"": {
+                                ""description"": ""OK"",
+                                ""content"": {
+                                    ""application/json"": {
+                                        ""schema"": {
+                                            ""type"": ""array"",
+                                            ""items"": {
+                                                ""type"": ""object"",
+                                                ""required"": [""id"", ""name""],
+                                                ""properties"": {
+                                                    ""id"": { ""type"": ""string"" },
+                                                    ""name"": { ""type"": ""string"" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                ""/custom"": {
                     ""get"": {
                         ""responses"": {
                             ""200"": { ""description"": ""OK"" }

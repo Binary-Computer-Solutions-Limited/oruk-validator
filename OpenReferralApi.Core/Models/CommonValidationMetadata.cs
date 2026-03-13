@@ -28,6 +28,9 @@ public class CommonValidationMetadata : IMetadata
     [JsonProperty("userAgent")]
     public string? UserAgent { get; set; }
 
+    [JsonProperty("profile")]
+    public string? Profile { get; set; }
+
     internal string? ProfileReason { get; set; }
 
     [JsonProperty("schemaTitle")]
