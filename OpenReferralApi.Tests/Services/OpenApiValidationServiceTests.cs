@@ -484,6 +484,97 @@ public class OpenApiValidationServiceTests
             string.Equals(e.Severity, "Warning", StringComparison.OrdinalIgnoreCase)), Is.True);
     }
 
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_FailsWhenRequiredHsdsRequestFieldMissing()
+    {
+        // Arrange
+        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false },
+            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
+        };
+
+        SetupHttpMock((httpRequest, ct) =>
+        {
+            var requestUrl = httpRequest.RequestUri?.ToString();
+            if (string.Equals(requestUrl, feedSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateFeedSpecMissingRequiredHsdsRequestField())
+                };
+            }
+
+            if (string.Equals(requestUrl, hsdsSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateHsdsProfileSpecWithRequestBody())
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+        });
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.False);
+        Assert.That(result.SpecificationValidation, Is.Not.Null);
+        Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_MISSING_REQUIRED_REQUEST_FIELD"), Is.True);
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_ReportsAdditionalHsdsRequestFieldAsWarningOnly()
+    {
+        // Arrange
+        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false },
+            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
+        };
+
+        SetupHttpMock((httpRequest, ct) =>
+        {
+            var requestUrl = httpRequest.RequestUri?.ToString();
+            if (string.Equals(requestUrl, feedSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateFeedSpecWithAdditionalHsdsRequestField())
+                };
+            }
+
+            if (string.Equals(requestUrl, hsdsSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateHsdsProfileSpecWithRequestBody())
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+        });
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.SpecificationValidation, Is.Not.Null);
+        Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_ADDITIONAL_REQUEST_FIELD"), Is.True);
+        Assert.That(result.SpecificationValidation.Errors.Any(e =>
+            e.ErrorCode == "HSDS_ADDITIONAL_REQUEST_FIELD" &&
+            string.Equals(e.Severity, "Warning", StringComparison.OrdinalIgnoreCase)), Is.True);
+    }
+
     #endregion
 
     #region HTTP Response Handling
@@ -2260,6 +2351,110 @@ public class OpenApiValidationServiceTests
                     ""get"": {
                         ""responses"": {
                             ""200"": { ""description"": ""OK"" }
+                        }
+                    }
+                }
+            }
+        }";
+    }
+
+    private string CreateHsdsProfileSpecWithRequestBody()
+    {
+        return @"{
+            ""openapi"": ""3.0.0"",
+            ""info"": {
+                ""title"": ""HSDS Profile"",
+                ""version"": ""3.0""
+            },
+            ""paths"": {
+                ""/organisations"": {
+                    ""post"": {
+                        ""requestBody"": {
+                            ""required"": true,
+                            ""content"": {
+                                ""application/json"": {
+                                    ""schema"": {
+                                        ""type"": ""object"",
+                                        ""required"": [""name""],
+                                        ""properties"": {
+                                            ""name"": { ""type"": ""string"" },
+                                            ""description"": { ""type"": ""string"" }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        ""responses"": {
+                            ""201"": { ""description"": ""Created"" }
+                        }
+                    }
+                }
+            }
+        }";
+    }
+
+    private string CreateFeedSpecMissingRequiredHsdsRequestField()
+    {
+        return @"{
+            ""openapi"": ""3.0.0"",
+            ""info"": {
+                ""title"": ""Feed API"",
+                ""version"": ""1.0.0""
+            },
+            ""paths"": {
+                ""/organisations"": {
+                    ""post"": {
+                        ""requestBody"": {
+                            ""required"": true,
+                            ""content"": {
+                                ""application/json"": {
+                                    ""schema"": {
+                                        ""type"": ""object"",
+                                        ""properties"": {
+                                            ""description"": { ""type"": ""string"" }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        ""responses"": {
+                            ""201"": { ""description"": ""Created"" }
+                        }
+                    }
+                }
+            }
+        }";
+    }
+
+    private string CreateFeedSpecWithAdditionalHsdsRequestField()
+    {
+        return @"{
+            ""openapi"": ""3.0.0"",
+            ""info"": {
+                ""title"": ""Feed API"",
+                ""version"": ""1.0.0""
+            },
+            ""paths"": {
+                ""/organisations"": {
+                    ""post"": {
+                        ""requestBody"": {
+                            ""required"": true,
+                            ""content"": {
+                                ""application/json"": {
+                                    ""schema"": {
+                                        ""type"": ""object"",
+                                        ""required"": [""name""],
+                                        ""properties"": {
+                                            ""name"": { ""type"": ""string"" },
+                                            ""description"": { ""type"": ""string"" },
+                                            ""customAttribute"": { ""type"": ""string"" }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        ""responses"": {
+                            ""201"": { ""description"": ""Created"" }
                         }
                     }
                 }

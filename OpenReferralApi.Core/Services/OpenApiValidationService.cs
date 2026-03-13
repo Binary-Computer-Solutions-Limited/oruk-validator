@@ -1706,49 +1706,38 @@ public class OpenApiValidationService : IOpenApiValidationService
         var commonOperations = feedOperations.Keys.Intersect(hsdsRequiredOperations.Keys, StringComparer.OrdinalIgnoreCase);
         foreach (var operationKey in commonOperations)
         {
-            var feedSchema = GetPrimarySuccessResponseSchema(feedOperations[operationKey]);
-            var hsdsSchema = GetPrimarySuccessResponseSchema(hsdsRequiredOperations[operationKey]);
-            if (feedSchema == null || hsdsSchema == null)
-            {
-                continue;
-            }
+            var feedOperation = feedOperations[operationKey];
+            var hsdsOperation = hsdsRequiredOperations[operationKey];
 
-            var hsdsRequiredFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            ExtractRequiredFieldPaths(hsdsSchema, string.Empty, hsdsRequiredFields);
+            var feedResponseSchema = GetPrimarySuccessResponseSchema(feedOperation);
+            var hsdsResponseSchema = GetPrimarySuccessResponseSchema(hsdsOperation);
+            CompareSchemaFields(
+                findings,
+                operationKey,
+                scope: "response",
+                feedSchema: feedResponseSchema,
+                hsdsSchema: hsdsResponseSchema,
+                missingFieldCode: "HSDS_MISSING_REQUIRED_FIELD",
+                additionalFieldCode: "HSDS_ADDITIONAL_FIELD",
+                missingFieldMessagePrefix: "Missing required HSDS field",
+                additionalFieldMessagePrefix: "Additional field",
+                missingSchemaCode: null,
+                missingSchemaMessage: null);
 
-            var feedFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            ExtractAllFieldPaths(feedSchema, string.Empty, feedFields);
-
-            foreach (var requiredField in hsdsRequiredFields)
-            {
-                if (!feedFields.Contains(requiredField))
-                {
-                    findings.Add(new ValidationError
-                    {
-                        Path = $"paths.{operationKey}.response.{requiredField}",
-                        Message = $"Missing required HSDS field '{requiredField}' for endpoint {operationKey}",
-                        ErrorCode = "HSDS_MISSING_REQUIRED_FIELD",
-                        Severity = "Error"
-                    });
-                }
-            }
-
-            var hsdsFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            ExtractAllFieldPaths(hsdsSchema, string.Empty, hsdsFields);
-
-            foreach (var feedField in feedFields)
-            {
-                if (!hsdsFields.Contains(feedField))
-                {
-                    findings.Add(new ValidationError
-                    {
-                        Path = $"paths.{operationKey}.response.{feedField}",
-                        Message = $"Additional field '{feedField}' is not defined in HSDS profile for endpoint {operationKey}",
-                        ErrorCode = "HSDS_ADDITIONAL_FIELD",
-                        Severity = "Warning"
-                    });
-                }
-            }
+            var feedRequestSchema = GetRequestBodySchema(feedOperation);
+            var hsdsRequestSchema = GetRequestBodySchema(hsdsOperation);
+            CompareSchemaFields(
+                findings,
+                operationKey,
+                scope: "requestBody",
+                feedSchema: feedRequestSchema,
+                hsdsSchema: hsdsRequestSchema,
+                missingFieldCode: "HSDS_MISSING_REQUIRED_REQUEST_FIELD",
+                additionalFieldCode: "HSDS_ADDITIONAL_REQUEST_FIELD",
+                missingFieldMessagePrefix: "Missing required HSDS request-body field",
+                additionalFieldMessagePrefix: "Additional request-body field",
+                missingSchemaCode: "HSDS_MISSING_REQUEST_BODY",
+                missingSchemaMessage: "Missing request body schema required by HSDS profile");
         }
 
         return findings;
@@ -1815,6 +1804,92 @@ public class OpenApiValidationService : IOpenApiValidationService
             .FirstOrDefault(p => p.Name.Contains("application/json", StringComparison.OrdinalIgnoreCase));
 
         return jsonContent?.Value?["schema"];
+    }
+
+    private static JToken? GetRequestBodySchema(JObject operation)
+    {
+        if (operation["requestBody"] is not JObject requestBodyObject ||
+            requestBodyObject["content"] is not JObject contentObject)
+        {
+            return null;
+        }
+
+        var jsonContent = contentObject.Properties()
+            .FirstOrDefault(p => p.Name.Contains("application/json", StringComparison.OrdinalIgnoreCase));
+
+        return jsonContent?.Value?["schema"];
+    }
+
+    private static void CompareSchemaFields(
+        List<ValidationError> findings,
+        string operationKey,
+        string scope,
+        JToken? feedSchema,
+        JToken? hsdsSchema,
+        string missingFieldCode,
+        string additionalFieldCode,
+        string missingFieldMessagePrefix,
+        string additionalFieldMessagePrefix,
+        string? missingSchemaCode,
+        string? missingSchemaMessage)
+    {
+        if (hsdsSchema == null)
+        {
+            return;
+        }
+
+        if (feedSchema == null)
+        {
+            if (!string.IsNullOrWhiteSpace(missingSchemaCode) && !string.IsNullOrWhiteSpace(missingSchemaMessage))
+            {
+                findings.Add(new ValidationError
+                {
+                    Path = $"paths.{operationKey}.{scope}",
+                    Message = $"{missingSchemaMessage} for endpoint {operationKey}",
+                    ErrorCode = missingSchemaCode,
+                    Severity = "Error"
+                });
+            }
+
+            return;
+        }
+
+        var hsdsRequiredFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        ExtractRequiredFieldPaths(hsdsSchema, string.Empty, hsdsRequiredFields);
+
+        var feedFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        ExtractAllFieldPaths(feedSchema, string.Empty, feedFields);
+
+        foreach (var requiredField in hsdsRequiredFields)
+        {
+            if (!feedFields.Contains(requiredField))
+            {
+                findings.Add(new ValidationError
+                {
+                    Path = $"paths.{operationKey}.{scope}.{requiredField}",
+                    Message = $"{missingFieldMessagePrefix} '{requiredField}' for endpoint {operationKey}",
+                    ErrorCode = missingFieldCode,
+                    Severity = "Error"
+                });
+            }
+        }
+
+        var hsdsFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        ExtractAllFieldPaths(hsdsSchema, string.Empty, hsdsFields);
+
+        foreach (var feedField in feedFields)
+        {
+            if (!hsdsFields.Contains(feedField))
+            {
+                findings.Add(new ValidationError
+                {
+                    Path = $"paths.{operationKey}.{scope}.{feedField}",
+                    Message = $"{additionalFieldMessagePrefix} '{feedField}' is not defined in HSDS profile for endpoint {operationKey}",
+                    ErrorCode = additionalFieldCode,
+                    Severity = "Warning"
+                });
+            }
+        }
     }
 
     private static void ExtractRequiredFieldPaths(JToken schemaToken, string prefix, ISet<string> result)
