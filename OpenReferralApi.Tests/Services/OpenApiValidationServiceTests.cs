@@ -575,6 +575,250 @@ public class OpenApiValidationServiceTests
             string.Equals(e.Severity, "Warning", StringComparison.OrdinalIgnoreCase)), Is.True);
     }
 
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_FastMode_DoesNotRunFullHsdsRuntimeValidationPass()
+    {
+        // Arrange
+        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
+
+        _jsonValidatorServiceMock.Invocations.Clear();
+        _jsonValidatorServiceMock
+            .Setup(service => service.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult
+            {
+                IsValid = true,
+                Errors = new List<OpenReferralApi.Core.Models.ValidationError>(),
+                SchemaVersion = "test",
+                Duration = TimeSpan.Zero
+            });
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            BaseUrl = "https://feed.example.com",
+            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
+            Options = new OpenApiValidationOptions
+            {
+                ValidateSpecification = true,
+                TestEndpoints = true,
+                HsdsValidationMode = HsdsValidationMode.SpecAndFeedRuntimeFast
+            }
+        };
+
+        SetupHttpMock((httpRequest, ct) =>
+        {
+            var requestUrl = httpRequest.RequestUri?.ToString() ?? string.Empty;
+            if (string.Equals(requestUrl, feedSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateFeedSpecPermissiveOrganisationResponse())
+                };
+            }
+
+            if (string.Equals(requestUrl, hsdsSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateHsdsProfileSpec())
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent("[{\"id\":\"1\"}]")
+            };
+        });
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.True);
+        _jsonValidatorServiceMock.Verify(service => service.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_FullMode_RunsHsdsRuntimeValidationAndCanFail()
+    {
+        // Arrange
+        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
+
+        _jsonValidatorServiceMock.Invocations.Clear();
+        _jsonValidatorServiceMock
+            .SetupSequence(service => service.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult
+            {
+                IsValid = true,
+                Errors = new List<OpenReferralApi.Core.Models.ValidationError>(),
+                SchemaVersion = "test",
+                Duration = TimeSpan.Zero
+            })
+            .ReturnsAsync(new ValidationResult
+            {
+                IsValid = true,
+                Errors = new List<OpenReferralApi.Core.Models.ValidationError>(),
+                SchemaVersion = "test",
+                Duration = TimeSpan.Zero
+            })
+            .ReturnsAsync(new ValidationResult
+            {
+                IsValid = false,
+                Errors = new List<OpenReferralApi.Core.Models.ValidationError>
+                {
+                    new()
+                    {
+                        Path = "[].name",
+                        Message = "Required property 'name' not found",
+                        ErrorCode = "VALIDATION_ERROR",
+                        Severity = "Error"
+                    }
+                },
+                SchemaVersion = "test",
+                Duration = TimeSpan.Zero
+            });
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            BaseUrl = "https://feed.example.com",
+            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
+            Options = new OpenApiValidationOptions
+            {
+                ValidateSpecification = true,
+                TestEndpoints = true,
+                HsdsValidationMode = HsdsValidationMode.FullHsdsRuntime
+            }
+        };
+
+        SetupHttpMock((httpRequest, ct) =>
+        {
+            var requestUrl = httpRequest.RequestUri?.ToString() ?? string.Empty;
+            if (string.Equals(requestUrl, feedSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateFeedSpecPermissiveOrganisationResponse())
+                };
+            }
+
+            if (string.Equals(requestUrl, hsdsSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateHsdsProfileSpec())
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent("[{\"id\":\"1\"}]")
+            };
+        });
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.False);
+        Assert.That(result.EndpointTests.Any(e => e.Status == EndpointTestStatus.FailedValidation), Is.True);
+        _jsonValidatorServiceMock.Verify(service => service.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()), Times.Exactly(3));
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WhenFailOnAdditionalFieldsTrue_FailsEndpointValidation()
+    {
+        // Arrange
+        _jsonValidatorServiceMock
+            .Setup(service => service.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult
+            {
+                IsValid = false,
+                Errors = new List<OpenReferralApi.Core.Models.ValidationError>
+                {
+                    new()
+                    {
+                        Path = "[].extra",
+                        Message = "Field '[].extra' is not defined in the schema",
+                        ErrorCode = "ADDITIONAL_FIELD",
+                        Severity = "Warning"
+                    }
+                },
+                SchemaVersion = "test",
+                Duration = TimeSpan.Zero
+            });
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = "https://example.com/openapi.json" },
+            BaseUrl = "https://api.example.com",
+            Options = new OpenApiValidationOptions
+            {
+                ValidateSpecification = false,
+                TestEndpoints = true,
+                StrictOwnSchemaValidation = true,
+                FailOnAdditionalFields = true
+            }
+        };
+
+        SetupHttpMock(CreateOpenApi30SpecWithResponseSchema(), endpointResponseBody: "[{\"name\":\"ok\",\"extra\":\"x\"}]");
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.False);
+        Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.FailedValidation));
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WhenFailOnAdditionalFieldsFalse_ReportsWarningsWithoutFailure()
+    {
+        // Arrange
+        _jsonValidatorServiceMock
+            .Setup(service => service.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult
+            {
+                IsValid = false,
+                Errors = new List<OpenReferralApi.Core.Models.ValidationError>
+                {
+                    new()
+                    {
+                        Path = "[].extra",
+                        Message = "Field '[].extra' is not defined in the schema",
+                        ErrorCode = "ADDITIONAL_FIELD",
+                        Severity = "Warning"
+                    }
+                },
+                SchemaVersion = "test",
+                Duration = TimeSpan.Zero
+            });
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = "https://example.com/openapi.json" },
+            BaseUrl = "https://api.example.com",
+            Options = new OpenApiValidationOptions
+            {
+                ValidateSpecification = false,
+                TestEndpoints = true,
+                StrictOwnSchemaValidation = true,
+                FailOnAdditionalFields = false
+            }
+        };
+
+        SetupHttpMock(CreateOpenApi30SpecWithResponseSchema(), endpointResponseBody: "[{\"name\":\"ok\",\"extra\":\"x\"}]");
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
+    }
+
     #endregion
 
     #region HTTP Response Handling
@@ -2351,6 +2595,42 @@ public class OpenApiValidationServiceTests
                     ""get"": {
                         ""responses"": {
                             ""200"": { ""description"": ""OK"" }
+                        }
+                    }
+                }
+            }
+        }";
+    }
+
+    private string CreateFeedSpecPermissiveOrganisationResponse()
+    {
+        return @"{
+            ""openapi"": ""3.0.0"",
+            ""info"": {
+                ""title"": ""Feed API"",
+                ""version"": ""1.0.0""
+            },
+            ""paths"": {
+                ""/organisations"": {
+                    ""get"": {
+                        ""responses"": {
+                            ""200"": {
+                                ""description"": ""OK"",
+                                ""content"": {
+                                    ""application/json"": {
+                                        ""schema"": {
+                                            ""type"": ""array"",
+                                            ""items"": {
+                                                ""type"": ""object"",
+                                                ""properties"": {
+                                                    ""id"": { ""type"": ""string"" },
+                                                    ""name"": { ""type"": ""string"" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

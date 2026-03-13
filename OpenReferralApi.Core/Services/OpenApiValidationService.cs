@@ -134,6 +134,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             }
 
             var claimedProfileVersion = ExtractClaimedProfileVersion(request.ProfileReason, request.OpenApiSchema?.Url);
+            JObject? resolvedHsdsProfileSpec = null;
 
             // Compare feed specification against the known HSDS baseline profile, when discoverable.
             if (request.Options.ValidateSpecification && specValidation != null)
@@ -156,6 +157,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
                     var resolvedHsdsSpec = await _schemaResolverService.ResolveAsync(hsdsSpec.ToString(), knownHsdsSchemaUrl, null);
                     hsdsSpec = JObject.Parse(resolvedHsdsSpec);
+                    resolvedHsdsProfileSpec = hsdsSpec;
 
                     var profileComplianceFindings = CompareFeedSpecAgainstHsdsProfile(openApiSpec, hsdsSpec);
                     if (profileComplianceFindings.Count > 0)
@@ -204,6 +206,18 @@ public class OpenApiValidationService : IOpenApiValidationService
 
                 endpointTests = await TestEndpointsAsync(openApiSpec, request.BaseUrl, request.Options, dataSourceRequestAuth, request.OpenApiSchema?.Url, cancellationToken);
                 result.EndpointTests = endpointTests;
+
+                if (request.Options.HsdsValidationMode == HsdsValidationMode.FullHsdsRuntime)
+                {
+                    if (resolvedHsdsProfileSpec != null)
+                    {
+                        await ValidateEndpointResponsesAgainstHsdsProfileAsync(endpointTests, resolvedHsdsProfileSpec, request.Options, cancellationToken);
+                    }
+                    else
+                    {
+                        result.Notifications.Add("Full HSDS runtime mode requested, but no known HSDS profile schema could be resolved.");
+                    }
+                }
             }
 
             // Build summary
@@ -694,16 +708,26 @@ public class OpenApiValidationService : IOpenApiValidationService
                 if (testResult.IsSuccessStatusCode && testResult.ResponseBody != null)
                 {
                     await ValidateResponseAsync(testResult, operation, openApiDocument, documentUri, options, cancellationToken);
-                    // If no schema is defined (ValidationResult has no errors and IsValid is false), treat as passed
-                    // A schema validation that failed would have errors, while a successful validation would have IsValid=true
-                    var hasValidationErrors = testResult.ValidationResult != null && 
-                                             testResult.ValidationResult.Errors.Any();
-                    var isValidationSuccess = testResult.ValidationResult != null && 
-                                             testResult.ValidationResult.IsValid;
-                    
-                    result.Status = (!hasValidationErrors && !isValidationSuccess) || isValidationSuccess
-                        ? EndpointTestStatus.PassedValidation
-                        : EndpointTestStatus.FailedValidation;
+
+                    var validationResult = testResult.ValidationResult;
+                    if (validationResult == null || (validationResult.Errors.Count == 0 && !validationResult.IsValid))
+                    {
+                        // No schema was available for this response status, treat as pass.
+                        result.Status = EndpointTestStatus.PassedValidation;
+                    }
+                    else if (validationResult.Errors.Any(e => string.Equals(e.Severity, "Warning", StringComparison.OrdinalIgnoreCase)) &&
+                             !validationResult.Errors.Any(e => string.Equals(e.Severity, "Error", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        result.Status = EndpointTestStatus.PassedWithWarnings;
+                    }
+                    else if (validationResult.IsValid)
+                    {
+                        result.Status = EndpointTestStatus.PassedValidation;
+                    }
+                    else
+                    {
+                        result.Status = EndpointTestStatus.FailedValidation;
+                    }
                 }
 
 
@@ -1204,10 +1228,12 @@ public class OpenApiValidationService : IOpenApiValidationService
                                         Schema = schema,
                                         Options = new ValidationOptions
                                         {
-                                            ReportAdditionalFields = options?.ReportAdditionalFields ?? false
+                                            ReportAdditionalFields = (options?.ReportAdditionalFields ?? false)
+                                                || (options?.StrictOwnSchemaValidation ?? false)
                                         }
                                     };
                                     var validationResult = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
+                                    ApplyAdditionalFieldPolicy(validationResult, options);
                                     testResult.ValidationResult = validationResult;
                                     NormalizeValidationResultErrors(testResult.ValidationResult);
                                 }
@@ -1221,6 +1247,125 @@ public class OpenApiValidationService : IOpenApiValidationService
         {
             _logger.LogWarning(ex, "Could not validate response for {Url}", SchemaResolverService.SanitizeUrlForLogging(testResult.RequestUrl ?? string.Empty));
         }
+    }
+
+    private async Task ValidateEndpointResponsesAgainstHsdsProfileAsync(
+        List<EndpointTestResult> endpointTests,
+        JObject hsdsSpec,
+        OpenApiValidationOptions options,
+        CancellationToken cancellationToken)
+    {
+        var hsdsOperations = GetOperationMap(hsdsSpec, includeOptionalOperations: false);
+
+        foreach (var endpoint in endpointTests)
+        {
+            var operationKey = $"{endpoint.Method?.ToUpperInvariant()} {endpoint.Path}";
+            if (!hsdsOperations.TryGetValue(operationKey, out var hsdsOperation))
+            {
+                continue;
+            }
+
+            var hsdsResponseSchema = GetPrimarySuccessResponseSchema(hsdsOperation);
+            if (hsdsResponseSchema == null)
+            {
+                continue;
+            }
+
+            foreach (var testResult in endpoint.TestResults.Where(t => t.IsSuccessStatusCode && !string.IsNullOrWhiteSpace(t.ResponseBody)))
+            {
+                try
+                {
+                    var validationRequest = new ValidationRequest
+                    {
+                        JsonData = JsonConvert.DeserializeObject(testResult.ResponseBody ?? "{}"),
+                        Schema = hsdsResponseSchema,
+                        Options = new ValidationOptions
+                        {
+                            ReportAdditionalFields = true
+                        }
+                    };
+
+                    var hsdsValidationResult = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
+                    ApplyAdditionalFieldPolicy(hsdsValidationResult, options);
+                    NormalizeValidationResultErrors(hsdsValidationResult);
+
+                    if (hsdsValidationResult.Errors.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    var mappedErrors = hsdsValidationResult.Errors.Select(error => new ValidationError
+                    {
+                        Path = error.Path,
+                        Message = $"HSDS runtime validation: {error.Message}",
+                        ErrorCode = error.ErrorCode.Equals("ADDITIONAL_FIELD", StringComparison.OrdinalIgnoreCase)
+                            ? "HSDS_RUNTIME_ADDITIONAL_FIELD"
+                            : "HSDS_RUNTIME_VALIDATION_ERROR",
+                        Severity = error.Severity,
+                        LineNumber = error.LineNumber,
+                        ColumnNumber = error.ColumnNumber
+                    }).ToList();
+
+                    if (testResult.ValidationResult == null)
+                    {
+                        testResult.ValidationResult = new ValidationResult
+                        {
+                            IsValid = false,
+                            Errors = mappedErrors,
+                            SchemaVersion = hsdsValidationResult.SchemaVersion,
+                            Duration = hsdsValidationResult.Duration
+                        };
+                    }
+                    else
+                    {
+                        testResult.ValidationResult.Errors.AddRange(mappedErrors);
+                        NormalizeValidationResultErrors(testResult.ValidationResult);
+                    }
+
+                    if (mappedErrors.Any(e => string.Equals(e.Severity, "Error", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        endpoint.Status = EndpointTestStatus.FailedValidation;
+                    }
+                    else if (endpoint.Status != EndpointTestStatus.FailedValidation)
+                    {
+                        endpoint.Status = EndpointTestStatus.PassedWithWarnings;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed HSDS runtime validation for {Method} {Path}", endpoint.Method, SanitizeForLogging(endpoint.Path));
+                }
+            }
+
+            endpoint.RefreshFlattenedFields();
+        }
+    }
+
+    private static void ApplyAdditionalFieldPolicy(ValidationResult? validationResult, OpenApiValidationOptions? options)
+    {
+        if (validationResult?.Errors == null || validationResult.Errors.Count == 0)
+        {
+            return;
+        }
+
+        var additionalFieldErrors = validationResult.Errors
+            .Where(e => string.Equals(e.ErrorCode, "ADDITIONAL_FIELD", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (additionalFieldErrors.Count == 0)
+        {
+            return;
+        }
+
+        var failOnAdditionalFields = options?.FailOnAdditionalFields ?? true;
+        var additionalFieldSeverity = failOnAdditionalFields ? "Error" : "Warning";
+        foreach (var error in additionalFieldErrors)
+        {
+            error.Severity = additionalFieldSeverity;
+        }
+
+        validationResult.IsValid = !validationResult.Errors.Any(e =>
+            string.Equals(e.Severity, "Error", StringComparison.OrdinalIgnoreCase));
     }
 
     private static void NormalizeValidationResultErrors(ValidationResult? validationResult)

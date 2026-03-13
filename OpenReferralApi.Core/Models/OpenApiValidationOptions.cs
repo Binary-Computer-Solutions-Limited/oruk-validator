@@ -3,12 +3,43 @@ using Newtonsoft.Json;
 
 namespace OpenReferralApi.Core.Models;
 
+public enum HsdsValidationMode
+{
+    SpecAndFeedRuntimeFast,
+    FullHsdsRuntime
+}
+
 /// <summary>
 /// Configuration options for controlling OpenAPI validation and endpoint testing behavior
 /// Allows fine-tuning of validation processes and testing parameters
 /// </summary>
 public class OpenApiValidationOptions : ValidationOptionsBase
 {
+    /// <summary>
+    /// Selects the HSDS conformance depth.
+    /// SpecAndFeedRuntimeFast performs strict feed-vs-own-spec runtime validation and feed-spec-vs-HSDS-spec comparison.
+    /// FullHsdsRuntime additionally validates live feed responses against HSDS response schemas.
+    /// </summary>
+    [DefaultValue(HsdsValidationMode.SpecAndFeedRuntimeFast)]
+    [JsonProperty("hsdsValidationMode")]
+    public HsdsValidationMode HsdsValidationMode { get; set; } = HsdsValidationMode.SpecAndFeedRuntimeFast;
+
+    /// <summary>
+    /// Enables strict validation of live feed data against the feed's own schema.
+    /// When true, response validation enforces additional field checks.
+    /// </summary>
+    [DefaultValue(true)]
+    [JsonProperty("strictOwnSchemaValidation")]
+    public bool StrictOwnSchemaValidation { get; set; } = true;
+
+    /// <summary>
+    /// Controls whether additional fields should fail validation when strict own-schema validation is enabled.
+    /// When false, additional fields are retained as warnings and do not fail a response by themselves.
+    /// </summary>
+    [DefaultValue(true)]
+    [JsonProperty("failOnAdditionalFields")]
+    public bool FailOnAdditionalFields { get; set; } = true;
+
     /// <summary>
     /// Whether to perform live endpoint testing against the API server
     /// Set to false for specification-only validation without HTTP requests
