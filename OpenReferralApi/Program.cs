@@ -196,6 +196,7 @@ builder.Services.AddScoped<ISchemaResolverService, SchemaResolverService>();
 builder.Services.AddHostedService<OpenReferralApi.Services.SchemaWarmupBackgroundService>();
 
 builder.Services.AddScoped<IJsonValidatorService, JsonValidatorService>();
+builder.Services.AddScoped<IHsdsComplianceService, HsdsComplianceService>();
 builder.Services.AddScoped<IOpenApiValidationService, OpenApiValidationService>();
 
 builder.Services.AddScoped<IOpenApiDiscoveryService, OpenApiDiscoveryService>();

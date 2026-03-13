@@ -9,7 +9,6 @@ using Newtonsoft.Json;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Diagnostics;
-using System.Globalization;
 using ValidationError = OpenReferralApi.Core.Models.ValidationError;
 
 namespace OpenReferralApi.Core.Services;
@@ -22,28 +21,13 @@ public interface IOpenApiValidationService
 public class OpenApiValidationService : IOpenApiValidationService
 {
     private static readonly Regex ArrayIndexRegex = new(@"\[[^\]]*\]", RegexOptions.Compiled);
-    private static readonly Regex ProfileReasonVersionRegex = new(@"Standard version \[user:\s*(?<version>[^\]]+)\]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex VersionNumberRegex = new(@"(?<major>\d+)(?:\.(?<minor>\d+))?", RegexOptions.Compiled);
-    private static readonly HashSet<string> SupportedHttpMethods = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "get", "post", "put", "delete", "patch", "head", "options", "trace"
-    };
-
-    // In-memory lookup table for known HSDS baseline schemas by profile version.
-    private static readonly IReadOnlyDictionary<string, string> KnownHsdsSchemaByVersion =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["1.0"] = "https://openreferraluk.org/specifications/1.0/openapi.json",
-            ["2.0"] = "https://openreferraluk.org/specifications/2.0/openapi.json",
-            ["3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json",
-            ["3.1"] = "https://openreferraluk.org/specifications/3.1/openapi.json"
-        };
 
     private readonly ILogger<OpenApiValidationService> _logger;
     private readonly HttpClient _httpClient;
     private readonly IJsonValidatorService _jsonValidatorService;
     private readonly ISchemaResolverService _schemaResolverService;
     private readonly IOpenApiDiscoveryService _discoveryService;
+    private readonly IHsdsComplianceService _hsdsComplianceService;
     private readonly OpenApiSpecFetcher _specFetcher;
     private readonly bool _allowUserSuppliedAuth;
 
@@ -53,13 +37,15 @@ public class OpenApiValidationService : IOpenApiValidationService
         IJsonValidatorService jsonValidatorService,
         ISchemaResolverService schemaResolverService,
         IOpenApiDiscoveryService discoveryService,
-        IOptions<AuthenticationOptions> authOptions)
+        IOptions<AuthenticationOptions> authOptions,
+        IHsdsComplianceService? hsdsComplianceService = null)
     {
         _logger = logger;
         _httpClient = httpClient;
         _jsonValidatorService = jsonValidatorService;
         _schemaResolverService = schemaResolverService;
         _discoveryService = discoveryService;
+        _hsdsComplianceService = hsdsComplianceService ?? new HsdsComplianceService(jsonValidatorService);
         _allowUserSuppliedAuth = authOptions.Value.AllowUserSuppliedAuth;
         _specFetcher = new OpenApiSpecFetcher(httpClient, logger, schemaResolverService, allowUserSuppliedAuth: _allowUserSuppliedAuth);
     }
@@ -133,14 +119,13 @@ public class OpenApiValidationService : IOpenApiValidationService
                 result.SpecificationValidation = specValidation;
             }
 
-            var claimedProfileVersion = ExtractClaimedProfileVersion(request.ProfileReason, request.OpenApiSchema?.Url);
+            var claimedProfileVersion = _hsdsComplianceService.ExtractClaimedProfileVersion(request.ProfileReason, request.OpenApiSchema?.Url);
             JObject? resolvedHsdsProfileSpec = null;
 
             // Compare feed specification against the known HSDS baseline profile, when discoverable.
             if (request.Options.ValidateSpecification && specValidation != null)
             {
-                if (!string.IsNullOrWhiteSpace(claimedProfileVersion) &&
-                    KnownHsdsSchemaByVersion.TryGetValue(claimedProfileVersion, out var knownHsdsSchemaUrl))
+                if (_hsdsComplianceService.TryGetKnownHsdsSchemaUrl(claimedProfileVersion, out var knownHsdsSchemaUrl))
                 {
                     if (!isResolved)
                     {
@@ -159,7 +144,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     hsdsSpec = JObject.Parse(resolvedHsdsSpec);
                     resolvedHsdsProfileSpec = hsdsSpec;
 
-                    var profileComplianceFindings = CompareFeedSpecAgainstHsdsProfile(openApiSpec, hsdsSpec);
+                    var profileComplianceFindings = _hsdsComplianceService.CompareFeedSpecAgainstHsdsProfile(openApiSpec, hsdsSpec);
                     if (profileComplianceFindings.Count > 0)
                     {
                         specValidation.Errors = NormalizeAndDeduplicateValidationErrors(
@@ -211,7 +196,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 {
                     if (resolvedHsdsProfileSpec != null)
                     {
-                        await ValidateEndpointResponsesAgainstHsdsProfileAsync(endpointTests, resolvedHsdsProfileSpec, request.Options, cancellationToken);
+                        await _hsdsComplianceService.ValidateEndpointResponsesAgainstHsdsProfileAsync(endpointTests, resolvedHsdsProfileSpec, request.Options, cancellationToken);
                     }
                     else
                     {
@@ -1233,7 +1218,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                                         }
                                     };
                                     var validationResult = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
-                                    ApplyAdditionalFieldPolicy(validationResult, options);
+                                    _hsdsComplianceService.ApplyAdditionalFieldPolicy(validationResult, options);
                                     testResult.ValidationResult = validationResult;
                                     NormalizeValidationResultErrors(testResult.ValidationResult);
                                 }
@@ -1247,125 +1232,6 @@ public class OpenApiValidationService : IOpenApiValidationService
         {
             _logger.LogWarning(ex, "Could not validate response for {Url}", SchemaResolverService.SanitizeUrlForLogging(testResult.RequestUrl ?? string.Empty));
         }
-    }
-
-    private async Task ValidateEndpointResponsesAgainstHsdsProfileAsync(
-        List<EndpointTestResult> endpointTests,
-        JObject hsdsSpec,
-        OpenApiValidationOptions options,
-        CancellationToken cancellationToken)
-    {
-        var hsdsOperations = GetOperationMap(hsdsSpec, includeOptionalOperations: false);
-
-        foreach (var endpoint in endpointTests)
-        {
-            var operationKey = $"{endpoint.Method?.ToUpperInvariant()} {endpoint.Path}";
-            if (!hsdsOperations.TryGetValue(operationKey, out var hsdsOperation))
-            {
-                continue;
-            }
-
-            var hsdsResponseSchema = GetPrimarySuccessResponseSchema(hsdsOperation);
-            if (hsdsResponseSchema == null)
-            {
-                continue;
-            }
-
-            foreach (var testResult in endpoint.TestResults.Where(t => t.IsSuccessStatusCode && !string.IsNullOrWhiteSpace(t.ResponseBody)))
-            {
-                try
-                {
-                    var validationRequest = new ValidationRequest
-                    {
-                        JsonData = JsonConvert.DeserializeObject(testResult.ResponseBody ?? "{}"),
-                        Schema = hsdsResponseSchema,
-                        Options = new ValidationOptions
-                        {
-                            ReportAdditionalFields = true
-                        }
-                    };
-
-                    var hsdsValidationResult = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
-                    ApplyAdditionalFieldPolicy(hsdsValidationResult, options);
-                    NormalizeValidationResultErrors(hsdsValidationResult);
-
-                    if (hsdsValidationResult.Errors.Count == 0)
-                    {
-                        continue;
-                    }
-
-                    var mappedErrors = hsdsValidationResult.Errors.Select(error => new ValidationError
-                    {
-                        Path = error.Path,
-                        Message = $"HSDS runtime validation: {error.Message}",
-                        ErrorCode = error.ErrorCode.Equals("ADDITIONAL_FIELD", StringComparison.OrdinalIgnoreCase)
-                            ? "HSDS_RUNTIME_ADDITIONAL_FIELD"
-                            : "HSDS_RUNTIME_VALIDATION_ERROR",
-                        Severity = error.Severity,
-                        LineNumber = error.LineNumber,
-                        ColumnNumber = error.ColumnNumber
-                    }).ToList();
-
-                    if (testResult.ValidationResult == null)
-                    {
-                        testResult.ValidationResult = new ValidationResult
-                        {
-                            IsValid = false,
-                            Errors = mappedErrors,
-                            SchemaVersion = hsdsValidationResult.SchemaVersion,
-                            Duration = hsdsValidationResult.Duration
-                        };
-                    }
-                    else
-                    {
-                        testResult.ValidationResult.Errors.AddRange(mappedErrors);
-                        NormalizeValidationResultErrors(testResult.ValidationResult);
-                    }
-
-                    if (mappedErrors.Any(e => string.Equals(e.Severity, "Error", StringComparison.OrdinalIgnoreCase)))
-                    {
-                        endpoint.Status = EndpointTestStatus.FailedValidation;
-                    }
-                    else if (endpoint.Status != EndpointTestStatus.FailedValidation)
-                    {
-                        endpoint.Status = EndpointTestStatus.PassedWithWarnings;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed HSDS runtime validation for {Method} {Path}", endpoint.Method, SanitizeForLogging(endpoint.Path));
-                }
-            }
-
-            endpoint.RefreshFlattenedFields();
-        }
-    }
-
-    private static void ApplyAdditionalFieldPolicy(ValidationResult? validationResult, OpenApiValidationOptions? options)
-    {
-        if (validationResult?.Errors == null || validationResult.Errors.Count == 0)
-        {
-            return;
-        }
-
-        var additionalFieldErrors = validationResult.Errors
-            .Where(e => string.Equals(e.ErrorCode, "ADDITIONAL_FIELD", StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        if (additionalFieldErrors.Count == 0)
-        {
-            return;
-        }
-
-        var failOnAdditionalFields = options?.FailOnAdditionalFields ?? true;
-        var additionalFieldSeverity = failOnAdditionalFields ? "Error" : "Warning";
-        foreach (var error in additionalFieldErrors)
-        {
-            error.Severity = additionalFieldSeverity;
-        }
-
-        validationResult.IsValid = !validationResult.Errors.Any(e =>
-            string.Equals(e.Severity, "Error", StringComparison.OrdinalIgnoreCase));
     }
 
     private static void NormalizeValidationResultErrors(ValidationResult? validationResult)
@@ -1754,361 +1620,6 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
 
         return summary;
-    }
-
-    private static string? ExtractClaimedProfileVersion(string? profileReason, string? schemaUrl)
-    {
-        if (!string.IsNullOrWhiteSpace(profileReason))
-        {
-            var profileReasonMatch = ProfileReasonVersionRegex.Match(profileReason);
-            if (profileReasonMatch.Success)
-            {
-                var extracted = NormalizeVersion(profileReasonMatch.Groups["version"].Value);
-                if (!string.IsNullOrWhiteSpace(extracted))
-                {
-                    return extracted;
-                }
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(schemaUrl))
-        {
-            var urlMatch = Regex.Match(schemaUrl, @"/specifications/(?<version>[^/]+)/openapi\.json", RegexOptions.IgnoreCase);
-            if (urlMatch.Success)
-            {
-                return NormalizeVersion(urlMatch.Groups["version"].Value);
-            }
-        }
-
-        return null;
-    }
-
-    private static string? NormalizeVersion(string? rawVersion)
-    {
-        if (string.IsNullOrWhiteSpace(rawVersion))
-        {
-            return null;
-        }
-
-        var cleaned = rawVersion
-            .Replace("HSDS-UK-", string.Empty, StringComparison.OrdinalIgnoreCase)
-            .Replace("V", string.Empty, StringComparison.OrdinalIgnoreCase)
-            .Trim();
-
-        var match = VersionNumberRegex.Match(cleaned);
-        if (!match.Success)
-        {
-            return null;
-        }
-
-        var major = match.Groups["major"].Value;
-        var minor = match.Groups["minor"].Success ? match.Groups["minor"].Value : "0";
-        if (!int.TryParse(major, NumberStyles.None, CultureInfo.InvariantCulture, out var majorNumber) ||
-            !int.TryParse(minor, NumberStyles.None, CultureInfo.InvariantCulture, out var minorNumber))
-        {
-            return null;
-        }
-
-        return $"{majorNumber}.{minorNumber}";
-    }
-
-    private static List<ValidationError> CompareFeedSpecAgainstHsdsProfile(JObject feedSpec, JObject hsdsSpec)
-    {
-        var findings = new List<ValidationError>();
-
-        var feedOperations = GetOperationMap(feedSpec, includeOptionalOperations: true);
-        var hsdsAllOperations = GetOperationMap(hsdsSpec, includeOptionalOperations: true);
-        var hsdsRequiredOperations = GetOperationMap(hsdsSpec, includeOptionalOperations: false);
-
-        foreach (var requiredOperation in hsdsRequiredOperations.Keys)
-        {
-            if (!feedOperations.ContainsKey(requiredOperation))
-            {
-                findings.Add(new ValidationError
-                {
-                    Path = $"paths.{requiredOperation}",
-                    Message = $"Missing required HSDS endpoint: {requiredOperation}",
-                    ErrorCode = "HSDS_MISSING_ENDPOINT",
-                    Severity = "Error"
-                });
-            }
-        }
-
-        foreach (var feedOperation in feedOperations.Keys)
-        {
-            if (!hsdsAllOperations.ContainsKey(feedOperation))
-            {
-                findings.Add(new ValidationError
-                {
-                    Path = $"paths.{feedOperation}",
-                    Message = $"Additional endpoint not defined by HSDS profile: {feedOperation}",
-                    ErrorCode = "HSDS_ADDITIONAL_ENDPOINT",
-                    Severity = "Warning"
-                });
-            }
-        }
-
-        var commonOperations = feedOperations.Keys.Intersect(hsdsRequiredOperations.Keys, StringComparer.OrdinalIgnoreCase);
-        foreach (var operationKey in commonOperations)
-        {
-            var feedOperation = feedOperations[operationKey];
-            var hsdsOperation = hsdsRequiredOperations[operationKey];
-
-            var feedResponseSchema = GetPrimarySuccessResponseSchema(feedOperation);
-            var hsdsResponseSchema = GetPrimarySuccessResponseSchema(hsdsOperation);
-            CompareSchemaFields(
-                findings,
-                operationKey,
-                scope: "response",
-                feedSchema: feedResponseSchema,
-                hsdsSchema: hsdsResponseSchema,
-                missingFieldCode: "HSDS_MISSING_REQUIRED_FIELD",
-                additionalFieldCode: "HSDS_ADDITIONAL_FIELD",
-                missingFieldMessagePrefix: "Missing required HSDS field",
-                additionalFieldMessagePrefix: "Additional field",
-                missingSchemaCode: null,
-                missingSchemaMessage: null);
-
-            var feedRequestSchema = GetRequestBodySchema(feedOperation);
-            var hsdsRequestSchema = GetRequestBodySchema(hsdsOperation);
-            CompareSchemaFields(
-                findings,
-                operationKey,
-                scope: "requestBody",
-                feedSchema: feedRequestSchema,
-                hsdsSchema: hsdsRequestSchema,
-                missingFieldCode: "HSDS_MISSING_REQUIRED_REQUEST_FIELD",
-                additionalFieldCode: "HSDS_ADDITIONAL_REQUEST_FIELD",
-                missingFieldMessagePrefix: "Missing required HSDS request-body field",
-                additionalFieldMessagePrefix: "Additional request-body field",
-                missingSchemaCode: "HSDS_MISSING_REQUEST_BODY",
-                missingSchemaMessage: "Missing request body schema required by HSDS profile");
-        }
-
-        return findings;
-    }
-
-    private static Dictionary<string, JObject> GetOperationMap(JObject spec, bool includeOptionalOperations)
-    {
-        var operationMap = new Dictionary<string, JObject>(StringComparer.OrdinalIgnoreCase);
-        if (spec["paths"] is not JObject paths)
-        {
-            return operationMap;
-        }
-
-        foreach (var pathProperty in paths.Properties())
-        {
-            if (pathProperty.Value is not JObject pathItem)
-            {
-                continue;
-            }
-
-            foreach (var methodProperty in pathItem.Properties())
-            {
-                if (!SupportedHttpMethods.Contains(methodProperty.Name) || methodProperty.Value is not JObject operation)
-                {
-                    continue;
-                }
-
-                if (!includeOptionalOperations && operation.IsOptionalEndpoint())
-                {
-                    continue;
-                }
-
-                var operationKey = $"{methodProperty.Name.ToUpperInvariant()} {pathProperty.Name}";
-                operationMap[operationKey] = operation;
-            }
-        }
-
-        return operationMap;
-    }
-
-    private static JToken? GetPrimarySuccessResponseSchema(JObject operation)
-    {
-        if (operation["responses"] is not JObject responses)
-        {
-            return null;
-        }
-
-        var statusCodeKey = responses.Properties()
-            .Select(p => p.Name)
-            .FirstOrDefault(name => name.StartsWith("2", StringComparison.Ordinal));
-
-        if (statusCodeKey == null)
-        {
-            return null;
-        }
-
-        if (responses[statusCodeKey] is not JObject responseObject ||
-            responseObject["content"] is not JObject contentObject)
-        {
-            return null;
-        }
-
-        var jsonContent = contentObject.Properties()
-            .FirstOrDefault(p => p.Name.Contains("application/json", StringComparison.OrdinalIgnoreCase));
-
-        return jsonContent?.Value?["schema"];
-    }
-
-    private static JToken? GetRequestBodySchema(JObject operation)
-    {
-        if (operation["requestBody"] is not JObject requestBodyObject ||
-            requestBodyObject["content"] is not JObject contentObject)
-        {
-            return null;
-        }
-
-        var jsonContent = contentObject.Properties()
-            .FirstOrDefault(p => p.Name.Contains("application/json", StringComparison.OrdinalIgnoreCase));
-
-        return jsonContent?.Value?["schema"];
-    }
-
-    private static void CompareSchemaFields(
-        List<ValidationError> findings,
-        string operationKey,
-        string scope,
-        JToken? feedSchema,
-        JToken? hsdsSchema,
-        string missingFieldCode,
-        string additionalFieldCode,
-        string missingFieldMessagePrefix,
-        string additionalFieldMessagePrefix,
-        string? missingSchemaCode,
-        string? missingSchemaMessage)
-    {
-        if (hsdsSchema == null)
-        {
-            return;
-        }
-
-        if (feedSchema == null)
-        {
-            if (!string.IsNullOrWhiteSpace(missingSchemaCode) && !string.IsNullOrWhiteSpace(missingSchemaMessage))
-            {
-                findings.Add(new ValidationError
-                {
-                    Path = $"paths.{operationKey}.{scope}",
-                    Message = $"{missingSchemaMessage} for endpoint {operationKey}",
-                    ErrorCode = missingSchemaCode,
-                    Severity = "Error"
-                });
-            }
-
-            return;
-        }
-
-        var hsdsRequiredFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        ExtractRequiredFieldPaths(hsdsSchema, string.Empty, hsdsRequiredFields);
-
-        var feedFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        ExtractAllFieldPaths(feedSchema, string.Empty, feedFields);
-
-        foreach (var requiredField in hsdsRequiredFields)
-        {
-            if (!feedFields.Contains(requiredField))
-            {
-                findings.Add(new ValidationError
-                {
-                    Path = $"paths.{operationKey}.{scope}.{requiredField}",
-                    Message = $"{missingFieldMessagePrefix} '{requiredField}' for endpoint {operationKey}",
-                    ErrorCode = missingFieldCode,
-                    Severity = "Error"
-                });
-            }
-        }
-
-        var hsdsFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        ExtractAllFieldPaths(hsdsSchema, string.Empty, hsdsFields);
-
-        foreach (var feedField in feedFields)
-        {
-            if (!hsdsFields.Contains(feedField))
-            {
-                findings.Add(new ValidationError
-                {
-                    Path = $"paths.{operationKey}.{scope}.{feedField}",
-                    Message = $"{additionalFieldMessagePrefix} '{feedField}' is not defined in HSDS profile for endpoint {operationKey}",
-                    ErrorCode = additionalFieldCode,
-                    Severity = "Warning"
-                });
-            }
-        }
-    }
-
-    private static void ExtractRequiredFieldPaths(JToken schemaToken, string prefix, ISet<string> result)
-    {
-        if (schemaToken is not JObject schemaObject)
-        {
-            return;
-        }
-
-        if (schemaObject["required"] is JArray requiredArray && schemaObject["properties"] is JObject properties)
-        {
-            foreach (var requiredToken in requiredArray)
-            {
-                var requiredName = requiredToken?.ToString();
-                if (string.IsNullOrWhiteSpace(requiredName))
-                {
-                    continue;
-                }
-
-                var fullPath = string.IsNullOrEmpty(prefix) ? requiredName : $"{prefix}.{requiredName}";
-                result.Add(fullPath);
-
-                if (properties[requiredName] != null)
-                {
-                    ExtractRequiredFieldPaths(properties[requiredName]!, fullPath, result);
-                }
-            }
-        }
-
-        if (schemaObject["type"]?.ToString() == "array" && schemaObject["items"] != null)
-        {
-            var arrayPrefix = string.IsNullOrEmpty(prefix) ? "[]" : $"{prefix}[]";
-            ExtractRequiredFieldPaths(schemaObject["items"]!, arrayPrefix, result);
-        }
-
-        if (schemaObject["allOf"] is JArray allOf)
-        {
-            foreach (var subSchema in allOf)
-            {
-                ExtractRequiredFieldPaths(subSchema, prefix, result);
-            }
-        }
-    }
-
-    private static void ExtractAllFieldPaths(JToken schemaToken, string prefix, ISet<string> result)
-    {
-        if (schemaToken is not JObject schemaObject)
-        {
-            return;
-        }
-
-        if (schemaObject["properties"] is JObject properties)
-        {
-            foreach (var property in properties.Properties())
-            {
-                var fullPath = string.IsNullOrEmpty(prefix) ? property.Name : $"{prefix}.{property.Name}";
-                result.Add(fullPath);
-                ExtractAllFieldPaths(property.Value, fullPath, result);
-            }
-        }
-
-        if (schemaObject["type"]?.ToString() == "array" && schemaObject["items"] != null)
-        {
-            var arrayPrefix = string.IsNullOrEmpty(prefix) ? "[]" : $"{prefix}[]";
-            ExtractAllFieldPaths(schemaObject["items"]!, arrayPrefix, result);
-        }
-
-        if (schemaObject["allOf"] is JArray allOf)
-        {
-            foreach (var subSchema in allOf)
-            {
-                ExtractAllFieldPaths(subSchema, prefix, result);
-            }
-        }
     }
 
     /// <summary>
