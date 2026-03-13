@@ -24,6 +24,7 @@ public class OpenApiValidationService : IOpenApiValidationService
     private readonly IOpenApiSpecificationService _openApiSpecificationService;
     private readonly IHsdsComplianceService _hsdsComplianceService;
     private readonly IEndpointTestingService _endpointTestingService;
+    private readonly IAuthenticationValidationService _authenticationValidationService;
     private readonly OpenApiSpecFetcher _specFetcher;
     private readonly bool _allowUserSuppliedAuth;
 
@@ -36,7 +37,8 @@ public class OpenApiValidationService : IOpenApiValidationService
         IOptions<AuthenticationOptions> authOptions,
         IOpenApiSpecificationService? openApiSpecificationService = null,
         IHsdsComplianceService? hsdsComplianceService = null,
-        IEndpointTestingService? endpointTestingService = null)
+        IEndpointTestingService? endpointTestingService = null,
+        IAuthenticationValidationService? authenticationValidationService = null)
     {
         _logger = logger;
         _schemaResolverService = schemaResolverService;
@@ -44,6 +46,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         _openApiSpecificationService = openApiSpecificationService ?? new OpenApiSpecificationService(NullLogger<OpenApiSpecificationService>.Instance, jsonValidatorService);
         _hsdsComplianceService = hsdsComplianceService ?? new HsdsComplianceService(jsonValidatorService);
         _endpointTestingService = endpointTestingService ?? new EndpointTestingService(NullLogger<EndpointTestingService>.Instance, httpClient, jsonValidatorService, _hsdsComplianceService);
+        _authenticationValidationService = authenticationValidationService ?? new AuthenticationValidationService(NullLogger<AuthenticationValidationService>.Instance, authOptions);
         _allowUserSuppliedAuth = authOptions.Value.AllowUserSuppliedAuth;
         _specFetcher = new OpenApiSpecFetcher(httpClient, logger, schemaResolverService, allowUserSuppliedAuth: _allowUserSuppliedAuth);
     }
@@ -90,8 +93,8 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             // User-supplied authentication for schema and datasource requests is feature-gated
             // and must pass strict validation before it can be applied.
-            var schemaRequestAuth = TryGetValidatedRequestAuthentication("schema", request.OpenApiSchema?.Authentication);
-            var dataSourceRequestAuth = TryGetValidatedRequestAuthentication("datasource", request.DataSourceAuth);
+            var schemaRequestAuth = _authenticationValidationService.TryGetValidatedRequestAuthentication("schema", request.OpenApiSchema?.Authentication);
+            var dataSourceRequestAuth = _authenticationValidationService.TryGetValidatedRequestAuthentication("datasource", request.DataSourceAuth);
 
             if (!string.IsNullOrEmpty(request.OpenApiSchema?.Url))
             {
@@ -376,194 +379,6 @@ public class OpenApiValidationService : IOpenApiValidationService
         return false;
     }
 
-    private DataSourceAuthentication? TryGetValidatedRequestAuthentication(string context, DataSourceAuthentication? auth)
-    {
-        // Evaluate the server-side feature gate first so user-controlled request content
-        // cannot influence whether the authorization policy check is reached.
-        if (!_allowUserSuppliedAuth)
-        {
-            if (auth != null)
-            {
-                _logger.LogWarning(
-                    "User-supplied authentication was provided for {Context} but is disabled by server configuration",
-                    SanitizeForLogging(context));
-            }
-
-            return null;
-        }
-
-        var validated = ValidateAuthentication(auth);
-        if (validated == null && auth != null)
-        {
-            _logger.LogWarning(
-                "Rejected invalid user-supplied authentication for {Context}",
-                SanitizeForLogging(context));
-        }
-
-        return validated;
-    }
-
-    private static DataSourceAuthentication? ValidateAuthentication(DataSourceAuthentication? auth)
-    {
-        if (auth == null)
-        {
-            return null;
-        }
-
-        const int maxTokenLength = 4096;
-
-        static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-        static bool IsTooLong(string? value, int maxLength) => !string.IsNullOrEmpty(value) && value.Length > maxLength;
-
-        // Perform stricter validation on the authentication configuration.
-        // If it fails validation, treat it as if no authentication was provided.
-        var apiKey = Normalize(auth.ApiKey);
-        var apiKeyHeader = Normalize(auth.ApiKeyHeader) ?? "X-API-Key";
-        var bearerToken = Normalize(auth.BearerToken);
-        var basicUsername = Normalize(auth.BasicAuth?.Username);
-        var basicPassword = Normalize(auth.BasicAuth?.Password);
-
-        if (IsTooLong(apiKey, maxTokenLength) ||
-            IsTooLong(bearerToken, maxTokenLength) ||
-            IsTooLong(basicUsername, maxTokenLength) ||
-            IsTooLong(basicPassword, maxTokenLength))
-        {
-            return null;
-        }
-
-        var hasApiKey = !string.IsNullOrEmpty(apiKey);
-        if (hasApiKey && !IsValidHttpHeaderName(apiKeyHeader))
-        {
-            return null;
-        }
-
-        var hasBearer = !string.IsNullOrEmpty(bearerToken);
-        var hasBasic = auth.BasicAuth != null
-                       && !string.IsNullOrEmpty(basicUsername)
-                       && !string.IsNullOrEmpty(basicPassword);
-        var hasCustomHeaders = auth.CustomHeaders != null && auth.CustomHeaders.Count > 0;
-
-        var mechanismsCount = 0;
-        if (hasApiKey) mechanismsCount++;
-        if (hasBearer) mechanismsCount++;
-        if (hasBasic) mechanismsCount++;
-        if (hasCustomHeaders) mechanismsCount++;
-
-        // Require at least one and at most one primary authentication mechanism.
-        if (mechanismsCount != 1)
-        {
-            return null;
-        }
-
-        // Return a sanitized copy so that downstream code does not operate on the original user object.
-        var validated = new DataSourceAuthentication();
-
-        if (hasApiKey)
-        {
-            validated.ApiKey = apiKey;
-            validated.ApiKeyHeader = apiKeyHeader;
-        }
-        else if (hasBearer)
-        {
-            validated.BearerToken = bearerToken;
-        }
-        else if (hasBasic)
-        {
-            validated.BasicAuth = new BasicAuthentication
-            {
-                Username = basicUsername!,
-                Password = basicPassword!
-            };
-        }
-        else if (hasCustomHeaders)
-        {
-            // Copy only non-empty header names and values that pass header safety checks.
-            validated.CustomHeaders = new Dictionary<string, string>();
-            foreach (var kvp in auth.CustomHeaders!)
-            {
-                var headerName = Normalize(kvp.Key);
-                var headerValue = Normalize(kvp.Value);
-
-                if (string.IsNullOrEmpty(headerName) ||
-                    string.IsNullOrEmpty(headerValue) ||
-                    !IsValidHttpHeaderName(headerName) ||
-                    !IsSafeHeaderValue(headerValue) ||
-                    IsTooLong(headerValue, maxTokenLength))
-                {
-                    return null;
-                }
-
-                validated.CustomHeaders[headerName] = headerValue;
-            }
-
-            if (validated.CustomHeaders.Count == 0)
-            {
-                return null;
-            }
-
-            if (validated.CustomHeaders.Count > 20)
-            {
-                return null;
-            }
-        }
-
-        // Ensure all outgoing header values are safe against CRLF/control character injection.
-        if ((validated.ApiKey != null && !IsSafeHeaderValue(validated.ApiKey)) ||
-            (validated.BearerToken != null && !IsSafeHeaderValue(validated.BearerToken)) ||
-            (validated.BasicAuth?.Username != null && !IsSafeHeaderValue(validated.BasicAuth.Username)) ||
-            (validated.BasicAuth?.Password != null && !IsSafeHeaderValue(validated.BasicAuth.Password)))
-        {
-            return null;
-        }
-
-        return validated;
-    }
-
-    private static bool IsValidHttpHeaderName(string headerName)
-    {
-        if (string.IsNullOrWhiteSpace(headerName))
-        {
-            return false;
-        }
-
-        const string allowedHeaderTokenSymbols = "!#$%&'*+-.^_`|~";
-
-        foreach (var c in headerName)
-        {
-            if (char.IsLetterOrDigit(c))
-            {
-                continue;
-            }
-
-            if (allowedHeaderTokenSymbols.IndexOf(c) >= 0)
-            {
-                continue;
-            }
-
-            return false;
-        }
-
-        return true;
-    }
-
-    private static bool IsSafeHeaderValue(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return false;
-        }
-
-        foreach (var c in value)
-        {
-            if (c == '\r' || c == '\n' || char.IsControl(c))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
     private OpenApiValidationSummary BuildTestSummary(OpenApiSpecificationValidation? specValidation, List<EndpointTestResult> endpointTests, OpenApiValidationOptions options)
     {
         var shouldIgnoreOptionalFailures = options.TestOptionalEndpoints && options.TreatOptionalEndpointsAsWarnings;
@@ -595,25 +410,6 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
 
         return summary;
-    }
-
-    /// <summary>
-    /// Sanitizes a string for safe inclusion in log messages by removing control characters.
-    /// </summary>
-    /// <param name="value">The value to sanitize.</param>
-    /// <returns>A sanitized string safe for logging.</returns>
-    private static string SanitizeForLogging(string? value)
-    {
-        if (string.IsNullOrEmpty(value))
-        {
-            return string.Empty;
-        }
-
-        // Remove carriage returns and newlines to prevent log forging
-        var sanitized = value.Replace("\r", string.Empty)
-                             .Replace("\n", string.Empty);
-
-        return sanitized;
     }
 
 }
