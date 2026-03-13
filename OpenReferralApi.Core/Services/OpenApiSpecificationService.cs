@@ -1,0 +1,842 @@
+using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Schema;
+using OpenReferralApi.Core.Models;
+using ValidationError = OpenReferralApi.Core.Models.ValidationError;
+
+namespace OpenReferralApi.Core.Services;
+
+public interface IOpenApiSpecificationService
+{
+    Task<OpenApiSpecificationValidation> ValidateAsync(JObject openApiSpec, CancellationToken cancellationToken = default);
+}
+
+public class OpenApiSpecificationService : IOpenApiSpecificationService
+{
+    private static readonly Regex ArrayIndexRegex = new(@"\[[^\]]*\]", RegexOptions.Compiled);
+
+    private readonly ILogger<OpenApiSpecificationService> _logger;
+    private readonly IJsonValidatorService _jsonValidatorService;
+
+    public OpenApiSpecificationService(
+        ILogger<OpenApiSpecificationService> logger,
+        IJsonValidatorService jsonValidatorService)
+    {
+        _logger = logger;
+        _jsonValidatorService = jsonValidatorService;
+    }
+
+    public async Task<OpenApiSpecificationValidation> ValidateAsync(JObject openApiSpec, CancellationToken cancellationToken = default)
+    {
+        var validation = new OpenApiSpecificationValidation();
+        var errors = new List<ValidationError>();
+
+        try
+        {
+            _logger.LogInformation("Validating OpenAPI specification");
+
+            await ValidateOpenApiSpecObjectAsync(openApiSpec, validation, errors, null, cancellationToken);
+
+            validation.SchemaAnalysis = AnalyzeSchemaStructure(openApiSpec);
+            validation.QualityMetrics = AnalyzeQualityMetrics(openApiSpec);
+            validation.Recommendations = GenerateRecommendations(openApiSpec, errors);
+
+            return validation;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during OpenAPI validation");
+            errors.Add(new ValidationError
+            {
+                Path = "",
+                Message = $"Validation error: {SanitizeExceptionMessage(ex.Message)}",
+                ErrorCode = "VALIDATION_ERROR",
+                Severity = "Error"
+            });
+
+            validation.IsValid = false;
+            validation.Errors = errors;
+            return validation;
+        }
+    }
+
+    private async Task ValidateOpenApiSpecObjectAsync(
+        JObject specObject,
+        OpenApiSpecificationValidation validation,
+        List<ValidationError> errors,
+        JSchema? originalSchema = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!specObject.ContainsKey("openapi") && !specObject.ContainsKey("swagger"))
+        {
+            errors.Add(new ValidationError
+            {
+                Path = "",
+                Message = "OpenAPI specification must contain 'openapi' or 'swagger' field",
+                ErrorCode = "MISSING_OPENAPI_VERSION",
+                Severity = "Error"
+            });
+        }
+
+        if (specObject.ContainsKey("openapi"))
+        {
+            validation.OpenApiVersion = specObject["openapi"]?.ToString();
+        }
+        else if (specObject.ContainsKey("swagger"))
+        {
+            validation.OpenApiVersion = specObject["swagger"]?.ToString();
+        }
+
+        if (!specObject.ContainsKey("info"))
+        {
+            errors.Add(new ValidationError
+            {
+                Path = "info",
+                Message = "OpenAPI specification must contain 'info' section",
+                ErrorCode = "MISSING_INFO",
+                Severity = "Error"
+            });
+        }
+        else
+        {
+            var info = specObject["info"];
+            validation.Title = info?["title"]?.ToString();
+            validation.Version = info?["version"]?.ToString();
+
+            if (string.IsNullOrEmpty(validation.Title))
+            {
+                errors.Add(new ValidationError
+                {
+                    Path = "info.title",
+                    Message = "API title is recommended",
+                    ErrorCode = "MISSING_TITLE",
+                    Severity = "Warning"
+                });
+            }
+
+            if (string.IsNullOrEmpty(validation.Version))
+            {
+                errors.Add(new ValidationError
+                {
+                    Path = "info.version",
+                    Message = "API version is recommended",
+                    ErrorCode = "MISSING_VERSION",
+                    Severity = "Warning"
+                });
+            }
+        }
+
+        if (!specObject.ContainsKey("paths"))
+        {
+            errors.Add(new ValidationError
+            {
+                Path = "paths",
+                Message = "OpenAPI specification must contain 'paths' section",
+                ErrorCode = "MISSING_PATHS",
+                Severity = "Error"
+            });
+        }
+        else
+        {
+            var paths = specObject["paths"];
+            if (paths is JObject pathsObject)
+            {
+                validation.EndpointCount = pathsObject.Count;
+
+                if (validation.EndpointCount == 0)
+                {
+                    errors.Add(new ValidationError
+                    {
+                        Path = "paths",
+                        Message = "No endpoints defined in paths section",
+                        ErrorCode = "NO_ENDPOINTS",
+                        Severity = "Warning"
+                    });
+                }
+            }
+        }
+
+        try
+        {
+            var schemaUri = GetOpenApiSchemaUri(specObject, validation.OpenApiVersion);
+            if (!string.IsNullOrEmpty(schemaUri))
+            {
+                object dataForValidation = originalSchema != null ? originalSchema : specObject;
+                var validationRequest = new ValidationRequest
+                {
+                    JsonData = dataForValidation,
+                    SchemaUri = schemaUri
+                };
+
+                var schemaValidation = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
+                if (schemaValidation.Errors.Any())
+                {
+                    errors.AddRange(schemaValidation.Errors);
+                }
+
+                var dialectInfo = specObject.ContainsKey("jsonSchemaDialect")
+                    ? $"using jsonSchemaDialect: {SchemaResolverService.SanitizeStringForLogging(specObject["jsonSchemaDialect"]?.ToString() ?? string.Empty)}"
+                    : $"using version-based schema for OpenAPI {validation.OpenApiVersion}";
+                _logger.LogDebug("Validated OpenAPI specification {DialogInfo} with schema URI: {SchemaUri}", dialectInfo, schemaUri);
+            }
+            else
+            {
+                var dialectInfo = specObject.ContainsKey("jsonSchemaDialect")
+                    ? $"jsonSchemaDialect '{specObject["jsonSchemaDialect"]}' is not supported"
+                    : $"version '{validation.OpenApiVersion}' is not supported";
+
+                errors.Add(new ValidationError
+                {
+                    Path = "",
+                    Message = $"No schema validation available: {dialectInfo}. Supported versions: OpenAPI 3.0.x, 3.1.x, Swagger 2.0, and common JSON Schema dialects (2020-12, 2019-09, draft-07, draft-06, draft-04)",
+                    ErrorCode = "UNSUPPORTED_SCHEMA_VERSION",
+                    Severity = "Warning"
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not validate against OpenAPI schema");
+            errors.Add(new ValidationError
+            {
+                Path = "",
+                Message = $"Could not validate against OpenAPI schema: {SanitizeExceptionMessage(ex.Message)}",
+                ErrorCode = "SCHEMA_VALIDATION_FAILED",
+                Severity = "Warning"
+            });
+        }
+
+        validation.Errors = NormalizeAndDeduplicateValidationErrors(errors);
+        validation.IsValid = !validation.Errors.Any(e => string.Equals(e.Severity, "Error", StringComparison.OrdinalIgnoreCase));
+
+        _logger.LogInformation("OpenAPI specification validation completed. IsValid: {IsValid}, Errors: {ErrorCount}",
+            validation.IsValid, validation.Errors.Count);
+    }
+
+    private static string? GetOpenApiSchemaUri(JObject specObject, string? version)
+    {
+        if (specObject.ContainsKey("jsonSchemaDialect"))
+        {
+            var dialect = specObject["jsonSchemaDialect"]?.ToString();
+            if (!string.IsNullOrEmpty(dialect))
+            {
+                if (IsKnownJsonSchemaDialect(dialect))
+                {
+                    return dialect;
+                }
+            }
+        }
+
+        return "https://json-schema.org/draft/2020-12/schema";
+    }
+
+    private static bool IsKnownJsonSchemaDialect(string dialect)
+    {
+        return dialect switch
+        {
+            "https://json-schema.org/draft/2020-12/schema" => true,
+            "https://json-schema.org/draft/2019-09/schema" => true,
+            "http://json-schema.org/draft-07/schema#" => true,
+            "http://json-schema.org/draft-06/schema#" => true,
+            "http://json-schema.org/draft-04/schema#" => true,
+            _ => false
+        };
+    }
+
+    private static List<ValidationError> NormalizeAndDeduplicateValidationErrors(IEnumerable<ValidationError> errors)
+    {
+        var capacity = errors is ICollection<ValidationError> collection ? collection.Count : 0;
+        var seenPaths = capacity > 0
+            ? new HashSet<string>(capacity, StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal);
+        var deduplicatedErrors = capacity > 0
+            ? new List<ValidationError>(capacity)
+            : new List<ValidationError>();
+
+        foreach (var error in errors)
+        {
+            var normalizedPath = NormalizeValidationErrorText(error.Path);
+            if (!seenPaths.Add(normalizedPath))
+            {
+                continue;
+            }
+
+            deduplicatedErrors.Add(new ValidationError
+            {
+                Path = normalizedPath,
+                Message = NormalizeValidationErrorText(error.Message),
+                ErrorCode = error.ErrorCode,
+                Severity = error.Severity,
+                LineNumber = error.LineNumber,
+                ColumnNumber = error.ColumnNumber
+            });
+        }
+
+        return deduplicatedErrors;
+    }
+
+    private static string NormalizeValidationErrorText(string? input)
+    {
+        if (string.IsNullOrEmpty(input))
+        {
+            return string.Empty;
+        }
+
+        if (input.IndexOf('[') < 0)
+        {
+            return input;
+        }
+
+        return ArrayIndexRegex.Replace(input, string.Empty);
+    }
+
+    private SchemaAnalysis AnalyzeSchemaStructure(JObject specObject)
+    {
+        var analysis = new SchemaAnalysis();
+
+        try
+        {
+            if (specObject.ContainsKey("components"))
+            {
+                var components = specObject["components"];
+                if (components is JObject componentsObject)
+                {
+                    analysis.ComponentCount = 1;
+
+                    if (componentsObject.ContainsKey("schemas"))
+                    {
+                        var schemas = componentsObject["schemas"];
+                        if (schemas is JObject schemasObject)
+                        {
+                            analysis.SchemaCount = schemasObject.Count;
+                        }
+                    }
+
+                    if (componentsObject.ContainsKey("responses"))
+                    {
+                        var responses = componentsObject["responses"];
+                        if (responses is JObject responsesObject)
+                        {
+                            analysis.ResponseCount = responsesObject.Count;
+                        }
+                    }
+
+                    if (componentsObject.ContainsKey("parameters"))
+                    {
+                        var parameters = componentsObject["parameters"];
+                        if (parameters is JObject parametersObject)
+                        {
+                            analysis.ParameterCount = parametersObject.Count;
+                        }
+                    }
+
+                    if (componentsObject.ContainsKey("requestBodies"))
+                    {
+                        var requestBodies = componentsObject["requestBodies"];
+                        if (requestBodies is JObject requestBodiesObject)
+                        {
+                            analysis.RequestBodyCount = requestBodiesObject.Count;
+                        }
+                    }
+
+                    if (componentsObject.ContainsKey("headers"))
+                    {
+                        var headers = componentsObject["headers"];
+                        if (headers is JObject headersObject)
+                        {
+                            analysis.HeaderCount = headersObject.Count;
+                        }
+                    }
+
+                    if (componentsObject.ContainsKey("links"))
+                    {
+                        var links = componentsObject["links"];
+                        if (links is JObject linksObject)
+                        {
+                            analysis.LinkCount = linksObject.Count;
+                        }
+                    }
+
+                    if (componentsObject.ContainsKey("callbacks"))
+                    {
+                        var callbacks = componentsObject["callbacks"];
+                        if (callbacks is JObject callbacksObject)
+                        {
+                            analysis.CallbackCount = callbacksObject.Count;
+                        }
+                    }
+                }
+            }
+
+            if (specObject.ContainsKey("definitions"))
+            {
+                var definitions = specObject["definitions"];
+                if (definitions is JObject definitionsObject)
+                {
+                    analysis.SchemaCount = definitionsObject.Count;
+                }
+            }
+
+            analysis.ExampleCount = CountExamplesInSpec(specObject);
+
+            var specJson = specObject.ToString();
+            var refMatches = Regex.Matches(specJson, "\\$ref");
+            analysis.ReferencesResolved = refMatches.Count;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error analyzing schema structure");
+        }
+
+        return analysis;
+    }
+
+    private int CountExamplesInSpec(JObject specObject)
+    {
+        int exampleCount = 0;
+
+        try
+        {
+            if (specObject.ContainsKey("components"))
+            {
+                var components = specObject["components"];
+                if (components is JObject componentsObject && componentsObject.ContainsKey("examples"))
+                {
+                    var examples = componentsObject["examples"];
+                    if (examples is JObject examplesObject)
+                    {
+                        exampleCount += examplesObject.Count;
+                    }
+                }
+            }
+
+            if (specObject.ContainsKey("paths"))
+            {
+                var paths = specObject["paths"];
+                if (paths is JObject pathsObject)
+                {
+                    foreach (var path in pathsObject.Properties())
+                    {
+                        if (path.Value is JObject pathObject)
+                        {
+                            foreach (var operation in pathObject.Properties())
+                            {
+                                if (operation.Value is JObject operationObject)
+                                {
+                                    if (operationObject.ContainsKey("requestBody"))
+                                    {
+                                        var requestBody = operationObject["requestBody"];
+                                        if (requestBody is JObject requestBodyObject && requestBodyObject.ContainsKey("content"))
+                                        {
+                                            var content = requestBodyObject["content"];
+                                            if (content is JObject contentObject)
+                                            {
+                                                foreach (var mediaType in contentObject.Properties())
+                                                {
+                                                    if (mediaType.Value is JObject mediaTypeObject)
+                                                    {
+                                                        if (mediaTypeObject.ContainsKey("example"))
+                                                        {
+                                                            exampleCount++;
+                                                        }
+                                                        if (mediaTypeObject.ContainsKey("examples"))
+                                                        {
+                                                            var examples = mediaTypeObject["examples"];
+                                                            if (examples is JObject examplesObject)
+                                                            {
+                                                                exampleCount += examplesObject.Count;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if (operationObject.ContainsKey("responses"))
+                                    {
+                                        var responses = operationObject["responses"];
+                                        if (responses is JObject responsesObject)
+                                        {
+                                            foreach (var response in responsesObject.Properties())
+                                            {
+                                                if (response.Value is JObject responseObject && responseObject.ContainsKey("content"))
+                                                {
+                                                    var content = responseObject["content"];
+                                                    if (content is JObject contentObject)
+                                                    {
+                                                        foreach (var mediaType in contentObject.Properties())
+                                                        {
+                                                            if (mediaType.Value is JObject mediaTypeObject)
+                                                            {
+                                                                if (mediaTypeObject.ContainsKey("example"))
+                                                                {
+                                                                    exampleCount++;
+                                                                }
+                                                                if (mediaTypeObject.ContainsKey("examples"))
+                                                                {
+                                                                    var examples = mediaTypeObject["examples"];
+                                                                    if (examples is JObject examplesObject)
+                                                                    {
+                                                                        exampleCount += examplesObject.Count;
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Error counting examples in specification");
+        }
+
+        return exampleCount;
+    }
+
+    private QualityMetrics AnalyzeQualityMetrics(JObject specObject)
+    {
+        var metrics = new QualityMetrics();
+
+        try
+        {
+            if (specObject.ContainsKey("paths"))
+            {
+                var paths = specObject["paths"];
+                if (paths is JObject pathsObject)
+                {
+                    int totalEndpoints = 0;
+                    int endpointsWithDescription = 0;
+                    int endpointsWithSummary = 0;
+                    int endpointsWithExamples = 0;
+                    int totalParameters = 0;
+                    int parametersWithDescription = 0;
+                    int totalResponseCodes = 0;
+                    int responseCodesDocumented = 0;
+
+                    foreach (var path in pathsObject.Properties())
+                    {
+                        if (path.Value is JObject pathObject)
+                        {
+                            foreach (var method in pathObject.Properties())
+                            {
+                                if (method.Value is JObject operationObject)
+                                {
+                                    totalEndpoints++;
+
+                                    if (operationObject.ContainsKey("description") &&
+                                        !string.IsNullOrWhiteSpace(operationObject["description"]?.ToString()))
+                                    {
+                                        endpointsWithDescription++;
+                                    }
+
+                                    if (operationObject.ContainsKey("summary") &&
+                                        !string.IsNullOrWhiteSpace(operationObject["summary"]?.ToString()))
+                                    {
+                                        endpointsWithSummary++;
+                                    }
+
+                                    if (HasExamples(operationObject))
+                                    {
+                                        endpointsWithExamples++;
+                                    }
+
+                                    if (operationObject.ContainsKey("parameters"))
+                                    {
+                                        var parameters = operationObject["parameters"];
+                                        if (parameters is JArray parametersArray)
+                                        {
+                                            totalParameters += parametersArray.Count;
+                                            parametersWithDescription += parametersArray
+                                                .Where(p => p is JObject pObj &&
+                                                       pObj.ContainsKey("description") &&
+                                                       !string.IsNullOrWhiteSpace(pObj["description"]?.ToString()))
+                                                .Count();
+                                        }
+                                    }
+
+                                    if (operationObject.ContainsKey("responses"))
+                                    {
+                                        var responses = operationObject["responses"];
+                                        if (responses is JObject responsesObject)
+                                        {
+                                            totalResponseCodes += responsesObject.Count;
+                                            responseCodesDocumented += responsesObject.Properties()
+                                                .Where(r => r.Value is JObject rObj &&
+                                                       rObj.ContainsKey("description") &&
+                                                       !string.IsNullOrWhiteSpace(rObj["description"]?.ToString()))
+                                                .Count();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    metrics.EndpointsWithDescription = endpointsWithDescription;
+                    metrics.EndpointsWithSummary = endpointsWithSummary;
+                    metrics.EndpointsWithExamples = endpointsWithExamples;
+                    metrics.ParametersWithDescription = parametersWithDescription;
+                    metrics.TotalParameters = totalParameters;
+                    metrics.ResponseCodesDocumented = responseCodesDocumented;
+                    metrics.TotalResponseCodes = totalResponseCodes;
+
+                    if (totalEndpoints > 0)
+                    {
+                        metrics.DocumentationCoverage = (double)endpointsWithDescription / totalEndpoints * 100;
+                    }
+                }
+            }
+
+            CountSchemaDescriptions(specObject, metrics);
+            CalculateQualityScore(metrics);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error analyzing quality metrics");
+        }
+
+        return metrics;
+    }
+
+    private bool HasExamples(JObject operationObject)
+    {
+        if (operationObject.ContainsKey("requestBody"))
+        {
+            var requestBody = operationObject["requestBody"];
+            if (requestBody is JObject requestBodyObject && HasContentExamples(requestBodyObject))
+            {
+                return true;
+            }
+        }
+
+        if (operationObject.ContainsKey("responses"))
+        {
+            var responses = operationObject["responses"];
+            if (responses is JObject responsesObject)
+            {
+                foreach (var response in responsesObject.Properties())
+                {
+                    if (response.Value is JObject responseObject && HasContentExamples(responseObject))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private bool HasContentExamples(JObject contentContainer)
+    {
+        if (contentContainer.ContainsKey("content"))
+        {
+            var content = contentContainer["content"];
+            if (content is JObject contentObject)
+            {
+                foreach (var mediaType in contentObject.Properties())
+                {
+                    if (mediaType.Value is JObject mediaTypeObject)
+                    {
+                        if (mediaTypeObject.ContainsKey("example") || mediaTypeObject.ContainsKey("examples"))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private void CountSchemaDescriptions(JObject specObject, QualityMetrics metrics)
+    {
+        if (specObject.ContainsKey("components"))
+        {
+            var components = specObject["components"];
+            if (components is JObject componentsObject && componentsObject.ContainsKey("schemas"))
+            {
+                var schemas = componentsObject["schemas"];
+                if (schemas is JObject schemasObject)
+                {
+                    metrics.TotalSchemas = schemasObject.Count;
+                    metrics.SchemasWithDescription = schemasObject.Properties()
+                        .Where(s => s.Value is JObject sObj &&
+                               sObj.ContainsKey("description") &&
+                               !string.IsNullOrWhiteSpace(sObj["description"]?.ToString()))
+                        .Count();
+                }
+            }
+        }
+
+        if (specObject.ContainsKey("definitions"))
+        {
+            var definitions = specObject["definitions"];
+            if (definitions is JObject definitionsObject)
+            {
+                metrics.TotalSchemas = definitionsObject.Count;
+                metrics.SchemasWithDescription = definitionsObject.Properties()
+                    .Where(d => d.Value is JObject dObj &&
+                           dObj.ContainsKey("description") &&
+                           !string.IsNullOrWhiteSpace(dObj["description"]?.ToString()))
+                    .Count();
+            }
+        }
+    }
+
+    private void CalculateQualityScore(QualityMetrics metrics)
+    {
+        double score = 0;
+        int factors = 0;
+
+        if (metrics.DocumentationCoverage > 0)
+        {
+            score += metrics.DocumentationCoverage * 0.3;
+            factors++;
+        }
+
+        if (metrics.TotalParameters > 0)
+        {
+            double parameterScore = (double)metrics.ParametersWithDescription / metrics.TotalParameters * 100;
+            score += parameterScore * 0.25;
+            factors++;
+        }
+
+        if (metrics.TotalSchemas > 0)
+        {
+            double schemaScore = (double)metrics.SchemasWithDescription / metrics.TotalSchemas * 100;
+            score += schemaScore * 0.25;
+            factors++;
+        }
+
+        if (metrics.TotalResponseCodes > 0)
+        {
+            double responseScore = (double)metrics.ResponseCodesDocumented / metrics.TotalResponseCodes * 100;
+            score += responseScore * 0.20;
+            factors++;
+        }
+
+        metrics.QualityScore = factors > 0 ? score / factors : 0;
+    }
+
+    private List<Recommendation> GenerateRecommendations(JObject specObject, List<ValidationError> errors)
+    {
+        var recommendations = new List<Recommendation>();
+
+        try
+        {
+            foreach (var error in errors.Where(e => e.Severity == "Error"))
+            {
+                recommendations.Add(new Recommendation
+                {
+                    Type = "Error",
+                    Category = "Validation",
+                    Priority = "High",
+                    Message = error.Message,
+                    Path = error.Path,
+                    ActionRequired = "Fix this validation error to ensure spec compliance",
+                    Impact = "API consumers may not be able to use the specification correctly"
+                });
+            }
+
+            foreach (var error in errors.Where(e => e.Severity == "Warning"))
+            {
+                recommendations.Add(new Recommendation
+                {
+                    Type = "Warning",
+                    Category = "Best Practice",
+                    Priority = "Medium",
+                    Message = error.Message,
+                    Path = error.Path,
+                    ActionRequired = "Consider addressing this warning to improve spec quality",
+                    Impact = "May affect usability or developer experience"
+                });
+            }
+
+            AddQualityRecommendations(specObject, recommendations);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error generating recommendations");
+        }
+
+        return recommendations;
+    }
+
+    private void AddQualityRecommendations(JObject specObject, List<Recommendation> recommendations)
+    {
+        if (!specObject.ContainsKey("info") || specObject["info"] is not JObject infoObject)
+        {
+            return;
+        }
+
+        if (!infoObject.ContainsKey("description") || string.IsNullOrWhiteSpace(infoObject["description"]?.ToString()))
+        {
+            recommendations.Add(new Recommendation
+            {
+                Type = "Improvement",
+                Category = "Documentation",
+                Priority = "Medium",
+                Message = "API description is missing or empty",
+                Path = "info.description",
+                ActionRequired = "Add a comprehensive description of your API's purpose and functionality",
+                Impact = "Helps developers understand the API's capabilities and use cases"
+            });
+        }
+
+        if (!infoObject.ContainsKey("contact"))
+        {
+            recommendations.Add(new Recommendation
+            {
+                Type = "Improvement",
+                Category = "Documentation",
+                Priority = "Low",
+                Message = "Contact information is missing",
+                Path = "info.contact",
+                ActionRequired = "Add contact information for API support",
+                Impact = "Helps users get support when needed"
+            });
+        }
+
+        if (!infoObject.ContainsKey("license"))
+        {
+            recommendations.Add(new Recommendation
+            {
+                Type = "Improvement",
+                Category = "Legal",
+                Priority = "Low",
+                Message = "License information is missing",
+                Path = "info.license",
+                ActionRequired = "Add license information for your API",
+                Impact = "Clarifies usage rights and restrictions"
+            });
+        }
+    }
+
+    private static string SanitizeExceptionMessage(string message)
+    {
+        if (string.IsNullOrEmpty(message))
+            return string.Empty;
+
+        var sanitized = new string(message.Where(c => !char.IsControl(c)).ToArray());
+
+        const int maxLength = 500;
+        if (sanitized.Length > maxLength)
+        {
+            sanitized = sanitized.Substring(0, maxLength) + "...(truncated)";
+        }
+
+        return sanitized;
+    }
+}
