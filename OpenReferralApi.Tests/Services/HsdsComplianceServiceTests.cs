@@ -1,0 +1,408 @@
+using Moq;
+using Newtonsoft.Json.Linq;
+using OpenReferralApi.Core.Models;
+using OpenReferralApi.Core.Services;
+using ValidationError = OpenReferralApi.Core.Models.ValidationError;
+
+namespace OpenReferralApi.Tests.Services;
+
+[TestFixture]
+public class HsdsComplianceServiceTests
+{
+    private Mock<IJsonValidatorService> _jsonValidatorServiceMock = null!;
+    private HsdsComplianceService _service = null!;
+
+    [SetUp]
+    public void Setup()
+    {
+        _jsonValidatorServiceMock = new Mock<IJsonValidatorService>();
+        _jsonValidatorServiceMock
+            .Setup(x => x.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult
+            {
+                IsValid = true,
+                Errors = new List<ValidationError>()
+            });
+
+        _service = new HsdsComplianceService(_jsonValidatorServiceMock.Object);
+    }
+
+    [Test]
+    public void ExtractClaimedProfileVersion_FromProfileReason_ParsesAndNormalizes()
+    {
+        var version = _service.ExtractClaimedProfileVersion("Standard version [user: HSDS-UK-V3]", null);
+
+        Assert.That(version, Is.EqualTo("3.0"));
+    }
+
+    [Test]
+    public void ExtractClaimedProfileVersion_FromSchemaUrl_ParsesAndNormalizes()
+    {
+        var version = _service.ExtractClaimedProfileVersion(null, "https://openreferraluk.org/specifications/3.1/openapi.json");
+
+        Assert.That(version, Is.EqualTo("3.1"));
+    }
+
+    [Test]
+    public void TryGetKnownHsdsSchemaUrl_ReturnsTrueForKnownVersion()
+    {
+        var found = _service.TryGetKnownHsdsSchemaUrl("3.0", out var schemaUrl);
+
+        Assert.That(found, Is.True);
+        Assert.That(schemaUrl, Is.EqualTo("https://openreferraluk.org/specifications/3.0/openapi.json"));
+    }
+
+    [Test]
+    public void TryGetKnownHsdsSchemaUrl_ReturnsFalseForUnknownVersion()
+    {
+        var found = _service.TryGetKnownHsdsSchemaUrl("9.9", out var schemaUrl);
+
+        Assert.That(found, Is.False);
+        Assert.That(schemaUrl, Is.EqualTo(string.Empty));
+    }
+
+    [Test]
+    public void CompareFeedSpecAgainstHsdsProfile_FindsMissingRequiredAndAdditionalEndpoints()
+    {
+        var hsdsSpec = JObject.Parse("""
+        {
+          "openapi": "3.0.0",
+          "paths": {
+            "/required": {
+              "get": {
+                "responses": {
+                  "200": {
+                    "description": "ok",
+                    "content": {
+                      "application/json": {
+                        "schema": {
+                          "type": "object",
+                          "properties": {
+                            "id": { "type": "string" }
+                          },
+                          "required": ["id"]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """);
+
+        var feedSpec = JObject.Parse("""
+        {
+          "openapi": "3.0.0",
+          "paths": {
+            "/extra": {
+              "get": {
+                "responses": {
+                  "200": { "description": "ok" }
+                }
+              }
+            }
+          }
+        }
+        """);
+
+        var findings = _service.CompareFeedSpecAgainstHsdsProfile(feedSpec, hsdsSpec);
+
+        Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_MISSING_ENDPOINT"));
+        Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_ADDITIONAL_ENDPOINT"));
+    }
+
+    [Test]
+    public void CompareFeedSpecAgainstHsdsProfile_FindsMissingAndAdditionalResponseFields()
+    {
+        var hsdsSpec = JObject.Parse("""
+        {
+          "openapi": "3.0.0",
+          "paths": {
+            "/services": {
+              "get": {
+                "responses": {
+                  "200": {
+                    "description": "ok",
+                    "content": {
+                      "application/json": {
+                        "schema": {
+                          "type": "object",
+                          "properties": {
+                            "id": { "type": "string" },
+                            "name": { "type": "string" }
+                          },
+                          "required": ["id", "name"]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """);
+
+        var feedSpec = JObject.Parse("""
+        {
+          "openapi": "3.0.0",
+          "paths": {
+            "/services": {
+              "get": {
+                "responses": {
+                  "200": {
+                    "description": "ok",
+                    "content": {
+                      "application/json": {
+                        "schema": {
+                          "type": "object",
+                          "properties": {
+                            "id": { "type": "string" },
+                            "extra": { "type": "string" }
+                          },
+                          "required": ["id"]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """);
+
+        var findings = _service.CompareFeedSpecAgainstHsdsProfile(feedSpec, hsdsSpec);
+
+        Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_MISSING_REQUIRED_FIELD"));
+        Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_ADDITIONAL_FIELD"));
+    }
+
+    [Test]
+    public void CompareFeedSpecAgainstHsdsProfile_WhenRequestBodyMissing_ReportsMissingRequestBody()
+    {
+        var hsdsSpec = JObject.Parse("""
+        {
+          "openapi": "3.0.0",
+          "paths": {
+            "/services": {
+              "post": {
+                "requestBody": {
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "type": "object",
+                        "properties": {
+                          "name": { "type": "string" }
+                        },
+                        "required": ["name"]
+                      }
+                    }
+                  }
+                },
+                "responses": {
+                  "200": { "description": "ok" }
+                }
+              }
+            }
+          }
+        }
+        """);
+
+        var feedSpec = JObject.Parse("""
+        {
+          "openapi": "3.0.0",
+          "paths": {
+            "/services": {
+              "post": {
+                "responses": {
+                  "200": { "description": "ok" }
+                }
+              }
+            }
+          }
+        }
+        """);
+
+        var findings = _service.CompareFeedSpecAgainstHsdsProfile(feedSpec, hsdsSpec);
+
+        Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_MISSING_REQUEST_BODY"));
+    }
+
+    [Test]
+    public async Task ValidateEndpointResponsesAgainstHsdsProfileAsync_MapsRuntimeValidationErrorsAndUpdatesStatus()
+    {
+        _jsonValidatorServiceMock
+            .Setup(x => x.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult
+            {
+                IsValid = false,
+                Errors = new List<ValidationError>
+                {
+                    new() { Path = "data.extra", Message = "extra", ErrorCode = "ADDITIONAL_FIELD", Severity = "Error" },
+                    new() { Path = "data.id", Message = "bad", ErrorCode = "VALIDATION_ERROR", Severity = "Error" }
+                }
+            });
+
+        var hsdsSpec = JObject.Parse("""
+        {
+          "openapi": "3.0.0",
+          "paths": {
+            "/services": {
+              "get": {
+                "responses": {
+                  "200": {
+                    "description": "ok",
+                    "content": {
+                      "application/json": {
+                        "schema": {
+                          "type": "object",
+                          "properties": {
+                            "id": { "type": "string" }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """);
+
+        var endpointTests = new List<EndpointTestResult>
+        {
+            new()
+            {
+                Method = "GET",
+                Path = "/services",
+                Status = EndpointTestStatus.PassedValidation,
+                IsTested = true,
+                TestResults = new List<HttpTestResult>
+                {
+                    new()
+                    {
+                        IsSuccessStatusCode = true,
+                        ResponseBody = "{\"id\":\"1\",\"extra\":\"x\"}",
+                        ValidationResult = null
+                    }
+                }
+            }
+        };
+
+        var options = new OpenApiValidationOptions
+        {
+            FailOnAdditionalFields = true
+        };
+
+        await _service.ValidateEndpointResponsesAgainstHsdsProfileAsync(endpointTests, hsdsSpec, options, CancellationToken.None);
+
+        var endpoint = endpointTests[0];
+        Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.FailedValidation));
+        Assert.That(endpoint.TestResults[0].ValidationResult, Is.Not.Null);
+        Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
+            Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_RUNTIME_ADDITIONAL_FIELD"));
+        Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
+            Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_RUNTIME_VALIDATION_ERROR"));
+    }
+
+    [Test]
+    public async Task ValidateEndpointResponsesAgainstHsdsProfileAsync_WarningOnlySetsPassedWithWarnings()
+    {
+        _jsonValidatorServiceMock
+            .Setup(x => x.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult
+            {
+                IsValid = false,
+                Errors = new List<ValidationError>
+                {
+                    new() { Path = "data.extra", Message = "extra", ErrorCode = "ADDITIONAL_FIELD", Severity = "Error" }
+                }
+            });
+
+        var hsdsSpec = JObject.Parse("""
+        {
+          "openapi": "3.0.0",
+          "paths": {
+            "/services": {
+              "get": {
+                "responses": {
+                  "200": {
+                    "description": "ok",
+                    "content": {
+                      "application/json": {
+                        "schema": {
+                          "type": "object",
+                          "properties": {
+                            "id": { "type": "string" }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """);
+
+        var endpointTests = new List<EndpointTestResult>
+        {
+            new()
+            {
+                Method = "GET",
+                Path = "/services",
+                Status = EndpointTestStatus.PassedValidation,
+                IsTested = true,
+                TestResults = new List<HttpTestResult>
+                {
+                    new()
+                    {
+                        IsSuccessStatusCode = true,
+                        ResponseBody = "{\"id\":\"1\",\"extra\":\"x\"}",
+                        ValidationResult = new ValidationResult
+                        {
+                            IsValid = true,
+                            Errors = new List<ValidationError>()
+                        }
+                    }
+                }
+            }
+        };
+
+        var options = new OpenApiValidationOptions
+        {
+            FailOnAdditionalFields = false
+        };
+
+        await _service.ValidateEndpointResponsesAgainstHsdsProfileAsync(endpointTests, hsdsSpec, options, CancellationToken.None);
+
+        var endpoint = endpointTests[0];
+        Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
+        Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
+            Has.Some.Matches<ValidationError>(e => e.Severity == "Warning"));
+    }
+
+    [Test]
+    public void ApplyAdditionalFieldPolicy_SetsWarningsAndUpdatesValidity()
+    {
+        var result = new ValidationResult
+        {
+            IsValid = false,
+            Errors = new List<ValidationError>
+            {
+                new() { ErrorCode = "ADDITIONAL_FIELD", Severity = "Error" },
+                new() { ErrorCode = "SOME_OTHER", Severity = "Warning" }
+            }
+        };
+
+        _service.ApplyAdditionalFieldPolicy(result, new OpenApiValidationOptions { FailOnAdditionalFields = false });
+
+        Assert.That(result.Errors.Single(e => e.ErrorCode == "ADDITIONAL_FIELD").Severity, Is.EqualTo("Warning"));
+        Assert.That(result.IsValid, Is.True);
+    }
+}
