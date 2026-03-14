@@ -5,7 +5,7 @@ using OpenReferralApi.Core.Models;
 
 namespace OpenReferralApi.Core.Services;
 
-public interface IOpenApiProfileDiscoveryService
+public interface IProfileDiscoveryService
 {
     /// <summary>
     /// Attempts to discover an OpenAPI schema URL from the provided base URL.
@@ -14,13 +14,13 @@ public interface IOpenApiProfileDiscoveryService
     Task<(string? url, string? reason)> DiscoverOpenApiUrlAsync(string baseUrl, CancellationToken cancellationToken = default);
 }
 
-public class OpenApiProfileDiscoveryService : IOpenApiProfileDiscoveryService
+public class ProfileDiscoveryService : IProfileDiscoveryService
 {
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly ILogger<OpenApiProfileDiscoveryService> _logger;
+    private readonly ILogger<ProfileDiscoveryService> _logger;
     private readonly string _baseSpecificationUrl;
 
-    public OpenApiProfileDiscoveryService(IHttpClientFactory httpClientFactory, ILogger<OpenApiProfileDiscoveryService> logger, IOptions<SpecificationOptions> specificationOptions)
+    public ProfileDiscoveryService(IHttpClientFactory httpClientFactory, ILogger<ProfileDiscoveryService> logger, IOptions<SpecificationOptions> specificationOptions)
     {
         _httpClientFactory = httpClientFactory;
         _logger = logger;

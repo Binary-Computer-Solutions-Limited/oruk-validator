@@ -9,20 +9,20 @@ using System.Net;
 namespace OpenReferralApi.Tests.Services;
 
 [TestFixture]
-public class OpenApiProfileDiscoveryServiceTests
+public class ProfileDiscoveryServiceTests
 {
     private Mock<IHttpClientFactory> _httpClientFactoryMock;
-    private Mock<ILogger<OpenApiProfileDiscoveryService>> _loggerMock;
+    private Mock<ILogger<ProfileDiscoveryService>> _loggerMock;
     private Mock<HttpMessageHandler> _httpMessageHandlerMock;
     private Mock<IOptions<SpecificationOptions>> _specificationOptionsMock;
     private HttpClient _httpClient;
-    private OpenApiProfileDiscoveryService _service;
+    private ProfileDiscoveryService _service;
 
     [SetUp]
     public void Setup()
     {
         _httpClientFactoryMock = new Mock<IHttpClientFactory>();
-        _loggerMock = new Mock<ILogger<OpenApiProfileDiscoveryService>>();
+        _loggerMock = new Mock<ILogger<ProfileDiscoveryService>>();
         _httpMessageHandlerMock = new Mock<HttpMessageHandler>();
         _specificationOptionsMock = new Mock<IOptions<SpecificationOptions>>();
         _httpClient = new HttpClient(_httpMessageHandlerMock.Object);
@@ -38,7 +38,7 @@ public class OpenApiProfileDiscoveryServiceTests
                 BaseUrl = "https://openreferraluk.org/specifications/"
             });
 
-        _service = new OpenApiProfileDiscoveryService(_httpClientFactoryMock.Object, _loggerMock.Object, _specificationOptionsMock.Object);
+        _service = new ProfileDiscoveryService(_httpClientFactoryMock.Object, _loggerMock.Object, _specificationOptionsMock.Object);
     }
 
     [TearDown]

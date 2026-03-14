@@ -62,7 +62,7 @@ This solution is built as a modern, cloud-native application with the following 
 ### Core Services
 
 - **OpenApiValidationService**: Orchestrates OpenAPI spec validation and endpoint testing
-- **OpenApiProfileDiscoveryService**: Discovers and parses OpenAPI specifications from URLs
+- **ProfileDiscoveryService**: Discovers and parses OpenAPI specifications from URLs
 - **JsonValidatorService**: Validates JSON responses against HSDS-UK schemas
 - **SchemaResolverService**: Resolves JSON Schema definitions and creates JSchema objects
 - **RequestProcessingService**: HTTP client management with caching and timeout handling

@@ -13,7 +13,7 @@ public class OpenApiValidationServiceTests
     private Mock<ILogger<OpenApiValidationService>> _loggerMock;
     private Mock<IJsonValidatorService> _jsonValidatorServiceMock;
     private Mock<ISchemaResolverService> _schemaResolverServiceMock;
-    private Mock<IOpenApiProfileDiscoveryService> _discoveryServiceMock;
+    private Mock<IProfileDiscoveryService> _discoveryServiceMock;
     private Mock<IOpenApiDiscoveryService> _feedSpecDiscoveryMock;
     private IOptions<AuthenticationOptions> _authOptions;
     private HttpClient _httpClient;
@@ -25,7 +25,7 @@ public class OpenApiValidationServiceTests
         _loggerMock = new Mock<ILogger<OpenApiValidationService>>();
         _jsonValidatorServiceMock = new Mock<IJsonValidatorService>();
         _schemaResolverServiceMock = new Mock<ISchemaResolverService>();
-        _discoveryServiceMock = new Mock<IOpenApiProfileDiscoveryService>();
+        _discoveryServiceMock = new Mock<IProfileDiscoveryService>();
         _feedSpecDiscoveryMock = new Mock<IOpenApiDiscoveryService>();
         _feedSpecDiscoveryMock
             .Setup(s => s.FindOpenApiSpecAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))

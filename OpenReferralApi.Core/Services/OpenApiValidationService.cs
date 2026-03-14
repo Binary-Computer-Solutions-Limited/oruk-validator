@@ -20,7 +20,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
     private readonly ILogger<OpenApiValidationService> _logger;
     private readonly ISchemaResolverService _schemaResolverService;
-    private readonly IOpenApiProfileDiscoveryService _discoveryService;
+    private readonly IProfileDiscoveryService _discoveryService;
     private readonly IOpenApiDiscoveryService _feedSpecDiscoveryService;
     private readonly IOpenApiSpecificationService _openApiSpecificationService;
     private readonly IHsdsComplianceService _hsdsComplianceService;
@@ -34,7 +34,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         HttpClient httpClient,
         IJsonValidatorService jsonValidatorService,
         ISchemaResolverService schemaResolverService,
-        IOpenApiProfileDiscoveryService discoveryService,
+        IProfileDiscoveryService discoveryService,
         IOpenApiDiscoveryService feedSpecDiscoveryService,
         IOptions<AuthenticationOptions> authOptions,
         IOpenApiSpecificationService? openApiSpecificationService = null,
