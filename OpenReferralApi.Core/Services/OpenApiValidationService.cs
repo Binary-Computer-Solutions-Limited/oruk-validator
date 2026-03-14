@@ -20,8 +20,8 @@ public class OpenApiValidationService : IOpenApiValidationService
 
     private readonly ILogger<OpenApiValidationService> _logger;
     private readonly ISchemaResolverService _schemaResolverService;
-    private readonly IProfileDiscoveryService _discoveryService;
-    private readonly IOpenApiDiscoveryService _feedSpecDiscoveryService;
+    private readonly IProfileDiscoveryService _profileDiscoveryService;
+    private readonly IOpenApiDiscoveryService _openApiDiscoveryService;
     private readonly IOpenApiSpecificationService _openApiSpecificationService;
     private readonly IHsdsComplianceService _hsdsComplianceService;
     private readonly IEndpointTestingService _endpointTestingService;
@@ -44,8 +44,8 @@ public class OpenApiValidationService : IOpenApiValidationService
     {
         _logger = logger;
         _schemaResolverService = schemaResolverService;
-        _discoveryService = discoveryService;
-        _feedSpecDiscoveryService = feedSpecDiscoveryService;
+        _profileDiscoveryService = discoveryService;
+        _openApiDiscoveryService = feedSpecDiscoveryService;
         _openApiSpecificationService = openApiSpecificationService ?? new OpenApiSpecificationService(NullLogger<OpenApiSpecificationService>.Instance, jsonValidatorService);
         _hsdsComplianceService = hsdsComplianceService ?? new HsdsComplianceService(jsonValidatorService);
         _endpointTestingService = endpointTestingService ?? new EndpointTestingService(NullLogger<EndpointTestingService>.Instance, httpClient, jsonValidatorService, _hsdsComplianceService);
@@ -72,10 +72,10 @@ public class OpenApiValidationService : IOpenApiValidationService
                 if (!string.IsNullOrEmpty(request.BaseUrl))
                 {
                     // Determine the HSDS profile context from the root endpoint.
-                    var (profileUrl, profileReason) = await _discoveryService.DiscoverOpenApiUrlAsync(request.BaseUrl, cancellationToken);
+                    var (profileUrl, profileReason) = await _profileDiscoveryService.DiscoverOpenApiUrlAsync(request.BaseUrl, cancellationToken);
 
                     // Try to find the OpenAPI spec the feed itself publishes (what the feed claims to support).
-                    var feedSpecUrl = await _feedSpecDiscoveryService.FindOpenApiSpecAsync(request.BaseUrl, cancellationToken);
+                    var feedSpecUrl = await _openApiDiscoveryService.FindOpenApiSpecAsync(request.BaseUrl, cancellationToken);
 
                     // Prefer the feed's own published spec; fall back to the HSDS profile URL.
                     var discoveredUrl = !string.IsNullOrEmpty(feedSpecUrl) ? feedSpecUrl : profileUrl;
