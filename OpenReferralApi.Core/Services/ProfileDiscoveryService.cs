@@ -7,11 +7,22 @@ namespace OpenReferralApi.Core.Services;
 
 public interface IProfileDiscoveryService
 {
+    Task<ProfileDiscoveryResult> DiscoverAsync(string baseUrl, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Attempts to discover an OpenAPI schema URL from the provided base URL.
     /// Returns the discovered URL and the reason for how it was discovered, or null if none found.
     /// </summary>
     Task<(string? url, string? reason)> DiscoverOpenApiUrlAsync(string baseUrl, CancellationToken cancellationToken = default);
+}
+
+public class ProfileDiscoveryResult
+{
+    public string? Url { get; init; }
+    public string? Reason { get; init; }
+    public bool BaseUrlRequestSucceeded { get; init; }
+    public string? BaseUrlResponseContent { get; init; }
+    public bool HasExplicitOpenApiUrl { get; init; }
 }
 
 public class ProfileDiscoveryService : IProfileDiscoveryService
@@ -27,9 +38,12 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         _baseSpecificationUrl = specificationOptions.Value.BaseUrl;
     }
 
-    public async Task<(string? url, string? reason)> DiscoverOpenApiUrlAsync(string baseUrl, CancellationToken cancellationToken = default)
+    public async Task<ProfileDiscoveryResult> DiscoverAsync(string baseUrl, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(baseUrl)) return (null, null);
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            return new ProfileDiscoveryResult();
+        }
 
         const float defaultSpecificationVersion = 1.0f;
         var defaultSpec = $"{_baseSpecificationUrl}{defaultSpecificationVersion:0.0}/openapi.json";
@@ -42,13 +56,34 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             if (!resp.IsSuccessStatusCode)
             {
                 _logger.LogInformation("BaseUrl request returned {Status}; defaulting to HSDS-UK 1.0 spec: {DefaultSpec}", resp.StatusCode, defaultSpec);
-                return (defaultSpec, "Defaulted to HSDS-UK 1.0 (base URL request failed)");
+                return new ProfileDiscoveryResult
+                {
+                    Url = defaultSpec,
+                    Reason = "Defaulted to HSDS-UK 1.0 (base URL request failed)",
+                    BaseUrlRequestSucceeded = false
+                };
             }
 
             var content = await resp.Content.ReadAsStringAsync(cancellationToken);
             try
             {
                 var j = JObject.Parse(content);
+
+                // openapi_url explicitly points to the schema to validate against.
+                var openapiUrlToken = j.SelectToken("openapi_url") ?? j.SelectToken("openapiUrl") ?? j.SelectToken("open_api_url");
+                var openapiUrl = openapiUrlToken?.ToString();
+                if (!string.IsNullOrEmpty(openapiUrl))
+                {
+                    _logger.LogInformation("Discovered openapi_url: {OpenApiUrl}", SchemaResolverService.SanitizeUrlForLogging(openapiUrl));
+                    return new ProfileDiscoveryResult
+                    {
+                        Url = openapiUrl,
+                        Reason = "OpenAPI URL read from '/' endpoint (openapi_url field)",
+                        BaseUrlRequestSucceeded = true,
+                        BaseUrlResponseContent = content,
+                        HasExplicitOpenApiUrl = true
+                    };
+                }
 
                 // Check for version field and construct URL
                 var versionToken = j.SelectToken("version");
@@ -60,33 +95,57 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                     {
                         var versionedSpec = $"{_baseSpecificationUrl}{extractedVersion.Value:0.0}/openapi.json";
                         _logger.LogInformation("Detected version '{Version}'; using HSDS-UK {ExtractedVersion:0.0} spec: {OpenApiUrl}", SchemaResolverService.SanitizeStringForLogging(version), extractedVersion.Value, versionedSpec);
-                        return (versionedSpec, $"Standard version {SchemaResolverService.SanitizeStringForLogging(version)} read from '/' endpoint");
+                        return new ProfileDiscoveryResult
+                        {
+                            Url = versionedSpec,
+                            Reason = $"Standard version {SchemaResolverService.SanitizeStringForLogging(version)} read from '/' endpoint",
+                            BaseUrlRequestSucceeded = true,
+                            BaseUrlResponseContent = content
+                        };
                     }
                 }
 
-                // Check for explicit openapi_url field first
-                var openapiUrlToken = j.SelectToken("openapi_url") ?? j.SelectToken("openapiUrl") ?? j.SelectToken("open_api_url");
-                var openapiUrl = openapiUrlToken?.ToString();
-                if (!string.IsNullOrEmpty(openapiUrl))
-                {
-                    _logger.LogInformation("Discovered openapi_url: {OpenApiUrl}", SchemaResolverService.SanitizeUrlForLogging(openapiUrl));
-                    return (openapiUrl, "OpenAPI URL read from '/' endpoint (openapi_url field)");
-                }
-
                 _logger.LogInformation("No openapi_url or version in BaseUrl response; defaulting to HSDS-UK 1.0 spec: {DefaultSpec}", defaultSpec);
-                return (defaultSpec, "Defaulted to HSDS-UK 1.0 (no version or openapi_url found)");
+                return new ProfileDiscoveryResult
+                {
+                    Url = defaultSpec,
+                    Reason = "Defaulted to HSDS-UK 1.0 (no version or openapi_url found)",
+                    BaseUrlRequestSucceeded = true,
+                    BaseUrlResponseContent = content
+                };
             }
             catch (Exception jex)
             {
                 _logger.LogWarning(jex, "Failed to parse JSON from BaseUrl response; defaulting to HSDS-UK 1.0 spec: {DefaultSpec}", defaultSpec);
-                return (defaultSpec, "Defaulted to HSDS-UK 1.0 (failed to parse base URL response)");
+                return new ProfileDiscoveryResult
+                {
+                    Url = defaultSpec,
+                    Reason = "Defaulted to HSDS-UK 1.0 (failed to parse base URL response)",
+                    BaseUrlRequestSucceeded = true,
+                    BaseUrlResponseContent = content
+                };
             }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Error requesting BaseUrl to discover openapi_url; defaulting to HSDS-UK 1.0 spec: {DefaultSpec}", defaultSpec);
-            return (defaultSpec, "Defaulted to HSDS-UK 1.0 (error requesting base URL)");
+            return new ProfileDiscoveryResult
+            {
+                Url = defaultSpec,
+                Reason = "Defaulted to HSDS-UK 1.0 (error requesting base URL)",
+                BaseUrlRequestSucceeded = false
+            };
         }
+    }
+
+    public async Task<(string? url, string? reason)> DiscoverOpenApiUrlAsync(string baseUrl, CancellationToken cancellationToken = default)
+    {
+        var discovery = await DiscoverAsync(baseUrl, cancellationToken);
+        return (discovery.Url, discovery.Reason);
     }
 
     private static float? ExtractVersionNumber(string version)

@@ -285,9 +285,9 @@ public class ProfileDiscoveryServiceTests
     }
 
     [Test]
-    public async Task DiscoverOpenApiUrlAsync_WithBothVersionAndOpenApiUrl_UsesVersion()
+    public async Task DiscoverOpenApiUrlAsync_WithBothVersionAndOpenApiUrl_UsesOpenApiUrl()
     {
-        // Arrange - The service checks version first, then falls back to openapi_url
+        // Arrange - openapi_url should be treated as authoritative when provided
         var baseUrl = "https://api.example.com";
         var responseContent = @"{""version"": ""3.0"", ""openapi_url"": ""https://api.example.com/custom.json""}";
 
@@ -297,8 +297,8 @@ public class ProfileDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
 
         // Assert
-        Assert.That(url, Does.Contain("3.0/openapi.json"));
-        Assert.That(reason, Does.Contain("Standard version [user: 3.0] read from '/' endpoint"));
+        Assert.That(url, Is.EqualTo("https://api.example.com/custom.json"));
+        Assert.That(reason, Does.Contain("openapi_url field"));
     }
 
     private void SetupHttpResponse(HttpStatusCode statusCode, string content)

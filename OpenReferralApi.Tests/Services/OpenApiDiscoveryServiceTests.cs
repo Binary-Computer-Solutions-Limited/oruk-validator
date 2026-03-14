@@ -176,8 +176,44 @@ public class OpenApiDiscoveryServiceTests
         cts.Cancel();
 
         // Act + Assert
-        Assert.That(async () => await _service.FindOpenApiSpecAsync("https://api.example.com", cts.Token),
+        Assert.That(async () => await _service.FindOpenApiSpecAsync("https://api.example.com", null, cts.Token),
             Throws.InstanceOf<OperationCanceledException>());
+    }
+
+    [Test]
+    public async Task FindOpenApiSpecAsync_WhenBaseContentProvided_DoesNotRefetchRootPage()
+    {
+        // Arrange
+        var html = @"<!doctype html><html><body>
+            <script>
+                SwaggerUIBundle({
+                    url: '/openapi.json',
+                    dom_id: '#swagger-ui'
+                });
+            </script>
+            </body></html>";
+
+        var requestUris = new List<string>();
+        _httpMessageHandlerMock
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .Returns<HttpRequestMessage, CancellationToken>((request, _) =>
+            {
+                requestUris.Add(request.RequestUri!.ToString());
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+            });
+
+        // Act
+        var result = await _service.FindOpenApiSpecAsync("https://api.example.com", html);
+
+        // Assert
+        Assert.That(result, Is.EqualTo("https://api.example.com/openapi.json"));
+        Assert.That(requestUris, Has.Count.EqualTo(4));
+        Assert.That(requestUris, Has.None.EqualTo("https://api.example.com/"));
+        Assert.That(requestUris, Has.None.EqualTo("https://api.example.com"));
     }
 
     [Test]

@@ -71,18 +71,31 @@ public class OpenApiValidationService : IOpenApiValidationService
             {
                 if (!string.IsNullOrEmpty(request.BaseUrl))
                 {
-                    // Determine the HSDS profile context from the root endpoint.
-                    var (profileUrl, profileReason) = await _profileDiscoveryService.DiscoverOpenApiUrlAsync(request.BaseUrl, cancellationToken);
+                    // Determine the HSDS profile context from the root endpoint (single request).
+                    var profileDiscovery = await _profileDiscoveryService.DiscoverAsync(request.BaseUrl, cancellationToken);
 
-                    // Try to find the OpenAPI spec the feed itself publishes (what the feed claims to support).
-                    var feedSpecUrl = await _openApiDiscoveryService.FindOpenApiSpecAsync(request.BaseUrl, cancellationToken);
+                    // If root metadata didn't provide openapi_url, try the feed's published OpenAPI paths.
+                    string? feedSpecUrl = null;
+                    if (!profileDiscovery.HasExplicitOpenApiUrl)
+                    {
+                        feedSpecUrl = await _openApiDiscoveryService.FindOpenApiSpecAsync(
+                            request.BaseUrl,
+                            profileDiscovery.BaseUrlResponseContent,
+                            cancellationToken);
+                    }
 
-                    // Prefer the feed's own published spec; fall back to the HSDS profile URL.
-                    var discoveredUrl = !string.IsNullOrEmpty(feedSpecUrl) ? feedSpecUrl : profileUrl;
+                    // openapi_url from root is authoritative; otherwise prefer feed-discovered path,
+                    // then fall back to HSDS profile URL/default.
+                    var discoveredUrl = profileDiscovery.HasExplicitOpenApiUrl
+                        ? profileDiscovery.Url
+                        : !string.IsNullOrEmpty(feedSpecUrl)
+                            ? feedSpecUrl
+                            : profileDiscovery.Url;
+
                     var reason = !string.IsNullOrEmpty(feedSpecUrl)
                         ? $"Feed spec discovered at {SchemaResolverService.SanitizeUrlForLogging(feedSpecUrl)}"
-                          + (!string.IsNullOrEmpty(profileReason) ? $"; {profileReason}" : string.Empty)
-                        : profileReason;
+                          + (!string.IsNullOrEmpty(profileDiscovery.Reason) ? $"; {profileDiscovery.Reason}" : string.Empty)
+                        : profileDiscovery.Reason;
 
                     if (!string.IsNullOrEmpty(discoveredUrl))
                     {
@@ -125,6 +138,16 @@ public class OpenApiValidationService : IOpenApiValidationService
             else
             {
                 throw new ArgumentException("OpenAPI schema URL must be provided or BaseUrl must allow discovery");
+            }
+
+            // If discovery could not infer an HSDS profile version, try extracting it from the OpenAPI document itself.
+            if (!HasExplicitProfileVersionContext(request.ProfileReason, request.OpenApiSchema?.Url))
+            {
+                var versionFromSpec = TryExtractProfileVersionFromOpenApiSpec(openApiSpec);
+                if (!string.IsNullOrWhiteSpace(versionFromSpec))
+                {
+                    request.ProfileReason = $"Standard version [user: {versionFromSpec}] read from OpenAPI spec";
+                }
             }
 
             // Validate the OpenAPI specification
@@ -323,6 +346,61 @@ public class OpenApiValidationService : IOpenApiValidationService
         return deduplicatedErrors;
     }
 
+    private bool HasExplicitProfileVersionContext(string? profileReason, string? schemaUrl)
+    {
+        return !string.IsNullOrWhiteSpace(_hsdsComplianceService.ExtractClaimedProfileVersion(profileReason, schemaUrl));
+    }
+
+    private static string? TryExtractProfileVersionFromOpenApiSpec(JObject openApiSpec)
+    {
+        var candidateTokens = new[]
+        {
+            "x-hsds-version",
+            "version",
+            "info.x-hsds-version",
+            "info.x-profile-version"
+        };
+
+        foreach (var tokenPath in candidateTokens)
+        {
+            var tokenValue = openApiSpec.SelectToken(tokenPath)?.ToString();
+            var normalized = NormalizeVersionToken(tokenValue);
+            if (!string.IsNullOrWhiteSpace(normalized))
+            {
+                return normalized;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? NormalizeVersionToken(string? rawVersion)
+    {
+        if (string.IsNullOrWhiteSpace(rawVersion))
+        {
+            return null;
+        }
+
+        var trimmed = rawVersion.Trim();
+        var normalizedInput = trimmed
+            .Replace("HSDS-UK-", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Trim();
+
+        if (normalizedInput.StartsWith("V", StringComparison.OrdinalIgnoreCase))
+        {
+            normalizedInput = normalizedInput.Substring(1);
+        }
+
+        if (!Regex.IsMatch(normalizedInput, @"^\d+(?:\.\d+)?$", RegexOptions.CultureInvariant))
+        {
+            return null;
+        }
+
+        var parts = normalizedInput.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        var major = parts[0];
+        var minor = parts.Length > 1 ? parts[1] : "0";
+        return $"{major}.{minor}";
+    }
     private static string NormalizeValidationErrorText(string? input)
     {
         if (string.IsNullOrEmpty(input))

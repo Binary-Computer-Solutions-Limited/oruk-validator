@@ -27,8 +27,15 @@ public class OpenApiValidationServiceTests
         _schemaResolverServiceMock = new Mock<ISchemaResolverService>();
         _profileDiscoveryServiceMock = new Mock<IProfileDiscoveryService>();
         _feedSpecDiscoveryMock = new Mock<IOpenApiDiscoveryService>();
+        _profileDiscoveryServiceMock
+            .Setup(s => s.DiscoverAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProfileDiscoveryResult
+            {
+                Url = "https://openreferraluk.org/specifications/1.0/openapi.json",
+                Reason = "Defaulted to HSDS-UK 1.0 (no version or openapi_url found)"
+            });
         _feedSpecDiscoveryMock
-            .Setup(s => s.FindOpenApiSpecAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.FindOpenApiSpecAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string?)null);
 
         _jsonValidatorServiceMock

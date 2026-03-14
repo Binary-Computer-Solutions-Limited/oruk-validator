@@ -7,7 +7,7 @@ namespace OpenReferralApi.Core.Services;
 
 public interface IOpenApiDiscoveryService
 {
-    Task<string?> FindOpenApiSpecAsync(string baseUrl, CancellationToken cancellationToken = default);
+    Task<string?> FindOpenApiSpecAsync(string baseUrl, string? baseUrlContent = null, CancellationToken cancellationToken = default);
 }
 
 public class OpenApiDiscoveryService : IOpenApiDiscoveryService
@@ -27,7 +27,7 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
         _logger = logger;
     }
 
-    public async Task<string?> FindOpenApiSpecAsync(string baseUrl, CancellationToken cancellationToken = default)
+    public async Task<string?> FindOpenApiSpecAsync(string baseUrl, string? baseUrlContent = null, CancellationToken cancellationToken = default)
     {
         var client = _httpClientFactory.CreateClient("OpenApiValidationService");
         baseUrl = baseUrl.TrimEnd('/');
@@ -59,13 +59,19 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
             }
         }
 
-        // 2. Scraping strategy — fetch the root HTML page and look for a Swagger UI bundle config.
+        // 2. Scraping strategy — use the already-fetched base response content when available,
+        // otherwise fetch the root HTML page and look for a Swagger UI bundle config.
         try
         {
-            var response = await client.GetAsync(baseUrl, cancellationToken);
-            if (!response.IsSuccessStatusCode) return null;
+            var html = baseUrlContent;
+            if (string.IsNullOrWhiteSpace(html))
+            {
+                var response = await client.GetAsync(baseUrl, cancellationToken);
+                if (!response.IsSuccessStatusCode) return null;
 
-            var html = await response.Content.ReadAsStringAsync(cancellationToken);
+                html = await response.Content.ReadAsStringAsync(cancellationToken);
+            }
+
             var doc = new HtmlDocument();
             doc.LoadHtml(html);
 
