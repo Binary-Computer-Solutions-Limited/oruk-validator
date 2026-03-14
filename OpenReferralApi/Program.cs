@@ -204,6 +204,7 @@ builder.Services.AddScoped<IOpenApiValidationService, OpenApiValidationService>(
 
 builder.Services.AddScoped<IOpenApiDiscoveryService, OpenApiDiscoveryService>();
 builder.Services.AddScoped<IProfileDiscoveryService, ProfileDiscoveryService>();
+builder.Services.AddScoped<IOpenApiBootstrapService, OpenApiBootstrapService>();
 builder.Services.AddScoped<IOpenReferralUKValidationResponseMapper, OpenReferralUKValidationResponseMapper>();
 
 // Configure Memory Cache with size limit from cache options

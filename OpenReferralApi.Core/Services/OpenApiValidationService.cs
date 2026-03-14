@@ -22,6 +22,7 @@ public class OpenApiValidationService : IOpenApiValidationService
     private readonly ISchemaResolverService _schemaResolverService;
     private readonly IProfileDiscoveryService _profileDiscoveryService;
     private readonly IOpenApiDiscoveryService _openApiDiscoveryService;
+    private readonly IOpenApiBootstrapService _openApiBootstrapService;
     private readonly IOpenApiSpecificationService _openApiSpecificationService;
     private readonly IHsdsComplianceService _hsdsComplianceService;
     private readonly IEndpointTestingService _endpointTestingService;
@@ -40,7 +41,8 @@ public class OpenApiValidationService : IOpenApiValidationService
         IOpenApiSpecificationService? openApiSpecificationService = null,
         IHsdsComplianceService? hsdsComplianceService = null,
         IEndpointTestingService? endpointTestingService = null,
-        IAuthenticationValidationService? authenticationValidationService = null)
+        IAuthenticationValidationService? authenticationValidationService = null,
+        IOpenApiBootstrapService? openApiBootstrapService = null)
     {
         _logger = logger;
         _schemaResolverService = schemaResolverService;
@@ -52,6 +54,10 @@ public class OpenApiValidationService : IOpenApiValidationService
         _authenticationValidationService = authenticationValidationService ?? new AuthenticationValidationService(NullLogger<AuthenticationValidationService>.Instance, authOptions);
         _allowUserSuppliedAuth = authOptions.Value.AllowUserSuppliedAuth;
         _specFetcher = new OpenApiSpecFetcher(httpClient, logger, schemaResolverService, allowUserSuppliedAuth: _allowUserSuppliedAuth);
+        _openApiBootstrapService = openApiBootstrapService ?? new OpenApiBootstrapService(
+            _profileDiscoveryService,
+            _openApiDiscoveryService,
+            NullLogger<OpenApiBootstrapService>.Instance);
     }
 
     public async Task<OpenApiValidationResult> ValidateOpenApiSpecificationAsync(OpenApiValidationRequest request, CancellationToken cancellationToken = default)
@@ -67,42 +73,22 @@ public class OpenApiValidationService : IOpenApiValidationService
             request.Options ??= new OpenApiValidationOptions();
 
             // Discover OpenAPI schema URL if not provided
+            var usedBaseUrlDiscovery = false;
             if (request.OpenApiSchema == null || string.IsNullOrEmpty(request.OpenApiSchema.Url))
             {
                 if (!string.IsNullOrEmpty(request.BaseUrl))
                 {
-                    // Determine the HSDS profile context from the root endpoint (single request).
-                    var profileDiscovery = await _profileDiscoveryService.DiscoverAsync(request.BaseUrl, cancellationToken);
-
-                    // If root metadata didn't provide openapi_url, try the feed's published OpenAPI paths.
-                    string? feedSpecUrl = null;
-                    if (!profileDiscovery.HasExplicitOpenApiUrl)
-                    {
-                        feedSpecUrl = await _openApiDiscoveryService.FindOpenApiSpecAsync(
-                            request.BaseUrl,
-                            profileDiscovery.BaseUrlResponseContent,
-                            cancellationToken);
-                    }
-
-                    // openapi_url from root is authoritative; otherwise prefer feed-discovered path,
-                    // then fall back to HSDS profile URL/default.
-                    var discoveredUrl = profileDiscovery.HasExplicitOpenApiUrl
-                        ? profileDiscovery.Url
-                        : !string.IsNullOrEmpty(feedSpecUrl)
-                            ? feedSpecUrl
-                            : profileDiscovery.Url;
-
-                    var reason = !string.IsNullOrEmpty(feedSpecUrl)
-                        ? $"Feed spec discovered at {SchemaResolverService.SanitizeUrlForLogging(feedSpecUrl)}"
-                          + (!string.IsNullOrEmpty(profileDiscovery.Reason) ? $"; {profileDiscovery.Reason}" : string.Empty)
-                        : profileDiscovery.Reason;
+                    usedBaseUrlDiscovery = true;
+                    var bootstrap = await _openApiBootstrapService.ResolveFromBaseUrlAsync(request.BaseUrl, cancellationToken);
+                    var discoveredUrl = bootstrap.OpenApiSchemaUrl;
+                    var reason = bootstrap.DiscoveryReason;
 
                     if (!string.IsNullOrEmpty(discoveredUrl))
                     {
                         _logger.LogInformation("Discovered OpenAPI schema URL: {Url} (Reason: {Reason})", SchemaResolverService.SanitizeUrlForLogging(discoveredUrl), reason);
                         request.OpenApiSchema ??= new OpenApiSchema();
                         request.OpenApiSchema.Url = discoveredUrl;
-                        request.ProfileReason = reason;
+                        request.ProfileReason = bootstrap.ProfileReason;
                     }
                     else
                     {
@@ -147,6 +133,10 @@ public class OpenApiValidationService : IOpenApiValidationService
                 if (!string.IsNullOrWhiteSpace(versionFromSpec))
                 {
                     request.ProfileReason = $"Standard version [user: {versionFromSpec}] read from OpenAPI spec";
+                }
+                else if (usedBaseUrlDiscovery)
+                {
+                    request.ProfileReason = "Standard version [user: HSDS-UK-1.0] defaulted (version not found in '/' response or OpenAPI spec)";
                 }
             }
 
@@ -376,30 +366,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
     private static string? NormalizeVersionToken(string? rawVersion)
     {
-        if (string.IsNullOrWhiteSpace(rawVersion))
-        {
-            return null;
-        }
-
-        var trimmed = rawVersion.Trim();
-        var normalizedInput = trimmed
-            .Replace("HSDS-UK-", string.Empty, StringComparison.OrdinalIgnoreCase)
-            .Trim();
-
-        if (normalizedInput.StartsWith("V", StringComparison.OrdinalIgnoreCase))
-        {
-            normalizedInput = normalizedInput.Substring(1);
-        }
-
-        if (!Regex.IsMatch(normalizedInput, @"^\d+(?:\.\d+)?$", RegexOptions.CultureInvariant))
-        {
-            return null;
-        }
-
-        var parts = normalizedInput.Split('.', StringSplitOptions.RemoveEmptyEntries);
-        var major = parts[0];
-        var minor = parts.Length > 1 ? parts[1] : "0";
-        return $"{major}.{minor}";
+        return ProfileVersionNormalizer.NormalizeVersionNumber(rawVersion);
     }
     private static string NormalizeValidationErrorText(string? input)
     {
