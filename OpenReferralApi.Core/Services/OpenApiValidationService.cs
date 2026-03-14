@@ -72,6 +72,11 @@ public class OpenApiValidationService : IOpenApiValidationService
             // Ensure options has default values if not provided
             request.Options ??= new OpenApiValidationOptions();
 
+            // User-supplied authentication for schema and datasource requests is feature-gated
+            // and must pass strict validation before it can be applied.
+            var schemaRequestAuth = _authenticationValidationService.TryGetValidatedRequestAuthentication("schema", request.OpenApiSchema?.Authentication);
+            var dataSourceRequestAuth = _authenticationValidationService.TryGetValidatedRequestAuthentication("datasource", request.DataSourceAuth);
+
             // Discover OpenAPI schema URL if not provided
             var usedBaseUrlDiscovery = false;
             if (request.OpenApiSchema == null || string.IsNullOrEmpty(request.OpenApiSchema.Url))
@@ -79,7 +84,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 if (!string.IsNullOrEmpty(request.BaseUrl))
                 {
                     usedBaseUrlDiscovery = true;
-                    var bootstrap = await _openApiBootstrapService.ResolveFromBaseUrlAsync(request.BaseUrl, cancellationToken);
+                    var bootstrap = await _openApiBootstrapService.ResolveFromBaseUrlAsync(request.BaseUrl, dataSourceRequestAuth, cancellationToken);
                     var discoveredUrl = bootstrap.OpenApiSchemaUrl;
                     var reason = bootstrap.DiscoveryReason;
 
@@ -104,11 +109,6 @@ public class OpenApiValidationService : IOpenApiValidationService
             // Get OpenAPI specification
             JObject openApiSpec;
             bool isResolved = false;
-
-            // User-supplied authentication for schema and datasource requests is feature-gated
-            // and must pass strict validation before it can be applied.
-            var schemaRequestAuth = _authenticationValidationService.TryGetValidatedRequestAuthentication("schema", request.OpenApiSchema?.Authentication);
-            var dataSourceRequestAuth = _authenticationValidationService.TryGetValidatedRequestAuthentication("datasource", request.DataSourceAuth);
 
             if (!string.IsNullOrEmpty(request.OpenApiSchema?.Url))
             {

@@ -301,6 +301,64 @@ public class ProfileDiscoveryServiceTests
         Assert.That(reason, Does.Contain("openapi_url field"));
     }
 
+    [Test]
+    public async Task DiscoverOpenApiUrlAsync_WithBearerAuthentication_AppliesAuthorizationHeader()
+    {
+        // Arrange
+        var baseUrl = "https://api.example.com";
+        var auth = new DataSourceAuthentication
+        {
+            BearerToken = "token-abc"
+        };
+
+        SetupHttpResponse(HttpStatusCode.OK, @"{""openapi_url"": ""https://api.example.com/openapi.json""}");
+
+        // Act
+        var (url, _) = await _service.DiscoverOpenApiUrlAsync(baseUrl, auth);
+
+        // Assert
+        Assert.That(url, Is.EqualTo("https://api.example.com/openapi.json"));
+        _httpMessageHandlerMock
+            .Protected()
+            .Verify(
+                "SendAsync",
+                Times.Once(),
+                ItExpr.Is<HttpRequestMessage>(request =>
+                    request.Headers.Authorization != null
+                    && request.Headers.Authorization.Scheme == "Bearer"
+                    && request.Headers.Authorization.Parameter == "token-abc"),
+                ItExpr.IsAny<CancellationToken>());
+    }
+
+    [Test]
+    public async Task DiscoverOpenApiUrlAsync_WithApiKeyAuthentication_AppliesApiKeyHeader()
+    {
+        // Arrange
+        var baseUrl = "https://api.example.com";
+        var auth = new DataSourceAuthentication
+        {
+            ApiKey = "api-key-xyz",
+            ApiKeyHeader = "X-API-Key"
+        };
+
+        SetupHttpResponse(HttpStatusCode.OK, @"{""openapi_url"": ""https://api.example.com/openapi.json""}");
+
+        // Act
+        var (url, _) = await _service.DiscoverOpenApiUrlAsync(baseUrl, auth);
+
+        // Assert
+        Assert.That(url, Is.EqualTo("https://api.example.com/openapi.json"));
+        _httpMessageHandlerMock
+            .Protected()
+            .Verify(
+                "SendAsync",
+                Times.Once(),
+                ItExpr.Is<HttpRequestMessage>(request =>
+                    request.Headers.Contains("X-API-Key")
+                    && request.Headers.GetValues("X-API-Key").Contains("api-key-xyz")),
+                ItExpr.IsAny<CancellationToken>());
+    }
+
     private void SetupHttpResponse(HttpStatusCode statusCode, string content)
     {
         var mockResponse = new HttpResponseMessage

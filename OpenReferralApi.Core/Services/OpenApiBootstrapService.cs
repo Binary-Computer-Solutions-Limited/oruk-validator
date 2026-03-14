@@ -1,11 +1,12 @@
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
+using OpenReferralApi.Core.Models;
 
 namespace OpenReferralApi.Core.Services;
 
 public interface IOpenApiBootstrapService
 {
-    Task<OpenApiBootstrapResult> ResolveFromBaseUrlAsync(string baseUrl, CancellationToken cancellationToken = default);
+    Task<OpenApiBootstrapResult> ResolveFromBaseUrlAsync(string baseUrl, DataSourceAuthentication? authentication = null, CancellationToken cancellationToken = default);
 }
 
 public class OpenApiBootstrapResult
@@ -34,14 +35,14 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
         _logger = logger;
     }
 
-    public async Task<OpenApiBootstrapResult> ResolveFromBaseUrlAsync(string baseUrl, CancellationToken cancellationToken = default)
+    public async Task<OpenApiBootstrapResult> ResolveFromBaseUrlAsync(string baseUrl, DataSourceAuthentication? authentication = null, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(baseUrl))
         {
             throw new ArgumentException("Base URL must be provided for OpenAPI bootstrap discovery", nameof(baseUrl));
         }
 
-        var profileDiscovery = await _profileDiscoveryService.DiscoverAsync(baseUrl, cancellationToken);
+        var profileDiscovery = await _profileDiscoveryService.DiscoverAsync(baseUrl, authentication, cancellationToken);
 
         var rootProfileVersion = TryExtractProfileVersionFromJson(profileDiscovery.BaseUrlResponseContent);
 

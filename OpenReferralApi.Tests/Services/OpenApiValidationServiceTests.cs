@@ -28,7 +28,7 @@ public class OpenApiValidationServiceTests
         _profileDiscoveryServiceMock = new Mock<IProfileDiscoveryService>();
         _feedSpecDiscoveryMock = new Mock<IOpenApiDiscoveryService>();
         _profileDiscoveryServiceMock
-            .Setup(s => s.DiscoverAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.DiscoverAsync(It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProfileDiscoveryResult
             {
                 Url = "https://openreferraluk.org/specifications/1.0/openapi.json",

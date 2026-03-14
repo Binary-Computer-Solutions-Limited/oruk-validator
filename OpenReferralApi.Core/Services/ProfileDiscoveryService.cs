@@ -2,18 +2,20 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
 using OpenReferralApi.Core.Models;
+using System.Net.Http.Headers;
+using System.Text;
 
 namespace OpenReferralApi.Core.Services;
 
 public interface IProfileDiscoveryService
 {
-    Task<ProfileDiscoveryResult> DiscoverAsync(string baseUrl, CancellationToken cancellationToken = default);
+    Task<ProfileDiscoveryResult> DiscoverAsync(string baseUrl, DataSourceAuthentication? authentication = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Attempts to discover an OpenAPI schema URL from the provided base URL.
     /// Returns the discovered URL and the reason for how it was discovered, or null if none found.
     /// </summary>
-    Task<(string? url, string? reason)> DiscoverOpenApiUrlAsync(string baseUrl, CancellationToken cancellationToken = default);
+    Task<(string? url, string? reason)> DiscoverOpenApiUrlAsync(string baseUrl, DataSourceAuthentication? authentication = null, CancellationToken cancellationToken = default);
 }
 
 public class ProfileDiscoveryResult
@@ -38,7 +40,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         _baseSpecificationUrl = specificationOptions.Value.BaseUrl;
     }
 
-    public async Task<ProfileDiscoveryResult> DiscoverAsync(string baseUrl, CancellationToken cancellationToken = default)
+    public async Task<ProfileDiscoveryResult> DiscoverAsync(string baseUrl, DataSourceAuthentication? authentication = null, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(baseUrl))
         {
@@ -52,7 +54,10 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             using var httpClient = _httpClientFactory?.CreateClient("OpenApiValidationService") ?? new HttpClient();
             httpClient.Timeout = TimeSpan.FromSeconds(10);
             _logger.LogInformation("Requesting BaseUrl to discover openapi_url: {BaseUrl}", SchemaResolverService.SanitizeUrlForLogging(baseUrl));
-            var resp = await httpClient.GetAsync(baseUrl, cancellationToken);
+            using var request = new HttpRequestMessage(HttpMethod.Get, baseUrl);
+            ApplyAuthentication(request, authentication);
+
+            var resp = await httpClient.SendAsync(request, cancellationToken);
             if (!resp.IsSuccessStatusCode)
             {
                 _logger.LogInformation("BaseUrl request returned {Status}; defaulting to HSDS-UK 1.0 spec: {DefaultSpec}", resp.StatusCode, defaultSpec);
@@ -142,10 +147,59 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         }
     }
 
-    public async Task<(string? url, string? reason)> DiscoverOpenApiUrlAsync(string baseUrl, CancellationToken cancellationToken = default)
+    public async Task<(string? url, string? reason)> DiscoverOpenApiUrlAsync(string baseUrl, DataSourceAuthentication? authentication = null, CancellationToken cancellationToken = default)
     {
-        var discovery = await DiscoverAsync(baseUrl, cancellationToken);
+        var discovery = await DiscoverAsync(baseUrl, authentication, cancellationToken);
         return (discovery.Url, discovery.Reason);
+    }
+
+    private static void ApplyAuthentication(HttpRequestMessage request, IAuthenticationConfig? auth)
+    {
+        if (auth == null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(auth.ApiKey) && !string.IsNullOrWhiteSpace(auth.ApiKeyHeader) && IsValidHeaderName(auth.ApiKeyHeader))
+        {
+            request.Headers.TryAddWithoutValidation(auth.ApiKeyHeader, auth.ApiKey);
+        }
+
+        if (!string.IsNullOrWhiteSpace(auth.BearerToken))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.BearerToken);
+        }
+
+        if (auth.BasicAuth != null && !string.IsNullOrWhiteSpace(auth.BasicAuth.Username) && !string.IsNullOrWhiteSpace(auth.BasicAuth.Password))
+        {
+            var credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{auth.BasicAuth.Username}:{auth.BasicAuth.Password}"));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+        }
+
+        if (auth.CustomHeaders == null)
+        {
+            return;
+        }
+
+        foreach (var header in auth.CustomHeaders)
+        {
+            if (string.IsNullOrWhiteSpace(header.Value) || !IsValidHeaderName(header.Key))
+            {
+                continue;
+            }
+
+            request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+        }
+    }
+
+    private static bool IsValidHeaderName(string headerName)
+    {
+        if (string.IsNullOrWhiteSpace(headerName))
+        {
+            return false;
+        }
+
+        return !headerName.Any(c => char.IsControl(c) || c == ':' || c == '\r' || c == '\n');
     }
 
     private static float? ExtractVersionNumber(string version)
