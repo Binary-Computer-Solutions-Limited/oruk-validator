@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
@@ -17,6 +18,7 @@ public interface IOpenApiValidationService
 public class OpenApiValidationService : IOpenApiValidationService
 {
     private static readonly Regex ArrayIndexRegex = new(@"\[[^\]]*\]", RegexOptions.Compiled);
+    private static readonly ConcurrentDictionary<string, CachedProfileSpec> ProfileSpecCache = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly ILogger<OpenApiValidationService> _logger;
     private readonly ISchemaResolverService _schemaResolverService;
@@ -29,6 +31,8 @@ public class OpenApiValidationService : IOpenApiValidationService
     private readonly IAuthenticationValidationService _authenticationValidationService;
     private readonly OpenApiSpecFetcher _specFetcher;
     private readonly bool _allowUserSuppliedAuth;
+    private readonly bool _profileSchemaCacheEnabled;
+    private readonly TimeSpan _profileSchemaCacheTtl;
 
     public OpenApiValidationService(
         ILogger<OpenApiValidationService> logger,
@@ -42,7 +46,8 @@ public class OpenApiValidationService : IOpenApiValidationService
         IHsdsComplianceService? hsdsComplianceService = null,
         IEndpointTestingService? endpointTestingService = null,
         IAuthenticationValidationService? authenticationValidationService = null,
-        IOpenApiBootstrapService? openApiBootstrapService = null)
+        IOpenApiBootstrapService? openApiBootstrapService = null,
+        IOptions<CacheOptions>? cacheOptions = null)
     {
         _logger = logger;
         _schemaResolverService = schemaResolverService;
@@ -53,6 +58,11 @@ public class OpenApiValidationService : IOpenApiValidationService
         _endpointTestingService = endpointTestingService ?? new EndpointTestingService(NullLogger<EndpointTestingService>.Instance, httpClient, jsonValidatorService, _hsdsComplianceService);
         _authenticationValidationService = authenticationValidationService ?? new AuthenticationValidationService(NullLogger<AuthenticationValidationService>.Instance, authOptions);
         _allowUserSuppliedAuth = authOptions.Value.AllowUserSuppliedAuth;
+        var effectiveCacheOptions = cacheOptions?.Value;
+        _profileSchemaCacheEnabled = effectiveCacheOptions?.Enabled == true;
+        _profileSchemaCacheTtl = effectiveCacheOptions != null && effectiveCacheOptions.ExpirationMinutes > 0
+            ? TimeSpan.FromMinutes(effectiveCacheOptions.ExpirationMinutes)
+            : TimeSpan.FromHours(2);
         _specFetcher = new OpenApiSpecFetcher(httpClient, logger, schemaResolverService, allowUserSuppliedAuth: _allowUserSuppliedAuth);
         _openApiBootstrapService = openApiBootstrapService ?? new OpenApiBootstrapService(
             _profileDiscoveryService,
@@ -90,6 +100,17 @@ public class OpenApiValidationService : IOpenApiValidationService
 
                     if (!string.IsNullOrEmpty(discoveredUrl))
                     {
+                        if (!bootstrap.UsedDataServiceOpenApi
+                            && !string.IsNullOrWhiteSpace(bootstrap.ProfileVersion)
+                            && _hsdsComplianceService.TryGetKnownHsdsSchemaUrl(bootstrap.ProfileVersion, out var mappedProfileSchemaUrl))
+                        {
+                            discoveredUrl = mappedProfileSchemaUrl;
+                            _logger.LogInformation(
+                                "No OpenAPI spec found on data service; using profile schema URL {ProfileSchemaUrl} for profile version {ProfileVersion}",
+                                SchemaResolverService.SanitizeUrlForLogging(mappedProfileSchemaUrl),
+                                bootstrap.ProfileVersion);
+                        }
+
                         _logger.LogInformation("Discovered OpenAPI schema URL: {Url} (Reason: {Reason})", SchemaResolverService.SanitizeUrlForLogging(discoveredUrl), reason);
                         request.OpenApiSchema ??= new OpenApiSchema();
                         request.OpenApiSchema.Url = discoveredUrl;
@@ -169,8 +190,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                         cancellationToken,
                         resolveReferences: false);
 
-                    var resolvedHsdsSpec = await _schemaResolverService.ResolveAsync(hsdsSpec.ToString(), knownHsdsSchemaUrl, null);
-                    hsdsSpec = JObject.Parse(resolvedHsdsSpec);
+                    hsdsSpec = await GetCachedResolvedProfileSpecAsync(knownHsdsSchemaUrl, hsdsSpec, cancellationToken);
                     resolvedHsdsProfileSpec = hsdsSpec;
 
                     var profileComplianceFindings = _hsdsComplianceService.CompareFeedSpecAgainstHsdsProfile(openApiSpec, hsdsSpec);
@@ -335,6 +355,32 @@ public class OpenApiValidationService : IOpenApiValidationService
 
         return deduplicatedErrors;
     }
+
+    private async Task<JObject> GetCachedResolvedProfileSpecAsync(string profileSchemaUrl, JObject unresolvedSpec, CancellationToken cancellationToken)
+    {
+        var cacheKey = $"profile-openapi:{profileSchemaUrl}";
+
+        if (_profileSchemaCacheEnabled
+            && ProfileSpecCache.TryGetValue(cacheKey, out var cachedEntry)
+            && cachedEntry.ExpiresAtUtc > DateTime.UtcNow
+            && !string.IsNullOrWhiteSpace(cachedEntry.ResolvedSpecJson))
+        {
+            return JObject.Parse(cachedEntry.ResolvedSpecJson);
+        }
+
+        var resolvedProfileSpecContent = await _schemaResolverService.ResolveAsync(unresolvedSpec.ToString(), profileSchemaUrl, null);
+
+        if (_profileSchemaCacheEnabled)
+        {
+            ProfileSpecCache[cacheKey] = new CachedProfileSpec(
+                resolvedProfileSpecContent,
+                DateTime.UtcNow.Add(_profileSchemaCacheTtl));
+        }
+
+        return JObject.Parse(resolvedProfileSpecContent);
+    }
+
+    private sealed record CachedProfileSpec(string ResolvedSpecJson, DateTime ExpiresAtUtc);
 
     private bool HasExplicitProfileVersionContext(string? profileReason, string? schemaUrl)
     {

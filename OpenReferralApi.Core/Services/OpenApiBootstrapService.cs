@@ -15,6 +15,7 @@ public class OpenApiBootstrapResult
     public string? ProfileVersion { get; init; }
     public string? ProfileReason { get; init; }
     public string? DiscoveryReason { get; init; }
+    public bool UsedDataServiceOpenApi { get; init; }
 }
 
 public class OpenApiBootstrapService : IOpenApiBootstrapService
@@ -70,7 +71,8 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
                 ProfileReason = rootProfileVersion != null
                     ? $"Standard version [user: {rootProfileVersion}] read from '/' endpoint"
                     : $"Standard version [user: {DefaultProfileVersion}] defaulted (version not found in '/' response)",
-                DiscoveryReason = profileDiscovery.Reason
+                DiscoveryReason = profileDiscovery.Reason,
+                UsedDataServiceOpenApi = false
             };
         }
 
@@ -93,7 +95,8 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
             OpenApiSchemaUrl = discoveredUrl,
             ProfileVersion = rootProfileVersion ?? DefaultProfileVersion,
             ProfileReason = profileReason,
-            DiscoveryReason = discoveryReason
+            DiscoveryReason = discoveryReason,
+            UsedDataServiceOpenApi = profileDiscovery.HasExplicitOpenApiUrl || !string.IsNullOrWhiteSpace(feedSpecUrl)
         };
     }
 

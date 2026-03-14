@@ -451,7 +451,7 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
-    public async Task ValidateOpenApiSpecificationAsync_ReportsAdditionalHsdsEndpointAsWarningOnly()
+    public async Task ValidateOpenApiSpecificationAsync_ReportsAdditionalHsdsEndpointAsInfoOnly()
     {
         // Arrange
         var feedSpecUrl = "https://feed.example.com/openapi.json";
@@ -494,7 +494,7 @@ public class OpenApiValidationServiceTests
         Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_ADDITIONAL_ENDPOINT"), Is.True);
         Assert.That(result.SpecificationValidation.Errors.Any(e =>
             e.ErrorCode == "HSDS_ADDITIONAL_ENDPOINT" &&
-            string.Equals(e.Severity, "Warning", StringComparison.OrdinalIgnoreCase)), Is.True);
+            string.Equals(e.Severity, "Info", StringComparison.OrdinalIgnoreCase)), Is.True);
     }
 
     [Test]
@@ -542,7 +542,7 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
-    public async Task ValidateOpenApiSpecificationAsync_ReportsAdditionalHsdsRequestFieldAsWarningOnly()
+    public async Task ValidateOpenApiSpecificationAsync_ReportsAdditionalHsdsRequestFieldAsInfoOnly()
     {
         // Arrange
         var feedSpecUrl = "https://feed.example.com/openapi.json";
@@ -585,7 +585,7 @@ public class OpenApiValidationServiceTests
         Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_ADDITIONAL_REQUEST_FIELD"), Is.True);
         Assert.That(result.SpecificationValidation.Errors.Any(e =>
             e.ErrorCode == "HSDS_ADDITIONAL_REQUEST_FIELD" &&
-            string.Equals(e.Severity, "Warning", StringComparison.OrdinalIgnoreCase)), Is.True);
+            string.Equals(e.Severity, "Info", StringComparison.OrdinalIgnoreCase)), Is.True);
     }
 
     [Test]

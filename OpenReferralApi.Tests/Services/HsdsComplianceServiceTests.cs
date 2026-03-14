@@ -1,4 +1,5 @@
 using Moq;
+using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
 using OpenReferralApi.Core.Models;
 using OpenReferralApi.Core.Services;
@@ -61,6 +62,31 @@ public class HsdsComplianceServiceTests
         Assert.That(schemaUrl, Is.EqualTo(string.Empty));
     }
 
+      [Test]
+      public void TryGetKnownHsdsSchemaUrl_UsesEnvironmentVariableMappings()
+      {
+        const string envVarName = "ORUK_API_PROFILE_VERSION_URL_MAP";
+        var previous = Environment.GetEnvironmentVariable(envVarName);
+
+        try
+        {
+          Environment.SetEnvironmentVariable(envVarName, "{\"4.0\":\"https://profiles.example.org/4.0/openapi.json\"}");
+
+          var service = new HsdsComplianceService(
+            _jsonValidatorServiceMock.Object,
+            Options.Create(new SpecificationOptions()));
+
+          var found = service.TryGetKnownHsdsSchemaUrl("4.0", out var schemaUrl);
+
+          Assert.That(found, Is.True);
+          Assert.That(schemaUrl, Is.EqualTo("https://profiles.example.org/4.0/openapi.json"));
+        }
+        finally
+        {
+          Environment.SetEnvironmentVariable(envVarName, previous);
+        }
+      }
+
     [Test]
     public void CompareFeedSpecAgainstHsdsProfile_FindsMissingRequiredAndAdditionalEndpoints()
     {
@@ -111,6 +137,7 @@ public class HsdsComplianceServiceTests
 
         Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_MISSING_ENDPOINT"));
         Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_ADDITIONAL_ENDPOINT"));
+        Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_ADDITIONAL_ENDPOINT" && e.Severity == "Info"));
     }
 
     [Test]
@@ -178,6 +205,7 @@ public class HsdsComplianceServiceTests
 
         Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_MISSING_REQUIRED_FIELD"));
         Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_ADDITIONAL_FIELD"));
+        Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_ADDITIONAL_FIELD" && e.Severity == "Info"));
     }
 
     [Test]

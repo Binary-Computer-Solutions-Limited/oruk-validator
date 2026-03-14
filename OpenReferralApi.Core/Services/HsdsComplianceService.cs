@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using OpenReferralApi.Core.Models;
@@ -31,7 +32,7 @@ public class HsdsComplianceService : IHsdsComplianceService
     };
 
     // In-memory lookup table for known HSDS baseline schemas by profile version.
-    private static readonly IReadOnlyDictionary<string, string> KnownHsdsSchemaByVersion =
+    private static readonly IReadOnlyDictionary<string, string> DefaultHsdsSchemaByVersion =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["1.0"] = "https://openreferraluk.org/specifications/1.0/openapi.json",
@@ -41,10 +42,14 @@ public class HsdsComplianceService : IHsdsComplianceService
         };
 
     private readonly IJsonValidatorService _jsonValidatorService;
+    private readonly IReadOnlyDictionary<string, string> _profileSchemaByVersion;
 
-    public HsdsComplianceService(IJsonValidatorService jsonValidatorService)
+    public HsdsComplianceService(
+        IJsonValidatorService jsonValidatorService,
+        IOptions<SpecificationOptions>? specificationOptions = null)
     {
         _jsonValidatorService = jsonValidatorService;
+        _profileSchemaByVersion = BuildProfileSchemaLookup(specificationOptions?.Value);
     }
 
     public string? ExtractClaimedProfileVersion(string? profileReason, string? schemaUrl)
@@ -77,12 +82,13 @@ public class HsdsComplianceService : IHsdsComplianceService
     public bool TryGetKnownHsdsSchemaUrl(string? profileVersion, out string schemaUrl)
     {
         schemaUrl = string.Empty;
-        if (string.IsNullOrWhiteSpace(profileVersion))
+        var normalizedVersion = NormalizeVersion(profileVersion);
+        if (string.IsNullOrWhiteSpace(normalizedVersion))
         {
             return false;
         }
 
-        if (!KnownHsdsSchemaByVersion.TryGetValue(profileVersion, out var resolvedSchemaUrl))
+        if (!_profileSchemaByVersion.TryGetValue(normalizedVersion, out var resolvedSchemaUrl))
         {
             return false;
         }
@@ -122,7 +128,7 @@ public class HsdsComplianceService : IHsdsComplianceService
                     Path = $"paths.{feedOperation}",
                     Message = $"Additional endpoint not defined by HSDS profile: {feedOperation}",
                     ErrorCode = "HSDS_ADDITIONAL_ENDPOINT",
-                    Severity = "Warning"
+                    Severity = "Info"
                 });
             }
         }
@@ -306,6 +312,96 @@ public class HsdsComplianceService : IHsdsComplianceService
         return $"{majorNumber}.{minorNumber}";
     }
 
+    private static IReadOnlyDictionary<string, string> BuildProfileSchemaLookup(SpecificationOptions? options)
+    {
+        var lookup = new Dictionary<string, string>(DefaultHsdsSchemaByVersion, StringComparer.OrdinalIgnoreCase);
+
+        if (options?.ProfileVersionUrlMap != null)
+        {
+            MergeMappings(lookup, options.ProfileVersionUrlMap);
+        }
+
+        var envVariableName = string.IsNullOrWhiteSpace(options?.ProfileVersionUrlMapEnvironmentVariable)
+            ? "ORUK_API_PROFILE_VERSION_URL_MAP"
+            : options!.ProfileVersionUrlMapEnvironmentVariable;
+
+        var rawEnvMap = Environment.GetEnvironmentVariable(envVariableName);
+        var envMap = ParseMappings(rawEnvMap);
+        MergeMappings(lookup, envMap);
+
+        return lookup;
+    }
+
+    private static void MergeMappings(Dictionary<string, string> destination, IReadOnlyDictionary<string, string>? source)
+    {
+        if (source == null)
+        {
+            return;
+        }
+
+        foreach (var pair in source)
+        {
+            var normalizedVersion = NormalizeVersion(pair.Key);
+            if (string.IsNullOrWhiteSpace(normalizedVersion) || string.IsNullOrWhiteSpace(pair.Value))
+            {
+                continue;
+            }
+
+            var schemaUrl = pair.Value.Trim();
+            if (!Uri.IsWellFormedUriString(schemaUrl, UriKind.Absolute))
+            {
+                continue;
+            }
+
+            destination[normalizedVersion] = schemaUrl;
+        }
+    }
+
+    private static IReadOnlyDictionary<string, string> ParseMappings(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        // Preferred format: JSON object
+        try
+        {
+            var parsed = JsonConvert.DeserializeObject<Dictionary<string, string>>(raw);
+            if (parsed != null)
+            {
+                return parsed;
+            }
+        }
+        catch
+        {
+            // Fall through to simple key=value parsing.
+        }
+
+        // Alternate format: 3.0=https://...;3.1=https://...
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var entries = raw.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var entry in entries)
+        {
+            var separatorIndex = entry.IndexOf('=');
+            if (separatorIndex <= 0 || separatorIndex == entry.Length - 1)
+            {
+                continue;
+            }
+
+            var key = entry.Substring(0, separatorIndex).Trim();
+            var value = entry.Substring(separatorIndex + 1).Trim();
+            if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(value))
+            {
+                continue;
+            }
+
+            result[key] = value;
+        }
+
+        return result;
+    }
+
     private static Dictionary<string, JObject> GetOperationMap(JObject spec, bool includeOptionalOperations)
     {
         var operationMap = new Dictionary<string, JObject>(StringComparer.OrdinalIgnoreCase);
@@ -415,7 +511,7 @@ public class HsdsComplianceService : IHsdsComplianceService
             }
 
             return;
-        }
+            }
 
         var hsdsRequiredFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         ExtractRequiredFieldPaths(hsdsSchema, string.Empty, hsdsRequiredFields);
@@ -449,7 +545,7 @@ public class HsdsComplianceService : IHsdsComplianceService
                     Path = $"paths.{operationKey}.{scope}.{feedField}",
                     Message = $"{additionalFieldMessagePrefix} '{feedField}' is not defined in HSDS profile for endpoint {operationKey}",
                     ErrorCode = additionalFieldCode,
-                    Severity = "Warning"
+                    Severity = "Info"
                 });
             }
         }

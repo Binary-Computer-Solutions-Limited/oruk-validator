@@ -181,6 +181,29 @@ Use bearer tokens for OAuth 2.0 or JWT-based authentication:
 
 This adds an `Authorization: Bearer <token>` header to all endpoint requests.
 
+## Profile OpenAPI Mapping
+
+Profile OpenAPI lookup supports an environment-driven version-to-URL dictionary.
+
+- Environment variable: `ORUK_API_PROFILE_VERSION_URL_MAP`
+- JSON format (preferred):
+
+```bash
+export ORUK_API_PROFILE_VERSION_URL_MAP='{"3.0":"https://openreferraluk.org/specifications/3.0/openapi.json","3.1":"https://openreferraluk.org/specifications/3.1/openapi.json"}'
+```
+
+- Alternate format:
+
+```bash
+export ORUK_API_PROFILE_VERSION_URL_MAP='3.0=https://openreferraluk.org/specifications/3.0/openapi.json;3.1=https://openreferraluk.org/specifications/3.1/openapi.json'
+```
+
+Validation behavior:
+
+- If no OpenAPI spec is found on the data service, the validator resolves the profile version and validates the data service against the mapped profile OpenAPI.
+- If the data service provides its own OpenAPI spec, the validator validates the data service against that spec, validates the spec structure against the official OpenAPI schema, and compares the data-service spec against the mapped profile OpenAPI.
+- Missing required endpoints/properties are failures; additional endpoints/properties are informational findings.
+
 #### Basic Authentication
 
 Use HTTP Basic Authentication with username and password:
