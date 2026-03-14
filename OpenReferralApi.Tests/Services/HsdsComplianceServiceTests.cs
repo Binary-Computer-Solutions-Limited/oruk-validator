@@ -62,30 +62,24 @@ public class HsdsComplianceServiceTests
         Assert.That(schemaUrl, Is.EqualTo(string.Empty));
     }
 
-      [Test]
-      public void TryGetKnownHsdsSchemaUrl_UsesEnvironmentVariableMappings()
-      {
-        const string envVarName = "ORUK_API_PROFILE_VERSION_URL_MAP";
-        var previous = Environment.GetEnvironmentVariable(envVarName);
-
-        try
-        {
-          Environment.SetEnvironmentVariable(envVarName, "{\"4.0\":\"https://profiles.example.org/4.0/openapi.json\"}");
-
-          var service = new HsdsComplianceService(
+    [Test]
+    public void TryGetKnownHsdsSchemaUrl_UsesConfiguredMappingsFromOptions()
+    {
+        var service = new HsdsComplianceService(
             _jsonValidatorServiceMock.Object,
-            Options.Create(new SpecificationOptions()));
+            Options.Create(new SpecificationOptions
+            {
+                ProfileVersionUrlMap = new Dictionary<string, string>
+                {
+                    ["4.0"] = "https://profiles.example.org/4.0/openapi.json"
+                }
+            }));
 
-          var found = service.TryGetKnownHsdsSchemaUrl("4.0", out var schemaUrl);
+        var found = service.TryGetKnownHsdsSchemaUrl("4.0", out var schemaUrl);
 
-          Assert.That(found, Is.True);
-          Assert.That(schemaUrl, Is.EqualTo("https://profiles.example.org/4.0/openapi.json"));
-        }
-        finally
-        {
-          Environment.SetEnvironmentVariable(envVarName, previous);
-        }
-      }
+        Assert.That(found, Is.True);
+        Assert.That(schemaUrl, Is.EqualTo("https://profiles.example.org/4.0/openapi.json"));
+    }
 
     [Test]
     public void CompareFeedSpecAgainstHsdsProfile_FindsMissingRequiredAndAdditionalEndpoints()

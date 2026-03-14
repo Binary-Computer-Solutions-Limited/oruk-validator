@@ -321,14 +321,6 @@ public class HsdsComplianceService : IHsdsComplianceService
             MergeMappings(lookup, options.ProfileVersionUrlMap);
         }
 
-        var envVariableName = string.IsNullOrWhiteSpace(options?.ProfileVersionUrlMapEnvironmentVariable)
-            ? "ORUK_API_PROFILE_VERSION_URL_MAP"
-            : options!.ProfileVersionUrlMapEnvironmentVariable;
-
-        var rawEnvMap = Environment.GetEnvironmentVariable(envVariableName);
-        var envMap = ParseMappings(rawEnvMap);
-        MergeMappings(lookup, envMap);
-
         return lookup;
     }
 
@@ -356,52 +348,6 @@ public class HsdsComplianceService : IHsdsComplianceService
             destination[normalizedVersion] = schemaUrl;
         }
     }
-
-    private static IReadOnlyDictionary<string, string> ParseMappings(string? raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        }
-
-        // Preferred format: JSON object
-        try
-        {
-            var parsed = JsonConvert.DeserializeObject<Dictionary<string, string>>(raw);
-            if (parsed != null)
-            {
-                return parsed;
-            }
-        }
-        catch
-        {
-            // Fall through to simple key=value parsing.
-        }
-
-        // Alternate format: 3.0=https://...;3.1=https://...
-        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var entries = raw.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        foreach (var entry in entries)
-        {
-            var separatorIndex = entry.IndexOf('=');
-            if (separatorIndex <= 0 || separatorIndex == entry.Length - 1)
-            {
-                continue;
-            }
-
-            var key = entry.Substring(0, separatorIndex).Trim();
-            var value = entry.Substring(separatorIndex + 1).Trim();
-            if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(value))
-            {
-                continue;
-            }
-
-            result[key] = value;
-        }
-
-        return result;
-    }
-
     private static Dictionary<string, JObject> GetOperationMap(JObject spec, bool includeOptionalOperations)
     {
         var operationMap = new Dictionary<string, JObject>(StringComparer.OrdinalIgnoreCase);

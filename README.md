@@ -183,20 +183,35 @@ This adds an `Authorization: Bearer <token>` header to all endpoint requests.
 
 ## Profile OpenAPI Mapping
 
-Profile OpenAPI lookup supports an environment-driven version-to-URL dictionary.
+Profile OpenAPI lookup uses the configured `Specification:ProfileVersionUrlMap` dictionary, merged over the built-in defaults.
 
-- Environment variable: `ORUK_API_PROFILE_VERSION_URL_MAP`
-- JSON format (preferred):
+Example:
 
-```bash
-export ORUK_API_PROFILE_VERSION_URL_MAP='{"3.0":"https://openreferraluk.org/specifications/3.0/openapi.json","3.1":"https://openreferraluk.org/specifications/3.1/openapi.json"}'
+```json
+"Specification": {
+  "ProfileVersionUrlMap": {
+    "3.0": "https://openreferraluk.org/specifications/3.0/openapi.json",
+    "3.1": "https://openreferraluk.org/specifications/3.1/openapi.json"
+  }
+}
 ```
 
-- Alternate format:
+ASP.NET Core binds this dictionary from the configuration path `Specification:ProfileVersionUrlMap:<version>`.
 
-```bash
-export ORUK_API_PROFILE_VERSION_URL_MAP='3.0=https://openreferraluk.org/specifications/3.0/openapi.json;3.1=https://openreferraluk.org/specifications/3.1/openapi.json'
+With this application's `ORUK_API_` environment-variable prefix, the raw environment variable shape is:
+
+```text
+ORUK_API_SPECIFICATION__PROFILEVERSIONURLMAP__3.0=https://openreferraluk.org/specifications/3.0/openapi.json
+ORUK_API_SPECIFICATION__PROFILEVERSIONURLMAP__3.1=https://openreferraluk.org/specifications/3.1/openapi.json
 ```
+
+On macOS/Linux shells, names containing `.` are not valid shell identifiers, so `export ORUK_API_SPECIFICATION__PROFILEVERSIONURLMAP__3.0=...` will not work.
+
+For Unix-hosted deployments, prefer one of these options:
+
+- Put the mapping in `appsettings.{Environment}.json` or another JSON configuration source.
+- Use a hosting platform or secret store UI that supports raw environment names with dots.
+- Keep the built-in defaults and only use config overrides for non-versioned keys that are shell-safe.
 
 Validation behavior:
 
