@@ -1,106 +1,97 @@
+using System.Net.Http;
+using System.Text.RegularExpressions;
+using HtmlAgilityPack;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using Newtonsoft.Json.Linq;
-using OpenReferralApi.Core.Models;
 
 namespace OpenReferralApi.Core.Services;
 
 public interface IOpenApiDiscoveryService
 {
-    /// <summary>
-    /// Attempts to discover an OpenAPI schema URL from the provided base URL.
-    /// Returns the discovered URL and the reason for how it was discovered, or null if none found.
-    /// </summary>
-    Task<(string? url, string? reason)> DiscoverOpenApiUrlAsync(string baseUrl, CancellationToken cancellationToken = default);
+    Task<string?> FindOpenApiSpecAsync(string baseUrl, CancellationToken cancellationToken = default);
 }
 
 public class OpenApiDiscoveryService : IOpenApiDiscoveryService
 {
+    // Matches a SwaggerUIBundle/SwaggerUI initialisation block containing a url: property,
+    // anchored to a known Swagger UI function call to reduce false positives from unrelated JS.
+    private static readonly Regex SwaggerUiUrlRegex = new(
+        @"SwaggerUI(?:Bundle)?\s*\([^)]*url\s*:\s*[""']([^""']+)[""']",
+        RegexOptions.Compiled | RegexOptions.Singleline);
+
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<OpenApiDiscoveryService> _logger;
-    private readonly string _baseSpecificationUrl;
 
-    public OpenApiDiscoveryService(IHttpClientFactory httpClientFactory, ILogger<OpenApiDiscoveryService> logger, IOptions<SpecificationOptions> specificationOptions)
+    public OpenApiDiscoveryService(IHttpClientFactory httpClientFactory, ILogger<OpenApiDiscoveryService> logger)
     {
         _httpClientFactory = httpClientFactory;
         _logger = logger;
-        _baseSpecificationUrl = specificationOptions.Value.BaseUrl;
     }
 
-    public async Task<(string? url, string? reason)> DiscoverOpenApiUrlAsync(string baseUrl, CancellationToken cancellationToken = default)
+    public async Task<string?> FindOpenApiSpecAsync(string baseUrl, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(baseUrl)) return (null, null);
+        var client = _httpClientFactory.CreateClient("OpenApiValidationService");
+        baseUrl = baseUrl.TrimEnd('/');
 
-        const float defaultSpecificationVersion = 1.0f;
-        var defaultSpec = $"{_baseSpecificationUrl}{defaultSpecificationVersion:0.0}/openapi.json";
-        try
+        // 1. Probing strategy — try common well-known OpenAPI spec paths.
+        string[] commonPaths = { "/openapi.json", "/swagger.json", "/api-docs", "/v3/api-docs" };
+        foreach (var path in commonPaths)
         {
-            using var httpClient = _httpClientFactory?.CreateClient("OpenApiValidationService") ?? new HttpClient();
-            httpClient.Timeout = TimeSpan.FromSeconds(10);
-            _logger.LogInformation("Requesting BaseUrl to discover openapi_url: {BaseUrl}", SchemaResolverService.SanitizeUrlForLogging(baseUrl));
-            var resp = await httpClient.GetAsync(baseUrl, cancellationToken);
-            if (!resp.IsSuccessStatusCode)
-            {
-                _logger.LogInformation("BaseUrl request returned {Status}; defaulting to HSDS-UK 1.0 spec: {DefaultSpec}", resp.StatusCode, defaultSpec);
-                return (defaultSpec, "Defaulted to HSDS-UK 1.0 (base URL request failed)");
-            }
-
-            var content = await resp.Content.ReadAsStringAsync(cancellationToken);
             try
             {
-                var j = JObject.Parse(content);
-
-                // Check for version field and construct URL
-                var versionToken = j.SelectToken("version");
-                var version = versionToken?.ToString();
-                if (!string.IsNullOrEmpty(version))
+                var response = await client.GetAsync($"{baseUrl}{path}", cancellationToken);
+                if (response.IsSuccessStatusCode)
                 {
-                    var extractedVersion = ExtractVersionNumber(version);
-                    if (extractedVersion.HasValue)
+                    string content = await response.Content.ReadAsStringAsync(cancellationToken);
+                    if (content.Contains("\"openapi\"") || content.Contains("\"swagger\""))
                     {
-                        var versionedSpec = $"{_baseSpecificationUrl}{extractedVersion.Value:0.0}/openapi.json";
-                        _logger.LogInformation("Detected version '{Version}'; using HSDS-UK {ExtractedVersion:0.0} spec: {OpenApiUrl}", SchemaResolverService.SanitizeStringForLogging(version), extractedVersion.Value, versionedSpec);
-                        return (versionedSpec, $"Standard version {SchemaResolverService.SanitizeStringForLogging(version)} read from '/' endpoint");
+                        _logger.LogInformation("Discovered feed OpenAPI spec via probing at {Path}", path);
+                        return $"{baseUrl}{path}";
                     }
                 }
-
-                // Check for explicit openapi_url field first
-                var openapiUrlToken = j.SelectToken("openapi_url") ?? j.SelectToken("openapiUrl") ?? j.SelectToken("open_api_url");
-                var openapiUrl = openapiUrlToken?.ToString();
-                if (!string.IsNullOrEmpty(openapiUrl))
-                {
-                    _logger.LogInformation("Discovered openapi_url: {OpenApiUrl}", SchemaResolverService.SanitizeUrlForLogging(openapiUrl));
-                    return (openapiUrl, "OpenAPI URL read from '/' endpoint (openapi_url field)");
-                }
-
-                _logger.LogInformation("No openapi_url or version in BaseUrl response; defaulting to HSDS-UK 1.0 spec: {DefaultSpec}", defaultSpec);
-                return (defaultSpec, "Defaulted to HSDS-UK 1.0 (no version or openapi_url found)");
             }
-            catch (Exception jex)
+            catch (OperationCanceledException)
             {
-                _logger.LogWarning(jex, "Failed to parse JSON from BaseUrl response; defaulting to HSDS-UK 1.0 spec: {DefaultSpec}", defaultSpec);
-                return (defaultSpec, "Defaulted to HSDS-UK 1.0 (failed to parse base URL response)");
+                throw;
             }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Probe failed for {BaseUrl}{Path}", SchemaResolverService.SanitizeUrlForLogging(baseUrl), path);
+            }
+        }
+
+        // 2. Scraping strategy — fetch the root HTML page and look for a Swagger UI bundle config.
+        try
+        {
+            var response = await client.GetAsync(baseUrl, cancellationToken);
+            if (!response.IsSuccessStatusCode) return null;
+
+            var html = await response.Content.ReadAsStringAsync(cancellationToken);
+            var doc = new HtmlDocument();
+            doc.LoadHtml(html);
+
+            var scriptNodes = doc.DocumentNode.SelectNodes("//script");
+            if (scriptNodes != null)
+            {
+                foreach (var script in scriptNodes)
+                {
+                    var match = SwaggerUiUrlRegex.Match(script.InnerHtml);
+                    if (match.Success)
+                    {
+                        string foundPath = match.Groups[1].Value;
+                        var specUrl = new Uri(new Uri(baseUrl + "/"), foundPath).ToString();
+                        _logger.LogInformation("Discovered feed OpenAPI spec via HTML scraping: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(specUrl));
+                        return specUrl;
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error requesting BaseUrl to discover openapi_url; defaulting to HSDS-UK 1.0 spec: {DefaultSpec}", defaultSpec);
-            return (defaultSpec, "Defaulted to HSDS-UK 1.0 (error requesting base URL)");
-        }
-    }
-
-    private static float? ExtractVersionNumber(string version)
-    {
-        // Try to extract version number from formats like "HSDS-UK-3.0", "V3", "3.0", "3.1", etc.
-        var versionString = version
-            .Replace("HSDS-UK-", "", StringComparison.OrdinalIgnoreCase)
-            .Replace("V", "", StringComparison.OrdinalIgnoreCase)
-            .Replace("v", "")
-            .Trim();
-
-        if (float.TryParse(versionString, out var versionNumber))
-        {
-            return versionNumber;
+            _logger.LogWarning(ex, "HTML scraping failed for base URL {BaseUrl}", SchemaResolverService.SanitizeUrlForLogging(baseUrl));
         }
 
         return null;

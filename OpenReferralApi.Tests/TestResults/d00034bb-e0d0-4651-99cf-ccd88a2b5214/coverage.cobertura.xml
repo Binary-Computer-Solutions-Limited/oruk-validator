@@ -12598,7 +12598,7 @@
             <line number="62" hits="1" branch="False" />
           </lines>
         </class>
-        <class name="OpenReferralApi.Core.Services.OpenApiDiscoveryService" filename="OpenReferralApi.Core/Services/OpenApiDiscoveryService.cs" line-rate="1" branch-rate="1" complexity="3">
+        <class name="OpenReferralApi.Core.Services.OpenApiProfileDiscoveryService" filename="OpenReferralApi.Core/Services/OpenApiProfileDiscoveryService.cs" line-rate="1" branch-rate="1" complexity="3">
           <methods>
             <method name="ExtractVersionNumber" signature="(System.String)" line-rate="1" branch-rate="1" complexity="2">
               <lines>
@@ -12619,7 +12619,7 @@
                 <line number="107" hits="6" branch="False" />
               </lines>
             </method>
-            <method name=".ctor" signature="(System.Net.Http.IHttpClientFactory,Microsoft.Extensions.Logging.ILogger`1&lt;OpenReferralApi.Core.Services.OpenApiDiscoveryService&gt;,Microsoft.Extensions.Options.IOptions`1&lt;OpenReferralApi.Core.Models.SpecificationOptions&gt;)" line-rate="1" branch-rate="1" complexity="1">
+            <method name=".ctor" signature="(System.Net.Http.IHttpClientFactory,Microsoft.Extensions.Logging.ILogger`1&lt;OpenReferralApi.Core.Services.OpenApiProfileDiscoveryService&gt;,Microsoft.Extensions.Options.IOptions`1&lt;OpenReferralApi.Core.Models.SpecificationOptions&gt;)" line-rate="1" branch-rate="1" complexity="1">
               <lines>
                 <line number="23" hits="15" branch="False" />
                 <line number="24" hits="15" branch="False" />
@@ -12654,7 +12654,7 @@
             <line number="28" hits="15" branch="False" />
           </lines>
         </class>
-        <class name="OpenReferralApi.Core.Services.OpenApiDiscoveryService/&lt;DiscoverOpenApiUrlAsync&gt;d__4" filename="OpenReferralApi.Core/Services/OpenApiDiscoveryService.cs" line-rate="1" branch-rate="0.909" complexity="22">
+        <class name="OpenReferralApi.Core.Services.OpenApiProfileDiscoveryService/&lt;DiscoverOpenApiUrlAsync&gt;d__4" filename="OpenReferralApi.Core/Services/OpenApiProfileDiscoveryService.cs" line-rate="1" branch-rate="0.909" complexity="22">
           <methods>
             <method name="MoveNext" signature="()" line-rate="1" branch-rate="0.909" complexity="22">
               <lines>
@@ -16701,7 +16701,7 @@
                 <line number="413" hits="44" branch="False" />
               </lines>
             </method>
-            <method name=".ctor" signature="(Microsoft.Extensions.Logging.ILogger`1&lt;OpenReferralApi.Core.Services.OpenApiValidationService&gt;,System.Net.Http.HttpClient,OpenReferralApi.Core.Services.IJsonValidatorService,OpenReferralApi.Core.Services.ISchemaResolverService,OpenReferralApi.Core.Services.IOpenApiDiscoveryService,Microsoft.Extensions.Options.IOptions`1&lt;OpenReferralApi.Core.Models.AuthenticationOptions&gt;,OpenReferralApi.Core.Services.IOpenApiSpecificationService,OpenReferralApi.Core.Services.IHsdsComplianceService,OpenReferralApi.Core.Services.IEndpointTestingService,OpenReferralApi.Core.Services.IAuthenticationValidationService)" line-rate="1" branch-rate="1" complexity="8">
+            <method name=".ctor" signature="(Microsoft.Extensions.Logging.ILogger`1&lt;OpenReferralApi.Core.Services.OpenApiValidationService&gt;,System.Net.Http.HttpClient,OpenReferralApi.Core.Services.IJsonValidatorService,OpenReferralApi.Core.Services.ISchemaResolverService,OpenReferralApi.Core.Services.IOpenApiProfileDiscoveryService,Microsoft.Extensions.Options.IOptions`1&lt;OpenReferralApi.Core.Models.AuthenticationOptions&gt;,OpenReferralApi.Core.Services.IOpenApiSpecificationService,OpenReferralApi.Core.Services.IHsdsComplianceService,OpenReferralApi.Core.Services.IEndpointTestingService,OpenReferralApi.Core.Services.IAuthenticationValidationService)" line-rate="1" branch-rate="1" complexity="8">
               <lines>
                 <line number="31" hits="96" branch="False" />
                 <line number="32" hits="96" branch="False" />

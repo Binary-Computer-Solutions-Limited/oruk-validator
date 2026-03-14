@@ -20,7 +20,8 @@ public class OpenApiValidationService : IOpenApiValidationService
 
     private readonly ILogger<OpenApiValidationService> _logger;
     private readonly ISchemaResolverService _schemaResolverService;
-    private readonly IOpenApiDiscoveryService _discoveryService;
+    private readonly IOpenApiProfileDiscoveryService _discoveryService;
+    private readonly IOpenApiDiscoveryService _feedSpecDiscoveryService;
     private readonly IOpenApiSpecificationService _openApiSpecificationService;
     private readonly IHsdsComplianceService _hsdsComplianceService;
     private readonly IEndpointTestingService _endpointTestingService;
@@ -33,7 +34,8 @@ public class OpenApiValidationService : IOpenApiValidationService
         HttpClient httpClient,
         IJsonValidatorService jsonValidatorService,
         ISchemaResolverService schemaResolverService,
-        IOpenApiDiscoveryService discoveryService,
+        IOpenApiProfileDiscoveryService discoveryService,
+        IOpenApiDiscoveryService feedSpecDiscoveryService,
         IOptions<AuthenticationOptions> authOptions,
         IOpenApiSpecificationService? openApiSpecificationService = null,
         IHsdsComplianceService? hsdsComplianceService = null,
@@ -43,6 +45,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         _logger = logger;
         _schemaResolverService = schemaResolverService;
         _discoveryService = discoveryService;
+        _feedSpecDiscoveryService = feedSpecDiscoveryService;
         _openApiSpecificationService = openApiSpecificationService ?? new OpenApiSpecificationService(NullLogger<OpenApiSpecificationService>.Instance, jsonValidatorService);
         _hsdsComplianceService = hsdsComplianceService ?? new HsdsComplianceService(jsonValidatorService);
         _endpointTestingService = endpointTestingService ?? new EndpointTestingService(NullLogger<EndpointTestingService>.Instance, httpClient, jsonValidatorService, _hsdsComplianceService);
@@ -68,7 +71,19 @@ public class OpenApiValidationService : IOpenApiValidationService
             {
                 if (!string.IsNullOrEmpty(request.BaseUrl))
                 {
-                    var (discoveredUrl, reason) = await _discoveryService.DiscoverOpenApiUrlAsync(request.BaseUrl, cancellationToken);
+                    // Determine the HSDS profile context from the root endpoint.
+                    var (profileUrl, profileReason) = await _discoveryService.DiscoverOpenApiUrlAsync(request.BaseUrl, cancellationToken);
+
+                    // Try to find the OpenAPI spec the feed itself publishes (what the feed claims to support).
+                    var feedSpecUrl = await _feedSpecDiscoveryService.FindOpenApiSpecAsync(request.BaseUrl, cancellationToken);
+
+                    // Prefer the feed's own published spec; fall back to the HSDS profile URL.
+                    var discoveredUrl = !string.IsNullOrEmpty(feedSpecUrl) ? feedSpecUrl : profileUrl;
+                    var reason = !string.IsNullOrEmpty(feedSpecUrl)
+                        ? $"Feed spec discovered at {SchemaResolverService.SanitizeUrlForLogging(feedSpecUrl)}"
+                          + (!string.IsNullOrEmpty(profileReason) ? $"; {profileReason}" : string.Empty)
+                        : profileReason;
+
                     if (!string.IsNullOrEmpty(discoveredUrl))
                     {
                         _logger.LogInformation("Discovered OpenAPI schema URL: {Url} (Reason: {Reason})", SchemaResolverService.SanitizeUrlForLogging(discoveredUrl), reason);

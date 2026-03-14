@@ -13,7 +13,8 @@ public class OpenApiValidationServiceTests
     private Mock<ILogger<OpenApiValidationService>> _loggerMock;
     private Mock<IJsonValidatorService> _jsonValidatorServiceMock;
     private Mock<ISchemaResolverService> _schemaResolverServiceMock;
-    private Mock<IOpenApiDiscoveryService> _discoveryServiceMock;
+    private Mock<IOpenApiProfileDiscoveryService> _discoveryServiceMock;
+    private Mock<IOpenApiDiscoveryService> _feedSpecDiscoveryMock;
     private IOptions<AuthenticationOptions> _authOptions;
     private HttpClient _httpClient;
     private OpenApiValidationService _service;
@@ -24,7 +25,11 @@ public class OpenApiValidationServiceTests
         _loggerMock = new Mock<ILogger<OpenApiValidationService>>();
         _jsonValidatorServiceMock = new Mock<IJsonValidatorService>();
         _schemaResolverServiceMock = new Mock<ISchemaResolverService>();
-        _discoveryServiceMock = new Mock<IOpenApiDiscoveryService>();
+        _discoveryServiceMock = new Mock<IOpenApiProfileDiscoveryService>();
+        _feedSpecDiscoveryMock = new Mock<IOpenApiDiscoveryService>();
+        _feedSpecDiscoveryMock
+            .Setup(s => s.FindOpenApiSpecAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
 
         _jsonValidatorServiceMock
             .Setup(service => service.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
@@ -60,6 +65,7 @@ public class OpenApiValidationServiceTests
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
             _discoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
             _authOptions);
     }
 
@@ -841,7 +847,7 @@ public class OpenApiValidationServiceTests
         var httpClient = new HttpClient(mockHandler);
         var service = new OpenApiValidationService(
             _loggerMock.Object, httpClient, _jsonValidatorServiceMock.Object,
-            _schemaResolverServiceMock.Object, _discoveryServiceMock.Object,
+            _schemaResolverServiceMock.Object, _discoveryServiceMock.Object, _feedSpecDiscoveryMock.Object,
             Options.Create(new AuthenticationOptions { AllowUserSuppliedAuth = true }));
 
         try
@@ -881,7 +887,7 @@ public class OpenApiValidationServiceTests
         var httpClient = new HttpClient(mockHandler);
         var service = new OpenApiValidationService(
             _loggerMock.Object, httpClient, _jsonValidatorServiceMock.Object,
-            _schemaResolverServiceMock.Object, _discoveryServiceMock.Object,
+            _schemaResolverServiceMock.Object, _discoveryServiceMock.Object, _feedSpecDiscoveryMock.Object,
             Options.Create(new AuthenticationOptions { AllowUserSuppliedAuth = true }));
 
         try
@@ -924,7 +930,7 @@ public class OpenApiValidationServiceTests
         var httpClient = new HttpClient(mockHandler);
         var service = new OpenApiValidationService(
             _loggerMock.Object, httpClient, _jsonValidatorServiceMock.Object,
-            _schemaResolverServiceMock.Object, _discoveryServiceMock.Object,
+            _schemaResolverServiceMock.Object, _discoveryServiceMock.Object, _feedSpecDiscoveryMock.Object,
             Options.Create(new AuthenticationOptions { AllowUserSuppliedAuth = true }));
 
         try
@@ -981,6 +987,7 @@ public class OpenApiValidationServiceTests
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
             _discoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
             Options.Create(new AuthenticationOptions { AllowUserSuppliedAuth = true }));
 
         // Act
@@ -2232,6 +2239,7 @@ public class OpenApiValidationServiceTests
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
             _discoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
             Options.Create(new AuthenticationOptions { AllowUserSuppliedAuth = false }));
 
         var request = new OpenApiValidationRequest
@@ -2296,6 +2304,7 @@ public class OpenApiValidationServiceTests
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
             _discoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
             _authOptions);
     }
 
@@ -2311,6 +2320,7 @@ public class OpenApiValidationServiceTests
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
             _discoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
             _authOptions);
     }
 
