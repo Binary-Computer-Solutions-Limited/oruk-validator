@@ -69,7 +69,7 @@ public class HsdsComplianceServiceTests
             _jsonValidatorServiceMock.Object,
             Options.Create(new SpecificationOptions
             {
-                ProfileVersionUrlMap = new Dictionary<string, string>
+            Urls = new Dictionary<string, string>
                 {
                     ["4.0"] = "https://profiles.example.org/4.0/openapi.json"
                 }

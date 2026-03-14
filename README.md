@@ -183,29 +183,31 @@ This adds an `Authorization: Bearer <token>` header to all endpoint requests.
 
 ## Profile OpenAPI Mapping
 
-Profile OpenAPI lookup uses the configured `Specification:ProfileVersionUrlMap` dictionary, merged over the built-in defaults.
+Profile OpenAPI lookup uses the configured `Specification:Urls` dictionary, merged over the built-in defaults. The same dictionary also drives schema warmup, so resolution and cache priming stay aligned.
 
 Example:
 
 ```json
 "Specification": {
-  "ProfileVersionUrlMap": {
-    "3.0": "https://openreferraluk.org/specifications/3.0/openapi.json",
-    "3.1": "https://openreferraluk.org/specifications/3.1/openapi.json"
+  "WarmupEnabled": true,
+  "WarmupStartupDelaySeconds": 5,
+  "Urls": {
+    "HSDS-UK-3.0": "https://openreferraluk.org/specifications/3.0/openapi.json",
+    "HSDS-UK-3.1": "https://openreferraluk.org/specifications/3.1/openapi.json"
   }
 }
 ```
 
-ASP.NET Core binds this dictionary from the configuration path `Specification:ProfileVersionUrlMap:<version>`.
+ASP.NET Core binds this dictionary from the configuration path `Specification:Urls:<profile-name>`.
 
 With this application's `ORUK_API_` environment-variable prefix, the raw environment variable shape is:
 
 ```text
-ORUK_API_SPECIFICATION__PROFILEVERSIONURLMAP__3.0=https://openreferraluk.org/specifications/3.0/openapi.json
-ORUK_API_SPECIFICATION__PROFILEVERSIONURLMAP__3.1=https://openreferraluk.org/specifications/3.1/openapi.json
+ORUK_API_SPECIFICATION__URLS__HSDS-UK-3.0=https://openreferraluk.org/specifications/3.0/openapi.json
+ORUK_API_SPECIFICATION__URLS__HSDS-UK-3.1=https://openreferraluk.org/specifications/3.1/openapi.json
 ```
 
-On macOS/Linux shells, names containing `.` are not valid shell identifiers, so `export ORUK_API_SPECIFICATION__PROFILEVERSIONURLMAP__3.0=...` will not work.
+On macOS/Linux shells, names containing `-` or `.` are not valid shell identifiers, so `export ORUK_API_SPECIFICATION__URLS__HSDS-UK-3.0=...` will not work.
 
 For Unix-hosted deployments, prefer one of these options:
 

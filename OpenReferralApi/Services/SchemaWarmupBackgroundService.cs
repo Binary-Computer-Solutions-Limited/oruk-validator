@@ -11,27 +11,27 @@ public class SchemaWarmupBackgroundService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<SchemaWarmupBackgroundService> _logger;
-    private readonly SchemaWarmupOptions _options;
+    private readonly SpecificationOptions _options;
     private readonly CacheOptions _cacheOptions;
     private readonly ISchemaWarmupStatusTracker _statusTracker;
 
     public SchemaWarmupBackgroundService(
         IServiceProvider serviceProvider,
-        IOptions<SchemaWarmupOptions> options,
+        IOptions<SpecificationOptions> options,
         IOptions<CacheOptions> cacheOptions,
         ISchemaWarmupStatusTracker statusTracker,
         ILogger<SchemaWarmupBackgroundService> logger)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
-        _options = options.Value ?? new SchemaWarmupOptions();
+        _options = options.Value ?? new SpecificationOptions();
         _cacheOptions = cacheOptions.Value ?? new CacheOptions();
         _statusTracker = statusTracker;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!_options.Enabled)
+        if (!_options.WarmupEnabled)
         {
             _statusTracker.MarkSkipped("disabled");
             _logger.LogInformation("Schema warmup is disabled.");
@@ -45,7 +45,8 @@ public class SchemaWarmupBackgroundService : BackgroundService
             return;
         }
 
-        var urls = (_options.Urls ?? new List<string>())
+        var urls = (_options.Urls ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase))
+            .Values
             .Where(url => !string.IsNullOrWhiteSpace(url))
             .Select(url => url.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -60,7 +61,7 @@ public class SchemaWarmupBackgroundService : BackgroundService
 
         _statusTracker.MarkStarted(urls.Count);
 
-        var delaySeconds = Math.Max(0, _options.StartupDelaySeconds);
+        var delaySeconds = Math.Max(0, _options.WarmupStartupDelaySeconds);
         if (delaySeconds > 0)
         {
             _logger.LogInformation("Schema warmup starting in {DelaySeconds}s.", delaySeconds);

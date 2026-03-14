@@ -316,9 +316,9 @@ public class HsdsComplianceService : IHsdsComplianceService
     {
         var lookup = new Dictionary<string, string>(DefaultHsdsSchemaByVersion, StringComparer.OrdinalIgnoreCase);
 
-        if (options?.ProfileVersionUrlMap != null)
+        if (options?.Urls != null)
         {
-            MergeMappings(lookup, options.ProfileVersionUrlMap);
+            MergeMappings(lookup, options.Urls);
         }
 
         return lookup;

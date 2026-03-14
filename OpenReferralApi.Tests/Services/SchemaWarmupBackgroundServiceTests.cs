@@ -21,7 +21,7 @@ public class SchemaWarmupBackgroundServiceTests
 
         var service = new TestableSchemaWarmupBackgroundService(
             serviceProvider,
-            Options.Create(new SchemaWarmupOptions { Enabled = false }),
+            Options.Create(new SpecificationOptions { WarmupEnabled = false }),
             Options.Create(new CacheOptions { Enabled = true }),
             statusTracker,
             logger.Object);
@@ -44,10 +44,13 @@ public class SchemaWarmupBackgroundServiceTests
 
         var service = new TestableSchemaWarmupBackgroundService(
             serviceProvider,
-            Options.Create(new SchemaWarmupOptions
+            Options.Create(new SpecificationOptions
             {
-                Enabled = true,
-                Urls = new List<string> { "https://example.com/schema.json" }
+                WarmupEnabled = true,
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-TEST"] = "https://example.com/schema.json"
+                }
             }),
             Options.Create(new CacheOptions { Enabled = false }),
             statusTracker,
@@ -86,11 +89,15 @@ public class SchemaWarmupBackgroundServiceTests
 
         var service = new TestableSchemaWarmupBackgroundService(
             serviceProvider,
-            Options.Create(new SchemaWarmupOptions
+            Options.Create(new SpecificationOptions
             {
-                Enabled = true,
-                StartupDelaySeconds = 0,
-                Urls = new List<string> { successUrl, failUrl }
+                WarmupEnabled = true,
+                WarmupStartupDelaySeconds = 0,
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-SUCCESS"] = successUrl,
+                    ["HSDS-UK-FAIL"] = failUrl
+                }
             }),
             Options.Create(new CacheOptions { Enabled = true }),
             statusTracker,
@@ -123,15 +130,15 @@ public class SchemaWarmupBackgroundServiceTests
 
         var service = new TestableSchemaWarmupBackgroundService(
             serviceProvider,
-            Options.Create(new SchemaWarmupOptions
+            Options.Create(new SpecificationOptions
             {
-                Enabled = true,
-                StartupDelaySeconds = 0,
-                Urls = new List<string>
+                WarmupEnabled = true,
+                WarmupStartupDelaySeconds = 0,
+                Urls = new Dictionary<string, string>
                 {
-                    canonicalUrl,
-                    $" {canonicalUrl} ",
-                    "HTTPS://EXAMPLE.COM/SCHEMA.JSON"
+                    ["HSDS-UK-PRIMARY"] = canonicalUrl,
+                    ["HSDS-UK-TRIMMED"] = $" {canonicalUrl} ",
+                    ["HSDS-UK-UPPER"] = "HTTPS://EXAMPLE.COM/SCHEMA.JSON"
                 }
             }),
             Options.Create(new CacheOptions { Enabled = true }),
@@ -163,11 +170,14 @@ public class SchemaWarmupBackgroundServiceTests
 
         var service = new TestableSchemaWarmupBackgroundService(
             serviceProvider,
-            Options.Create(new SchemaWarmupOptions
+            Options.Create(new SpecificationOptions
             {
-                Enabled = true,
-                StartupDelaySeconds = 0,
-                Urls = new List<string> { "https://example.com/schema.json" }
+                WarmupEnabled = true,
+                WarmupStartupDelaySeconds = 0,
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-TEST"] = "https://example.com/schema.json"
+                }
             }),
             Options.Create(new CacheOptions { Enabled = true }),
             statusTracker,
@@ -197,7 +207,7 @@ public class SchemaWarmupBackgroundServiceTests
     {
         public TestableSchemaWarmupBackgroundService(
             IServiceProvider serviceProvider,
-            IOptions<SchemaWarmupOptions> options,
+            IOptions<SpecificationOptions> options,
             IOptions<CacheOptions> cacheOptions,
             ISchemaWarmupStatusTracker statusTracker,
             ILogger<SchemaWarmupBackgroundService> logger)
