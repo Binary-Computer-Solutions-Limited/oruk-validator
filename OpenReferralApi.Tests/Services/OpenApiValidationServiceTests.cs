@@ -959,6 +959,139 @@ public class OpenApiValidationServiceTests
         }
     }
 
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_FallsBackToHsdsProfileWhenFeedOpenApiFetchFails()
+    {
+        // Arrange
+        var feedSpecUrl = "https://feed.example.com/openapi-missing.json";
+        var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = feedSpecUrl
+            },
+            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
+            Options = new OpenApiValidationOptions
+            {
+                ValidateSpecification = true,
+                TestEndpoints = false
+            }
+        };
+
+        SetupHttpMock((httpRequest, ct) =>
+        {
+            var requestUrl = httpRequest.RequestUri?.ToString() ?? string.Empty;
+
+            if (string.Equals(requestUrl, feedSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+            }
+
+            if (string.Equals(requestUrl, hsdsSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateHsdsProfileSpec())
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+        });
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.Notifications.Any(n => n.Contains("Falling back to the HSDS profile OpenAPI specification", StringComparison.OrdinalIgnoreCase)), Is.True);
+        Assert.That(request.OpenApiSchema!.Url, Is.EqualTo(hsdsSpecUrl));
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_UsesCachedResolvedFeedSpecBeforeRefetching()
+    {
+        // Arrange
+        var uniqueFeedSpecUrl = $"https://cache-test.example.com/{Guid.NewGuid():N}/openapi.json";
+        var feedSpec = @"{
+            ""openapi"": ""3.0.0"",
+            ""info"": {
+                ""title"": ""Cache Test API"",
+                ""version"": ""feed""
+            },
+            ""paths"": {
+                ""/test"": {
+                    ""get"": {
+                        ""responses"": {
+                            ""200"": { ""description"": ""OK"" }
+                        }
+                    }
+                }
+            }
+        }";
+
+        var requestCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        SetupHttpMock((httpRequest, ct) =>
+        {
+            var requestUrl = httpRequest.RequestUri?.ToString() ?? string.Empty;
+            if (!requestCounts.ContainsKey(requestUrl))
+            {
+                requestCounts[requestUrl] = 0;
+            }
+
+            requestCounts[requestUrl]++;
+
+            if (string.Equals(requestUrl, uniqueFeedSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(feedSpec)
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+        });
+
+        var serviceWithCache = new OpenApiValidationService(
+            _loggerMock.Object,
+            _httpClient,
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            _authOptions,
+            cacheOptions: Options.Create(new CacheOptions
+            {
+                Enabled = true,
+                ExpirationMinutes = 30
+            }));
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = uniqueFeedSpecUrl
+            },
+            Options = new OpenApiValidationOptions
+            {
+                ValidateSpecification = false,
+                TestEndpoints = false
+            }
+        };
+
+        // Act
+        var firstResult = await serviceWithCache.ValidateOpenApiSpecificationAsync(request);
+        var secondResult = await serviceWithCache.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(firstResult.IsValid, Is.True);
+        Assert.That(secondResult.IsValid, Is.True);
+        Assert.That(requestCounts.TryGetValue(uniqueFeedSpecUrl, out var feedFetchCount), Is.True);
+        Assert.That(feedFetchCount, Is.EqualTo(1));
+    }
+
     #endregion
 
     #region Cancellation Support

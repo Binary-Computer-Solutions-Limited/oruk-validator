@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
 using OpenReferralApi.Core.Models;
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using Microsoft.Extensions.Logging.Abstractions;
 using ValidationError = OpenReferralApi.Core.Models.ValidationError;
 
@@ -18,7 +19,27 @@ public interface IOpenApiValidationService
 public class OpenApiValidationService : IOpenApiValidationService
 {
     private static readonly Regex ArrayIndexRegex = new(@"\[[^\]]*\]", RegexOptions.Compiled);
-    private static readonly ConcurrentDictionary<string, CachedProfileSpec> ProfileSpecCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, CachedResolvedSpec> FeedResolvedSpecCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, CachedResolvedSpec> ProfileResolvedSpecCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Meter CacheMetricsMeter = new("OpenReferralApi.Core.OpenApiValidationService", "1.0.0");
+    private static readonly Counter<long> ResolvedOpenApiCacheHitsCounter = CacheMetricsMeter.CreateCounter<long>(
+        "openreferral.openapi.cache.hits",
+        description: "Number of resolved OpenAPI cache hits by scope (feed/profile)");
+    private static readonly Counter<long> ResolvedOpenApiCacheMissesCounter = CacheMetricsMeter.CreateCounter<long>(
+        "openreferral.openapi.cache.misses",
+        description: "Number of resolved OpenAPI cache misses by scope (feed/profile)");
+    private static readonly ObservableGauge<int> FeedResolvedOpenApiCacheEntriesGauge = CacheMetricsMeter.CreateObservableGauge<int>(
+        "openreferral.openapi.cache.entries.feed",
+        () => FeedResolvedSpecCache.Count,
+        description: "Number of cached resolved feed OpenAPI specifications");
+    private static readonly ObservableGauge<int> ProfileResolvedOpenApiCacheEntriesGauge = CacheMetricsMeter.CreateObservableGauge<int>(
+        "openreferral.openapi.cache.entries.profile",
+        () => ProfileResolvedSpecCache.Count,
+        description: "Number of cached resolved profile OpenAPI specifications");
+    private static readonly ObservableGauge<int> ResolvedOpenApiExpiredEntriesGauge = CacheMetricsMeter.CreateObservableGauge<int>(
+        "openreferral.openapi.cache.entries.expired",
+        CountExpiredCacheEntries,
+        description: "Number of expired cached resolved OpenAPI specifications (feed + profile)");
 
     private readonly ILogger<OpenApiValidationService> _logger;
     private readonly ISchemaResolverService _schemaResolverService;
@@ -102,12 +123,12 @@ public class OpenApiValidationService : IOpenApiValidationService
                     {
                         if (!bootstrap.UsedDataServiceOpenApi
                             && !string.IsNullOrWhiteSpace(bootstrap.ProfileVersion)
-                            && _hsdsComplianceService.TryGetKnownHsdsSchemaUrl(bootstrap.ProfileVersion, out var mappedProfileSchemaUrl))
+                            && _hsdsComplianceService.TryGetKnownHsdsSchemaUrl(bootstrap.ProfileVersion, out var bootstrapMappedProfileSchemaUrl))
                         {
-                            discoveredUrl = mappedProfileSchemaUrl;
+                            discoveredUrl = bootstrapMappedProfileSchemaUrl;
                             _logger.LogInformation(
                                 "No OpenAPI spec found on data service; using profile schema URL {ProfileSchemaUrl} for profile version {ProfileVersion}",
-                                SchemaResolverService.SanitizeUrlForLogging(mappedProfileSchemaUrl),
+                                SchemaResolverService.SanitizeUrlForLogging(bootstrapMappedProfileSchemaUrl),
                                 bootstrap.ProfileVersion);
                         }
 
@@ -127,24 +148,38 @@ public class OpenApiValidationService : IOpenApiValidationService
                 }
             }
 
-            // Get OpenAPI specification
-            JObject openApiSpec;
-            bool isResolved = false;
-
-            if (!string.IsNullOrEmpty(request.OpenApiSchema?.Url))
-            {
-                // Fetch OpenAPI spec but defer resolution until we know we need it
-                // This avoids expensive resolution when we're only validating spec structure
-                // or when most endpoints won't be tested
-                openApiSpec = await _specFetcher.FetchOpenApiSpecFromUrlAsync(
-                    request.OpenApiSchema.Url,
-                    schemaRequestAuth,
-                    cancellationToken,
-                    resolveReferences: false);
-            }
-            else
+            if (string.IsNullOrEmpty(request.OpenApiSchema?.Url))
             {
                 throw new ArgumentException("OpenAPI schema URL must be provided or BaseUrl must allow discovery");
+            }
+
+            var claimedProfileVersion = _hsdsComplianceService.ExtractClaimedProfileVersion(request.ProfileReason, request.OpenApiSchema.Url);
+            JObject? resolvedHsdsProfileSpec = null;
+            string? knownHsdsSchemaUrl = null;
+
+            if (_hsdsComplianceService.TryGetKnownHsdsSchemaUrl(claimedProfileVersion, out var mappedProfileSchemaUrl))
+            {
+                knownHsdsSchemaUrl = mappedProfileSchemaUrl;
+                resolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(mappedProfileSchemaUrl, null, cancellationToken, cacheScope: "profile");
+            }
+
+            // Always resolve and cache the feed OpenAPI specification before validation/testing.
+            JObject openApiSpec;
+            try
+            {
+                openApiSpec = await GetCachedResolvedOpenApiSpecAsync(request.OpenApiSchema.Url, schemaRequestAuth, cancellationToken, cacheScope: "feed");
+            }
+            catch (Exception ex) when (!string.IsNullOrWhiteSpace(knownHsdsSchemaUrl) && resolvedHsdsProfileSpec != null)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Failed to fetch/resolve OpenAPI from feed URL {FeedSpecUrl}; falling back to HSDS profile schema {ProfileSchemaUrl}",
+                    SchemaResolverService.SanitizeUrlForLogging(request.OpenApiSchema.Url),
+                    SchemaResolverService.SanitizeUrlForLogging(knownHsdsSchemaUrl));
+
+                openApiSpec = (JObject)resolvedHsdsProfileSpec.DeepClone();
+                request.OpenApiSchema.Url = knownHsdsSchemaUrl;
+                result.Notifications.Add("Unable to fetch OpenAPI specification from the feed URL. Falling back to the HSDS profile OpenAPI specification.");
             }
 
             // If discovery could not infer an HSDS profile version, try extracting it from the OpenAPI document itself.
@@ -169,31 +204,19 @@ public class OpenApiValidationService : IOpenApiValidationService
                 result.SpecificationValidation = specValidation;
             }
 
-            var claimedProfileVersion = _hsdsComplianceService.ExtractClaimedProfileVersion(request.ProfileReason, request.OpenApiSchema?.Url);
-            JObject? resolvedHsdsProfileSpec = null;
+            claimedProfileVersion = _hsdsComplianceService.ExtractClaimedProfileVersion(request.ProfileReason, request.OpenApiSchema?.Url);
+            if (resolvedHsdsProfileSpec == null && _hsdsComplianceService.TryGetKnownHsdsSchemaUrl(claimedProfileVersion, out var knownHsdsSchemaUrlAfterDiscovery))
+            {
+                knownHsdsSchemaUrl = knownHsdsSchemaUrlAfterDiscovery;
+                resolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(knownHsdsSchemaUrlAfterDiscovery, null, cancellationToken, cacheScope: "profile");
+            }
 
             // Compare feed specification against the known HSDS baseline profile, when discoverable.
             if (request.Options.ValidateSpecification && specValidation != null)
             {
-                if (_hsdsComplianceService.TryGetKnownHsdsSchemaUrl(claimedProfileVersion, out var knownHsdsSchemaUrl))
+                if (resolvedHsdsProfileSpec != null)
                 {
-                    if (!isResolved)
-                    {
-                        var resolvedFeedSpec = await _schemaResolverService.ResolveAsync(openApiSpec.ToString(), request.OpenApiSchema?.Url, schemaRequestAuth);
-                        openApiSpec = JObject.Parse(resolvedFeedSpec);
-                        isResolved = true;
-                    }
-
-                    var hsdsSpec = await _specFetcher.FetchOpenApiSpecFromUrlAsync(
-                        knownHsdsSchemaUrl,
-                        null,
-                        cancellationToken,
-                        resolveReferences: false);
-
-                    hsdsSpec = await GetCachedResolvedProfileSpecAsync(knownHsdsSchemaUrl, hsdsSpec, cancellationToken);
-                    resolvedHsdsProfileSpec = hsdsSpec;
-
-                    var profileComplianceFindings = _hsdsComplianceService.CompareFeedSpecAgainstHsdsProfile(openApiSpec, hsdsSpec);
+                    var profileComplianceFindings = _hsdsComplianceService.CompareFeedSpecAgainstHsdsProfile(openApiSpec, resolvedHsdsProfileSpec);
                     if (profileComplianceFindings.Count > 0)
                     {
                         specValidation.Errors = NormalizeAndDeduplicateValidationErrors(
@@ -228,16 +251,6 @@ public class OpenApiValidationService : IOpenApiValidationService
             List<EndpointTestResult> endpointTests = new();
             if (request.Options.TestEndpoints && !string.IsNullOrEmpty(request.BaseUrl))
             {
-                // Resolve references now that we know we're actually testing endpoints
-                // This lazy approach avoids wasting resolution work when endpoints aren't tested
-                if (!isResolved)
-                {
-                    _logger.LogDebug("Resolving OpenAPI document references for endpoint testing");
-                    var resolvedContent = await _schemaResolverService.ResolveAsync(openApiSpec.ToString(), request.OpenApiSchema?.Url, schemaRequestAuth);
-                    openApiSpec = JObject.Parse(resolvedContent);
-                    isResolved = true;
-                }
-
                 endpointTests = await _endpointTestingService.TestEndpointsAsync(openApiSpec, request.BaseUrl, request.Options, dataSourceRequestAuth, request.OpenApiSchema?.Url, cancellationToken);
                 result.EndpointTests = endpointTests;
 
@@ -356,31 +369,70 @@ public class OpenApiValidationService : IOpenApiValidationService
         return deduplicatedErrors;
     }
 
-    private async Task<JObject> GetCachedResolvedProfileSpecAsync(string profileSchemaUrl, JObject unresolvedSpec, CancellationToken cancellationToken)
+    private async Task<JObject> GetCachedResolvedOpenApiSpecAsync(
+        string specUrl,
+        DataSourceAuthentication? auth,
+        CancellationToken cancellationToken,
+        string cacheScope)
     {
-        var cacheKey = $"profile-openapi:{profileSchemaUrl}";
+        var cache = ResolveCacheByScope(cacheScope);
+        var cacheKey = $"resolved-openapi:{specUrl}";
 
-        if (_profileSchemaCacheEnabled
-            && ProfileSpecCache.TryGetValue(cacheKey, out var cachedEntry)
+        if (cache.TryGetValue(cacheKey, out var cachedEntry)
             && cachedEntry.ExpiresAtUtc > DateTime.UtcNow
             && !string.IsNullOrWhiteSpace(cachedEntry.ResolvedSpecJson))
         {
+            ResolvedOpenApiCacheHitsCounter.Add(1, new KeyValuePair<string, object?>("scope", cacheScope));
+            _logger.LogDebug(
+                "Resolved OpenAPI cache hit (scope: {CacheScope}) for URL {SpecUrl}",
+                cacheScope,
+                SchemaResolverService.SanitizeUrlForLogging(specUrl));
             return JObject.Parse(cachedEntry.ResolvedSpecJson);
         }
 
-        var resolvedProfileSpecContent = await _schemaResolverService.ResolveAsync(unresolvedSpec.ToString(), profileSchemaUrl, null);
+        ResolvedOpenApiCacheMissesCounter.Add(1, new KeyValuePair<string, object?>("scope", cacheScope));
+        _logger.LogDebug(
+            "Resolved OpenAPI cache miss (scope: {CacheScope}) for URL {SpecUrl}",
+            cacheScope,
+            SchemaResolverService.SanitizeUrlForLogging(specUrl));
+
+        var unresolvedSpec = await _specFetcher.FetchOpenApiSpecFromUrlAsync(
+            specUrl,
+            auth,
+            cancellationToken,
+            resolveReferences: false);
+
+        var resolvedSpecContent = await _schemaResolverService.ResolveAsync(unresolvedSpec.ToString(), specUrl, auth);
 
         if (_profileSchemaCacheEnabled)
         {
-            ProfileSpecCache[cacheKey] = new CachedProfileSpec(
-                resolvedProfileSpecContent,
+            cache[cacheKey] = new CachedResolvedSpec(
+                resolvedSpecContent,
                 DateTime.UtcNow.Add(_profileSchemaCacheTtl));
         }
 
-        return JObject.Parse(resolvedProfileSpecContent);
+        return JObject.Parse(resolvedSpecContent);
     }
 
-    private sealed record CachedProfileSpec(string ResolvedSpecJson, DateTime ExpiresAtUtc);
+    private static ConcurrentDictionary<string, CachedResolvedSpec> ResolveCacheByScope(string cacheScope)
+    {
+        return cacheScope switch
+        {
+            "feed" => FeedResolvedSpecCache,
+            "profile" => ProfileResolvedSpecCache,
+            _ => throw new ArgumentOutOfRangeException(nameof(cacheScope), cacheScope, "Cache scope must be either 'feed' or 'profile'.")
+        };
+    }
+
+    private sealed record CachedResolvedSpec(string ResolvedSpecJson, DateTime ExpiresAtUtc);
+
+    private static int CountExpiredCacheEntries()
+    {
+        var now = DateTime.UtcNow;
+        var expiredFeedEntries = FeedResolvedSpecCache.Values.Count(entry => entry.ExpiresAtUtc <= now);
+        var expiredProfileEntries = ProfileResolvedSpecCache.Values.Count(entry => entry.ExpiresAtUtc <= now);
+        return expiredFeedEntries + expiredProfileEntries;
+    }
 
     private bool HasExplicitProfileVersionContext(string? profileReason, string? schemaUrl)
     {
