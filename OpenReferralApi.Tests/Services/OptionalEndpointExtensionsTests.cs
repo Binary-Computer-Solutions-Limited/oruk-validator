@@ -1,5 +1,4 @@
 using Newtonsoft.Json.Linq;
-using OpenReferralApi.Core.Models;
 using OpenReferralApi.Core.Services;
 
 namespace OpenReferralApi.Tests.Services;

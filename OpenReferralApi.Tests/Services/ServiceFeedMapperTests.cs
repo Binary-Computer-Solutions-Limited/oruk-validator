@@ -1,5 +1,4 @@
 using MongoDB.Bson;
-using OpenReferralApi.Core.Models;
 
 namespace OpenReferralApi.Tests.Services;
 

@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Moq;
-using OpenReferralApi.Core.Models;
 using OpenReferralApi.Core.Services;
 
 namespace OpenReferralApi.Tests.Services;

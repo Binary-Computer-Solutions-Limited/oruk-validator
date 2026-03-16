@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using Newtonsoft.Json.Linq;
-using OpenReferralApi.Core.Models;
 using OpenReferralApi.Core.Services;
 
 namespace OpenReferralApi.Tests.Services;

@@ -2,7 +2,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using Newtonsoft.Json.Schema;
-using OpenReferralApi.Core.Models;
 using OpenReferralApi.Core.Services;
 
 namespace OpenReferralApi.Tests.Services;
@@ -43,7 +42,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = true,
-                Errors = new List<OpenReferralApi.Core.Models.ValidationError>(),
+                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>(),
                 SchemaVersion = "test",
                 Duration = TimeSpan.Zero
             });
@@ -287,7 +286,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<OpenReferralApi.Core.Models.ValidationError>
+                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>
                 {
                     new()
                     {
@@ -351,7 +350,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<OpenReferralApi.Core.Models.ValidationError>
+                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>
                 {
                     new()
                     {
@@ -701,7 +700,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = true,
-                Errors = new List<OpenReferralApi.Core.Models.ValidationError>(),
+                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>(),
                 SchemaVersion = "test",
                 Duration = TimeSpan.Zero
             });
@@ -765,21 +764,21 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = true,
-                Errors = new List<OpenReferralApi.Core.Models.ValidationError>(),
+                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>(),
                 SchemaVersion = "test",
                 Duration = TimeSpan.Zero
             })
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = true,
-                Errors = new List<OpenReferralApi.Core.Models.ValidationError>(),
+                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>(),
                 SchemaVersion = "test",
                 Duration = TimeSpan.Zero
             })
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<OpenReferralApi.Core.Models.ValidationError>
+                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>
                 {
                     new()
                     {
@@ -849,7 +848,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<OpenReferralApi.Core.Models.ValidationError>
+                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>
                 {
                     new()
                     {
@@ -893,7 +892,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<OpenReferralApi.Core.Models.ValidationError>
+                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>
                 {
                     new()
                     {
@@ -1321,7 +1320,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<OpenReferralApi.Core.Models.ValidationError>
+                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>
                 {
                     new()
                     {
@@ -1412,7 +1411,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new OpenApiSpecificationValidation
             {
                 IsValid = false,
-                Errors = new List<OpenReferralApi.Core.Models.ValidationError>
+                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>
                 {
                     new()
                     {
@@ -1436,7 +1435,7 @@ public class OpenApiValidationServiceTests
         hsdsServiceMock
             .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>()))
             .Callback(() => callOrder.Add("hsds"))
-            .Returns(new List<OpenReferralApi.Core.Models.ValidationError>
+            .Returns(new List<OpenReferralApi.Core.Models.Validation.ValidationError>
             {
                 new()
                 {
@@ -1579,7 +1578,7 @@ public class OpenApiValidationServiceTests
         Assert.That(result.EndpointTests[0].TestResults, Has.Count.EqualTo(1));
         Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult, Is.Not.Null);
         Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult!.Errors,
-            Has.Some.Matches<OpenReferralApi.Core.Models.ValidationError>(e => e.ErrorCode == "EMPTY_FEED_WARNING"));
+            Has.Some.Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(e => e.ErrorCode == "EMPTY_FEED_WARNING"));
     }
 
     [Test]
@@ -1647,7 +1646,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<OpenReferralApi.Core.Models.ValidationError>
+                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>
                 {
                     new()
                     {
@@ -1716,7 +1715,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<OpenReferralApi.Core.Models.ValidationError>
+                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>
                 {
                     new()
                     {
@@ -1822,7 +1821,7 @@ public class OpenApiValidationServiceTests
         Assert.That(result.EndpointTests[0].TestResults, Has.Count.EqualTo(1));
         Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult, Is.Not.Null);
         Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult!.Errors,
-            Has.Some.Matches<OpenReferralApi.Core.Models.ValidationError>(e => e.ErrorCode == "OPTIONAL_ENDPOINT_NON_SUCCESS" && e.Severity == "Warning"));
+            Has.Some.Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(e => e.ErrorCode == "OPTIONAL_ENDPOINT_NON_SUCCESS" && e.Severity == "Warning"));
     }
 
     [Test]
@@ -1835,7 +1834,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<OpenReferralApi.Core.Models.ValidationError>
+                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>
                 {
                     new()
                     {

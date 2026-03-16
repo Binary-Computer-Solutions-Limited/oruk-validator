@@ -7,7 +7,6 @@ using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using OpenReferralApi.Core.Models;
 using OpenReferralApi.Core.Services;
 using OpenReferralApi.HealthChecks;
 using OpenReferralApi.Middleware;

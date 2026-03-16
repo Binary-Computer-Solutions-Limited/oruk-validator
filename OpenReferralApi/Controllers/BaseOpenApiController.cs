@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using OpenReferralApi.Core.Models;
 
 namespace OpenReferralApi.Controllers;
 

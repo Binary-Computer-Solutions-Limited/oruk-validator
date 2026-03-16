@@ -1,4 +1,3 @@
-using OpenReferralApi.Core.Models;
 
 namespace OpenReferralApi.Tests.Services;
 

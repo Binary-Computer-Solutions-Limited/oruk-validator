@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Moq;
 using Moq.Protected;
-using OpenReferralApi.Core.Models;
 using OpenReferralApi.Core.Services;
 using System.Net;
 

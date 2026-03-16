@@ -2,7 +2,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
-using OpenReferralApi.Core.Models;
 using OpenReferralApi.Core.Services;
 using OpenReferralApi.Services;
 

@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Moq;
 using Newtonsoft.Json.Linq;
-using OpenReferralApi.Core.Models;
 using OpenReferralApi.Core.Services;
 
 namespace OpenReferralApi.Tests.Services;
@@ -27,7 +26,7 @@ public class EndpointTestingServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = true,
-                Errors = new List<OpenReferralApi.Core.Models.ValidationError>(),
+                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>(),
                 SchemaVersion = "test",
                 Duration = TimeSpan.Zero
             });
@@ -66,7 +65,7 @@ public class EndpointTestingServiceTests
         Assert.That(endpoint.TestResults, Has.Count.EqualTo(1));
         Assert.That(endpoint.TestResults[0].ValidationResult, Is.Not.Null);
         Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
-            Has.Some.Matches<OpenReferralApi.Core.Models.ValidationError>(e => e.ErrorCode == "NO_IDS_AVAILABLE"));
+            Has.Some.Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(e => e.ErrorCode == "NO_IDS_AVAILABLE"));
     }
 
     [Test]
@@ -144,7 +143,7 @@ public class EndpointTestingServiceTests
         var endpoint = results[0];
         Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
         Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
-            Has.Some.Matches<OpenReferralApi.Core.Models.ValidationError>(e => e.ErrorCode == "OPTIONAL_ENDPOINT_NON_SUCCESS"));
+            Has.Some.Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(e => e.ErrorCode == "OPTIONAL_ENDPOINT_NON_SUCCESS"));
     }
 
     [Test]
@@ -167,7 +166,7 @@ public class EndpointTestingServiceTests
         var endpoint = results[0];
         Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.FailedValidation));
         Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
-            Has.Some.Matches<OpenReferralApi.Core.Models.ValidationError>(e => e.ErrorCode == "REQUIRED_ENDPOINT_FAILED"));
+            Has.Some.Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(e => e.ErrorCode == "REQUIRED_ENDPOINT_FAILED"));
     }
 
     [Test]
@@ -201,7 +200,7 @@ public class EndpointTestingServiceTests
         var endpoint = results[0];
         Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
         Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
-            Has.Some.Matches<OpenReferralApi.Core.Models.ValidationError>(e => e.ErrorCode == "EMPTY_FEED_WARNING"));
+            Has.Some.Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(e => e.ErrorCode == "EMPTY_FEED_WARNING"));
     }
 
       [Test]

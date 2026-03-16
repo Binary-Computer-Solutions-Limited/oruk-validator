@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using Newtonsoft.Json.Schema;
-using OpenReferralApi.Core.Models;
 using OpenReferralApi.Core.Services;
 using System.Text.Json.Nodes;
 

@@ -3,10 +3,15 @@ using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Schema;
-using OpenReferralApi.Core.Models;
+using OpenReferralApi.Core.Models.Configuration;
+using OpenReferralApi.Core.Models.Endpoints;
+using OpenReferralApi.Core.Models.Feeds;
+using OpenReferralApi.Core.Models.Schema;
+using OpenReferralApi.Core.Models.Security;
+using OpenReferralApi.Core.Models.Validation;
 using System.Text.RegularExpressions;
 using System.Collections.Concurrent;
-using ValidationError = OpenReferralApi.Core.Models.ValidationError;
+using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
 
 namespace OpenReferralApi.Core.Services;
 

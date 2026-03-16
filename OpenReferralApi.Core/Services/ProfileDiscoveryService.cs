@@ -1,7 +1,12 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
-using OpenReferralApi.Core.Models;
+using OpenReferralApi.Core.Models.Configuration;
+using OpenReferralApi.Core.Models.Endpoints;
+using OpenReferralApi.Core.Models.Feeds;
+using OpenReferralApi.Core.Models.Schema;
+using OpenReferralApi.Core.Models.Security;
+using OpenReferralApi.Core.Models.Validation;
 using System.Net.Http.Headers;
 using System.Text;
 
