@@ -191,7 +191,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                     Path = "",
                     Message = $"No schema validation available: {dialectInfo}. Supported versions: OpenAPI 3.0.x, 3.1.x, Swagger 2.0, and common JSON Schema dialects (2020-12, 2019-09, draft-07, draft-06, draft-04)",
                     ErrorCode = "UNSUPPORTED_SCHEMA_VERSION",
-                    Severity = "Warning"
+                    Severity = "Error"
                 });
             }
         }
@@ -203,7 +203,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                 Path = "",
                 Message = $"Could not validate against OpenAPI schema: {SanitizeExceptionMessage(ex.Message)}",
                 ErrorCode = "SCHEMA_VALIDATION_FAILED",
-                Severity = "Warning"
+                Severity = "Error"
             });
         }
 
@@ -225,10 +225,32 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                 {
                     return dialect;
                 }
+
+                return null;
             }
         }
 
-        return "https://json-schema.org/draft/2020-12/schema";
+        if (!string.IsNullOrWhiteSpace(version))
+        {
+            if (version.StartsWith("3.1", StringComparison.OrdinalIgnoreCase))
+            {
+                return "https://spec.openapis.org/oas/3.1/schema/2022-10-07";
+            }
+
+            if (version.StartsWith("3.0", StringComparison.OrdinalIgnoreCase))
+            {
+                return "https://spec.openapis.org/oas/3.0/schema/2019-04-02";
+            }
+
+            if (version.StartsWith("2.0", StringComparison.OrdinalIgnoreCase))
+            {
+                return "http://swagger.io/v2/schema.json";
+            }
+
+            return null;
+        }
+
+        return null;
     }
 
     private static bool IsKnownJsonSchemaDialect(string dialect)

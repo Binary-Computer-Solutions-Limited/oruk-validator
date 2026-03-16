@@ -1,9 +1,11 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Schema;
 using OpenReferralApi.Core.Models;
 using System.Text.RegularExpressions;
+using System.Collections.Concurrent;
 using ValidationError = OpenReferralApi.Core.Models.ValidationError;
 
 namespace OpenReferralApi.Core.Services;
@@ -18,24 +20,35 @@ public interface IJsonValidatorService
 
 public class JsonValidatorService : IJsonValidatorService
 {
+    private static readonly ConcurrentDictionary<string, CachedExternalSchemaDocument> ExternalSchemaUriCache = new(StringComparer.OrdinalIgnoreCase);
+
     private readonly ILogger<JsonValidatorService> _logger;
     private readonly HttpClient _httpClient;
     private readonly IPathParsingService _pathParsingService;
     private readonly IRequestProcessingService _requestProcessingService;
     private readonly ISchemaResolverService _schemaResolverService;
+    private readonly bool _externalSchemaUriCacheEnabled;
+    private readonly TimeSpan _externalSchemaUriCacheTtl;
 
     public JsonValidatorService(
         ILogger<JsonValidatorService> logger,
         HttpClient httpClient,
         IPathParsingService pathParsingService,
         IRequestProcessingService requestProcessingService,
-        ISchemaResolverService schemaResolverService)
+        ISchemaResolverService schemaResolverService,
+        IOptions<CacheOptions>? cacheOptions = null)
     {
         _logger = logger;
         _httpClient = httpClient;
         _pathParsingService = pathParsingService;
         _requestProcessingService = requestProcessingService;
         _schemaResolverService = schemaResolverService;
+
+        var effectiveCacheOptions = cacheOptions?.Value;
+        _externalSchemaUriCacheEnabled = effectiveCacheOptions?.Enabled ?? true;
+        _externalSchemaUriCacheTtl = effectiveCacheOptions != null && effectiveCacheOptions.ExpirationMinutes > 0
+            ? TimeSpan.FromMinutes(effectiveCacheOptions.ExpirationMinutes)
+            : TimeSpan.FromHours(2);
     }
 
     public async Task<ValidationResult> ValidateAsync(ValidationRequest request, CancellationToken cancellationToken = default)
@@ -242,29 +255,78 @@ public class JsonValidatorService : IJsonValidatorService
 
     private async Task<JSchema> LoadSchemaFromUriAsync(string schemaUri, ValidationOptions? options, CancellationToken cancellationToken)
     {
+        Uri validatedUri;
+        try
+        {
+            validatedUri = await _pathParsingService.ValidateAndParseSchemaUriAsync(schemaUri, options);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load schema from URI: {SchemaUri}", schemaUri);
+            throw new InvalidOperationException($"Failed to load schema from URI: {schemaUri}", ex);
+        }
+
+        var normalizedSchemaUri = validatedUri.ToString();
+
+        if (TryGetCachedSchemaJson(normalizedSchemaUri, out var cachedSchemaJson))
+        {
+            _logger.LogDebug("Using cached schema document for URI: {SchemaUri}", normalizedSchemaUri);
+            return await _schemaResolverService.CreateSchemaFromJsonAsync(cachedSchemaJson, normalizedSchemaUri, null, cancellationToken);
+        }
+
         return await _requestProcessingService.ExecuteWithRetryAsync(async (ct) =>
         {
             try
             {
-                _logger.LogInformation("Loading schema from URI: {SchemaUri}", schemaUri);
-
-                // Use PathParsingService for URI validation
-                var validatedUri = await _pathParsingService.ValidateAndParseSchemaUriAsync(schemaUri, options);
+                _logger.LogInformation("Loading schema from URI: {SchemaUri}", normalizedSchemaUri);
 
                 var response = await _httpClient.GetAsync(validatedUri, ct);
                 response.EnsureSuccessStatusCode();
                 var schemaJson = await response.Content.ReadAsStringAsync(ct);
 
+                if (_externalSchemaUriCacheEnabled)
+                {
+                    ExternalSchemaUriCache[normalizedSchemaUri] = new CachedExternalSchemaDocument(
+                        schemaJson,
+                        DateTime.UtcNow.Add(_externalSchemaUriCacheTtl));
+                }
+
                 // Pass the validated URI as documentUri so JSchemaUrlResolver can resolve relative references
-                return await _schemaResolverService.CreateSchemaFromJsonAsync(schemaJson, validatedUri.ToString(), null, ct);
+                return await _schemaResolverService.CreateSchemaFromJsonAsync(schemaJson, normalizedSchemaUri, null, ct);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to load schema from URI: {SchemaUri}", schemaUri);
-                throw new InvalidOperationException($"Failed to load schema from URI: {schemaUri}", ex);
+                _logger.LogError(ex, "Failed to load schema from URI: {SchemaUri}", normalizedSchemaUri);
+                throw new InvalidOperationException($"Failed to load schema from URI: {normalizedSchemaUri}", ex);
             }
         }, options, cancellationToken);
     }
+
+    private bool TryGetCachedSchemaJson(string schemaUri, out string schemaJson)
+    {
+        schemaJson = string.Empty;
+
+        if (!_externalSchemaUriCacheEnabled)
+        {
+            return false;
+        }
+
+        if (!ExternalSchemaUriCache.TryGetValue(schemaUri, out var cachedEntry))
+        {
+            return false;
+        }
+
+        if (cachedEntry.ExpiresAtUtc <= DateTime.UtcNow || string.IsNullOrWhiteSpace(cachedEntry.SchemaJson))
+        {
+            ExternalSchemaUriCache.TryRemove(schemaUri, out _);
+            return false;
+        }
+
+        schemaJson = cachedEntry.SchemaJson;
+        return true;
+    }
+
+    private sealed record CachedExternalSchemaDocument(string SchemaJson, DateTime ExpiresAtUtc);
 
     private async Task<JSchema> CreateSchemaFromObjectAsync(object schema)
     {

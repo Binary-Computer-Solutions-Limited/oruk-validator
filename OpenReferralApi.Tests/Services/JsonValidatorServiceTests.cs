@@ -185,6 +185,51 @@ public class JsonValidatorServiceTests
     }
 
     [Test]
+    public async Task ValidateWithSchemaUriAsync_ChecksCacheBeforeRequestingExternalSchema()
+    {
+        // Arrange
+        var schemaUri = $"https://example.com/{Guid.NewGuid():N}/schema.json";
+        _pathParsingServiceMock
+            .Setup(service => service.ValidateAndParseSchemaUriAsync(schemaUri, It.IsAny<ValidationOptions?>()))
+            .ReturnsAsync(new Uri(schemaUri));
+
+        var schemaJson = @"{""type"":""object"",""properties"":{ ""name"": {""type"":""string""}},""required"": [""name""] }";
+        var schemaRequestCount = 0;
+
+        var countingHandler = new CountingHttpMessageHandler(request =>
+        {
+            var requestUri = request.RequestUri?.ToString() ?? string.Empty;
+            if (string.Equals(requestUri, schemaUri, StringComparison.OrdinalIgnoreCase))
+            {
+                schemaRequestCount++;
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(schemaJson)
+            };
+        });
+
+        _httpClient?.Dispose();
+        _httpClient = new HttpClient(countingHandler);
+        _service = new JsonValidatorService(
+            _loggerMock.Object,
+            _httpClient,
+            _pathParsingServiceMock.Object,
+            _requestProcessingServiceMock.Object,
+            _schemaResolverServiceMock.Object);
+
+        // Act
+        var firstResult = await _service.ValidateWithSchemaUriAsync(new { name = "Ada" }, schemaUri);
+        var secondResult = await _service.ValidateWithSchemaUriAsync(new { name = "Ada" }, schemaUri);
+
+        // Assert
+        Assert.That(firstResult.IsValid, Is.True);
+        Assert.That(secondResult.IsValid, Is.True);
+        Assert.That(schemaRequestCount, Is.EqualTo(1));
+    }
+
+    [Test]
     public async Task ValidateSchemaAsync_WithMissingType_ReturnsWarning()
     {
         // Arrange
@@ -626,6 +671,21 @@ public class JsonValidatorServiceTests
             {
                 Content = new StringContent(responseBody)
             });
+        }
+    }
+
+    private sealed class CountingHttpMessageHandler : HttpMessageHandler
+    {
+        private readonly Func<HttpRequestMessage, HttpResponseMessage> _handler;
+
+        public CountingHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> handler)
+        {
+            _handler = handler;
+        }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(_handler(request));
         }
     }
 }

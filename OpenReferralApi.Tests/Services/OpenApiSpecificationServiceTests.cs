@@ -77,6 +77,39 @@ public class OpenApiSpecificationServiceTests
     }
 
     [Test]
+    public async Task ValidateAsync_WithOpenApi30Version_UsesDeclaredOpenApi30SchemaUri()
+    {
+        ValidationRequest? capturedRequest = null;
+
+        _jsonValidatorServiceMock
+            .Setup(x => x.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<ValidationRequest, CancellationToken>((req, _) => capturedRequest = req)
+            .ReturnsAsync(new ValidationResult { IsValid = true, Errors = new List<ValidationError>() });
+
+        var spec = JObject.Parse("""
+        {
+          "openapi": "3.0.3",
+          "info": { "title": "Test", "version": "1.0.0" },
+          "paths": {
+            "/services": {
+              "get": {
+                "responses": {
+                  "200": { "description": "ok" }
+                }
+              }
+            }
+          }
+        }
+        """);
+
+        var result = await _service.ValidateAsync(spec, CancellationToken.None);
+
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(capturedRequest, Is.Not.Null);
+        Assert.That(capturedRequest!.SchemaUri, Is.EqualTo("https://spec.openapis.org/oas/3.0/schema/2019-04-02"));
+    }
+
+    [Test]
     public async Task ValidateAsync_WhenJsonValidatorThrows_AddsSchemaValidationFailedWarning()
     {
         _jsonValidatorServiceMock
@@ -102,6 +135,34 @@ public class OpenApiSpecificationServiceTests
         var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
         Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "SCHEMA_VALIDATION_FAILED"));
+        Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "SCHEMA_VALIDATION_FAILED" && e.Severity == "Error"));
+        Assert.That(result.IsValid, Is.False);
+    }
+
+    [Test]
+    public async Task ValidateAsync_WithUnsupportedJsonSchemaDialect_AddsUnsupportedSchemaVersionError()
+    {
+        var spec = JObject.Parse("""
+        {
+          "openapi": "3.1.0",
+          "jsonSchemaDialect": "https://example.com/unknown-schema",
+          "info": { "title": "Test", "version": "1.0.0" },
+          "paths": {
+            "/services": {
+              "get": {
+                "responses": {
+                  "200": { "description": "ok" }
+                }
+              }
+            }
+          }
+        }
+        """);
+
+        var result = await _service.ValidateAsync(spec, CancellationToken.None);
+
+        Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "UNSUPPORTED_SCHEMA_VERSION" && e.Severity == "Error"));
+        Assert.That(result.IsValid, Is.False);
     }
 
     [Test]

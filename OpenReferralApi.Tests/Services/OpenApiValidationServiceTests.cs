@@ -406,6 +406,53 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WhenValidateSpecificationTrueAndDeclaredSchemaUnsupported_ReturnsFailureErrors()
+    {
+        // Arrange
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = "https://example.com/openapi.json"
+            },
+            Options = new OpenApiValidationOptions
+            {
+                ValidateSpecification = true,
+                TestEndpoints = false
+            }
+        };
+
+        var openApiWithUnsupportedDialect = @"{
+            ""openapi"": ""3.1.0"",
+            ""jsonSchemaDialect"": ""https://example.com/unknown-schema"",
+            ""info"": {
+                ""title"": ""Test API"",
+                ""version"": ""1.0.0""
+            },
+            ""paths"": {
+                ""/test"": {
+                    ""get"": {
+                        ""responses"": {
+                            ""200"": { ""description"": ""OK"" }
+                        }
+                    }
+                }
+            }
+        }";
+
+        SetupHttpMock(openApiWithUnsupportedDialect);
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.False);
+        Assert.That(result.SpecificationValidation, Is.Not.Null);
+        Assert.That(result.SpecificationValidation!.IsValid, Is.False);
+        Assert.That(result.SpecificationValidation.Errors.Any(e => e.ErrorCode == "UNSUPPORTED_SCHEMA_VERSION" && string.Equals(e.Severity, "Error", StringComparison.OrdinalIgnoreCase)), Is.True);
+    }
+
+    [Test]
     public async Task ValidateOpenApiSpecificationAsync_FailsWhenRequiredHsdsEndpointMissing()
     {
         // Arrange
