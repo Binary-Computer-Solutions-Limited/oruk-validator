@@ -636,6 +636,59 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
+    public async Task ValidateOpenApiSpecificationAsync_UsesWarmupCachedProfileBeforeExternalProfileFetch()
+    {
+        // Arrange
+        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false },
+            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
+        };
+
+        _schemaResolverServiceMock
+            .Setup(service => service.ResolveAsync(It.Is<string>(s => s.Contains("\"$ref\"", StringComparison.Ordinal) && s.Contains(hsdsSpecUrl, StringComparison.OrdinalIgnoreCase)), hsdsSpecUrl, It.IsAny<DataSourceAuthentication>()))
+            .ReturnsAsync(CreateHsdsProfileSpec());
+
+        var requestCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        SetupHttpMock((httpRequest, ct) =>
+        {
+            var requestUrl = httpRequest.RequestUri?.ToString() ?? string.Empty;
+            requestCounts[requestUrl] = requestCounts.TryGetValue(requestUrl, out var count) ? count + 1 : 1;
+
+            if (string.Equals(requestUrl, feedSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateFeedSpecMissingRequiredHsdsEndpoint())
+                };
+            }
+
+            if (string.Equals(requestUrl, hsdsSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+        });
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.False);
+        Assert.That(result.SpecificationValidation, Is.Not.Null);
+        Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_MISSING_ENDPOINT"), Is.True);
+
+        Assert.That(requestCounts.TryGetValue(feedSpecUrl, out var feedFetchCount), Is.True);
+        Assert.That(feedFetchCount, Is.EqualTo(1));
+        Assert.That(requestCounts.ContainsKey(hsdsSpecUrl), Is.False, "HSDS profile URL should not be fetched when warmup-path resolver returns it.");
+    }
+
+    [Test]
     public async Task ValidateOpenApiSpecificationAsync_FastMode_DoesNotRunFullHsdsRuntimeValidationPass()
     {
         // Arrange

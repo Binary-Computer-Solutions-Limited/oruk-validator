@@ -396,6 +396,46 @@ public class OpenApiValidationService : IOpenApiValidationService
             cacheScope,
             SchemaResolverService.SanitizeUrlForLogging(specUrl));
 
+        if (string.Equals(cacheScope, "profile", StringComparison.Ordinal))
+        {
+            var warmupSchemaRef = $$"""
+            {
+              "$ref": "{{specUrl}}"
+            }
+            """;
+
+            try
+            {
+                var resolvedFromWarmup = await _schemaResolverService.ResolveAsync(warmupSchemaRef, specUrl, auth: null);
+                var resolvedFromWarmupObject = JObject.Parse(resolvedFromWarmup);
+
+                if (!IsLikelyOpenApiDocument(resolvedFromWarmupObject))
+                {
+                    throw new InvalidOperationException("Warmup-path resolution did not produce an OpenAPI document.");
+                }
+
+                if (_profileSchemaCacheEnabled)
+                {
+                    cache[cacheKey] = new CachedResolvedSpec(
+                        resolvedFromWarmup,
+                        DateTime.UtcNow.Add(_profileSchemaCacheTtl));
+                }
+
+                _logger.LogDebug(
+                    "Resolved HSDS profile OpenAPI via schema resolver warmup path for URL {SpecUrl}",
+                    SchemaResolverService.SanitizeUrlForLogging(specUrl));
+
+                return resolvedFromWarmupObject;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(
+                    ex,
+                    "Warmup-path resolution unavailable for HSDS profile URL {SpecUrl}; falling back to direct fetch",
+                    SchemaResolverService.SanitizeUrlForLogging(specUrl));
+            }
+        }
+
         var unresolvedSpec = await _specFetcher.FetchOpenApiSpecFromUrlAsync(
             specUrl,
             auth,
@@ -425,6 +465,13 @@ public class OpenApiValidationService : IOpenApiValidationService
     }
 
     private sealed record CachedResolvedSpec(string ResolvedSpecJson, DateTime ExpiresAtUtc);
+
+    private static bool IsLikelyOpenApiDocument(JObject candidate)
+    {
+        return candidate.ContainsKey("openapi")
+            || candidate.ContainsKey("swagger")
+            || candidate.ContainsKey("paths");
+    }
 
     private static int CountExpiredCacheEntries()
     {
