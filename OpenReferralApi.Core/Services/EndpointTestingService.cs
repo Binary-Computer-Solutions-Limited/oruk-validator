@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using OpenReferralApi.Core.Models;
@@ -30,17 +31,20 @@ public class EndpointTestingService : IEndpointTestingService
     private readonly HttpClient _httpClient;
     private readonly IJsonValidatorService _jsonValidatorService;
     private readonly IHsdsComplianceService _hsdsComplianceService;
+    private readonly SpecificationOptions? _specificationOptions;
 
     public EndpointTestingService(
         ILogger<EndpointTestingService> logger,
         HttpClient httpClient,
         IJsonValidatorService jsonValidatorService,
-        IHsdsComplianceService hsdsComplianceService)
+        IHsdsComplianceService hsdsComplianceService,
+        IOptions<SpecificationOptions>? specificationOptions = null)
     {
         _logger = logger;
         _httpClient = httpClient;
         _jsonValidatorService = jsonValidatorService;
         _hsdsComplianceService = hsdsComplianceService;
+        _specificationOptions = specificationOptions?.Value;
     }
     public async Task<List<EndpointTestResult>> TestEndpointsAsync(JObject openApiSpec, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, string? documentUri, CancellationToken cancellationToken = default)
     {
@@ -740,11 +744,11 @@ public class EndpointTestingService : IEndpointTestingService
                                         Options = new ValidationOptions
                                         {
                                             ReportAdditionalFields = (options?.ReportAdditionalFields ?? false)
-                                                || (options?.StrictOwnSchemaValidation ?? false)
+                                                || (_specificationOptions?.StrictOwnSchemaValidation ?? true)
                                         }
                                     };
                                     var validationResult = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
-                                    _hsdsComplianceService.ApplyAdditionalFieldPolicy(validationResult, options);
+                                    _hsdsComplianceService.ApplyAdditionalFieldPolicy(validationResult);
                                     testResult.ValidationResult = validationResult;
                                     NormalizeValidationResultErrors(testResult.ValidationResult);
                                 }

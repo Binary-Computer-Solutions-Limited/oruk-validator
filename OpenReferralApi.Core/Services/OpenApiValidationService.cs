@@ -68,15 +68,16 @@ public class OpenApiValidationService : IOpenApiValidationService
         IEndpointTestingService? endpointTestingService = null,
         IAuthenticationValidationService? authenticationValidationService = null,
         IOpenApiBootstrapService? openApiBootstrapService = null,
-        IOptions<CacheOptions>? cacheOptions = null)
+        IOptions<CacheOptions>? cacheOptions = null,
+        IOptions<SpecificationOptions>? specificationOptions = null)
     {
         _logger = logger;
         _schemaResolverService = schemaResolverService;
         _profileDiscoveryService = discoveryService;
         _openApiDiscoveryService = feedSpecDiscoveryService;
         _openApiSpecificationService = openApiSpecificationService ?? new OpenApiSpecificationService(NullLogger<OpenApiSpecificationService>.Instance, jsonValidatorService);
-        _hsdsComplianceService = hsdsComplianceService ?? new HsdsComplianceService(jsonValidatorService);
-        _endpointTestingService = endpointTestingService ?? new EndpointTestingService(NullLogger<EndpointTestingService>.Instance, httpClient, jsonValidatorService, _hsdsComplianceService);
+        _hsdsComplianceService = hsdsComplianceService ?? new HsdsComplianceService(jsonValidatorService, specificationOptions);
+        _endpointTestingService = endpointTestingService ?? new EndpointTestingService(NullLogger<EndpointTestingService>.Instance, httpClient, jsonValidatorService, _hsdsComplianceService, specificationOptions);
         _authenticationValidationService = authenticationValidationService ?? new AuthenticationValidationService(NullLogger<AuthenticationValidationService>.Instance, authOptions);
         _allowUserSuppliedAuth = authOptions.Value.AllowUserSuppliedAuth;
         var effectiveCacheOptions = cacheOptions?.Value;

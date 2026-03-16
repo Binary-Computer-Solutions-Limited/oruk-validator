@@ -841,7 +841,7 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
-    public async Task ValidateOpenApiSpecificationAsync_WhenFailOnAdditionalFieldsTrue_FailsEndpointValidation()
+    public async Task ValidateOpenApiSpecificationAsync_WhenStrictOwnSchemaValidationTrue_FailsEndpointValidation()
     {
         // Arrange
         _jsonValidatorServiceMock
@@ -870,15 +870,13 @@ public class OpenApiValidationServiceTests
             Options = new OpenApiValidationOptions
             {
                 ValidateSpecification = false,
-                TestEndpoints = true,
-                StrictOwnSchemaValidation = true,
-                FailOnAdditionalFields = true
+                TestEndpoints = true
             }
         };
 
         SetupHttpMock(CreateOpenApi30SpecWithResponseSchema(), endpointResponseBody: "[{\"name\":\"ok\",\"extra\":\"x\"}]");
 
-        // Act
+        // Act — default server setting StrictOwnSchemaValidation = true causes errors
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
@@ -887,7 +885,7 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
-    public async Task ValidateOpenApiSpecificationAsync_WhenFailOnAdditionalFieldsFalse_ReportsWarningsWithoutFailure()
+    public async Task ValidateOpenApiSpecificationAsync_WhenStrictOwnSchemaValidationFalse_ReportsWarningsWithoutFailure()
     {
         // Arrange
         _jsonValidatorServiceMock
@@ -916,16 +914,25 @@ public class OpenApiValidationServiceTests
             Options = new OpenApiValidationOptions
             {
                 ValidateSpecification = false,
-                TestEndpoints = true,
-                StrictOwnSchemaValidation = true,
-                FailOnAdditionalFields = false
+                TestEndpoints = true
             }
         };
 
         SetupHttpMock(CreateOpenApi30SpecWithResponseSchema(), endpointResponseBody: "[{\"name\":\"ok\",\"extra\":\"x\"}]");
 
-        // Act
-        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+        var lenientSpecOptions = Options.Create(new SpecificationOptions { StrictOwnSchemaValidation = false });
+        var serviceWithLenientPolicy = new OpenApiValidationService(
+            _loggerMock.Object,
+            _httpClient,
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            _authOptions,
+            specificationOptions: lenientSpecOptions);
+
+        // Act — server setting StrictOwnSchemaValidation = false downgrades errors to warnings
+        var result = await serviceWithLenientPolicy.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
         Assert.That(result.IsValid, Is.True);

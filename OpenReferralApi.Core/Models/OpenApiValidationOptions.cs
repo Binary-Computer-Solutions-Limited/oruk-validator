@@ -25,22 +25,6 @@ public class OpenApiValidationOptions : ValidationOptionsBase
     public HsdsValidationMode HsdsValidationMode { get; set; } = HsdsValidationMode.SpecAndFeedRuntimeFast;
 
     /// <summary>
-    /// Enables strict validation of live feed data against the feed's own schema.
-    /// When true, response validation enforces additional field checks.
-    /// </summary>
-    [DefaultValue(true)]
-    [JsonProperty("strictOwnSchemaValidation")]
-    public bool StrictOwnSchemaValidation { get; set; } = true;
-
-    /// <summary>
-    /// Controls whether additional fields should fail validation when strict own-schema validation is enabled.
-    /// When false, additional fields are retained as warnings and do not fail a response by themselves.
-    /// </summary>
-    [DefaultValue(true)]
-    [JsonProperty("failOnAdditionalFields")]
-    public bool FailOnAdditionalFields { get; set; } = true;
-
-    /// <summary>
     /// Whether to perform live endpoint testing against the API server
     /// Set to false for specification-only validation without HTTP requests
     /// Requires a valid BaseUrl in the request when enabled

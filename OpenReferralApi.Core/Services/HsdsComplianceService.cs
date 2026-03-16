@@ -18,7 +18,7 @@ public interface IHsdsComplianceService
         JObject hsdsSpec,
         OpenApiValidationOptions options,
         CancellationToken cancellationToken);
-    void ApplyAdditionalFieldPolicy(ValidationResult? validationResult, OpenApiValidationOptions? options);
+    void ApplyAdditionalFieldPolicy(ValidationResult? validationResult);
 }
 
 public class HsdsComplianceService : IHsdsComplianceService
@@ -43,13 +43,15 @@ public class HsdsComplianceService : IHsdsComplianceService
 
     private readonly IJsonValidatorService _jsonValidatorService;
     private readonly IReadOnlyDictionary<string, string> _profileSchemaByVersion;
+    private readonly SpecificationOptions? _specificationOptions;
 
     public HsdsComplianceService(
         IJsonValidatorService jsonValidatorService,
         IOptions<SpecificationOptions>? specificationOptions = null)
     {
         _jsonValidatorService = jsonValidatorService;
-        _profileSchemaByVersion = BuildProfileSchemaLookup(specificationOptions?.Value);
+        _specificationOptions = specificationOptions?.Value;
+        _profileSchemaByVersion = BuildProfileSchemaLookup(_specificationOptions);
     }
 
     public string? ExtractClaimedProfileVersion(string? profileReason, string? schemaUrl)
@@ -208,7 +210,7 @@ public class HsdsComplianceService : IHsdsComplianceService
                 };
 
                 var hsdsValidationResult = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
-                ApplyAdditionalFieldPolicy(hsdsValidationResult, options);
+                ApplyAdditionalFieldPolicy(hsdsValidationResult);
 
                 if (hsdsValidationResult.Errors.Count == 0)
                 {
@@ -256,7 +258,7 @@ public class HsdsComplianceService : IHsdsComplianceService
         }
     }
 
-    public void ApplyAdditionalFieldPolicy(ValidationResult? validationResult, OpenApiValidationOptions? options)
+    public void ApplyAdditionalFieldPolicy(ValidationResult? validationResult)
     {
         if (validationResult?.Errors == null || validationResult.Errors.Count == 0)
         {
@@ -272,8 +274,8 @@ public class HsdsComplianceService : IHsdsComplianceService
             return;
         }
 
-        var failOnAdditionalFields = options?.FailOnAdditionalFields ?? true;
-        var additionalFieldSeverity = failOnAdditionalFields ? "Error" : "Warning";
+        var strictOwnSchemaValidation = _specificationOptions?.StrictOwnSchemaValidation ?? true;
+        var additionalFieldSeverity = strictOwnSchemaValidation ? "Error" : "Warning";
         foreach (var error in additionalFieldErrors)
         {
             error.Severity = additionalFieldSeverity;

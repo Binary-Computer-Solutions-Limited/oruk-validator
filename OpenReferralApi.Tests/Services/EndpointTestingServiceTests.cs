@@ -33,7 +33,7 @@ public class EndpointTestingServiceTests
             });
 
         _hsdsComplianceServiceMock
-            .Setup(x => x.ApplyAdditionalFieldPolicy(It.IsAny<ValidationResult?>(), It.IsAny<OpenApiValidationOptions?>()));
+            .Setup(x => x.ApplyAdditionalFieldPolicy(It.IsAny<ValidationResult?>()));
 
         SetupService((_, __) => new HttpResponseMessage(System.Net.HttpStatusCode.OK)
         {

@@ -17,6 +17,13 @@ public class SpecificationOptions
     public int WarmupStartupDelaySeconds { get; set; } = 5;
 
     /// <summary>
+    /// Controls whether live feed responses are validated strictly against the feed's own schema.
+    /// When true, any validation errors (including additional fields) are raised as errors.
+    /// When false, validation failures are downgraded to warnings.
+    /// </summary>
+    public bool StrictOwnSchemaValidation { get; set; } = true;
+
+    /// <summary>
     /// Optional configuration-based profile-name to OpenAPI URL mappings.
     /// Values here are merged with the built-in defaults for resolution and are
     /// also used as the source list for schema warmup.
