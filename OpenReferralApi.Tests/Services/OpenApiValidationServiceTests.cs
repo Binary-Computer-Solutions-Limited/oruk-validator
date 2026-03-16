@@ -1391,6 +1391,150 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
+    public async Task ValidateOpenApiSpecificationAsync_PerformsFullSuiteAfterSpecAndHsdsChecks()
+    {
+        // Arrange
+        var callOrder = new List<string>();
+        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var hsdsProfileUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
+
+        var specServiceMock = new Mock<IOpenApiSpecificationService>();
+        specServiceMock
+            .Setup(s => s.ValidateAsync(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<CancellationToken>()))
+            .Callback(() => callOrder.Add("spec"))
+            .ReturnsAsync(new OpenApiSpecificationValidation
+            {
+                IsValid = false,
+                Errors = new List<OpenReferralApi.Core.Models.ValidationError>
+                {
+                    new()
+                    {
+                        Path = "openapi",
+                        Message = "Declared spec validation failed",
+                        ErrorCode = "SPEC_ERROR",
+                        Severity = "Error"
+                    }
+                }
+            });
+
+        var hsdsServiceMock = new Mock<IHsdsComplianceService>();
+        hsdsServiceMock
+            .Setup(s => s.ExtractClaimedProfileVersion(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns("3.0");
+
+        hsdsServiceMock
+            .Setup(s => s.TryGetKnownHsdsSchemaUrl(It.IsAny<string>(), out hsdsProfileUrl))
+            .Returns(true);
+
+        hsdsServiceMock
+            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>()))
+            .Callback(() => callOrder.Add("hsds"))
+            .Returns(new List<OpenReferralApi.Core.Models.ValidationError>
+            {
+                new()
+                {
+                    Path = "paths.GET /required",
+                    Message = "Missing required HSDS endpoint",
+                    ErrorCode = "HSDS_MISSING_ENDPOINT",
+                    Severity = "Error"
+                }
+            });
+
+        hsdsServiceMock
+            .Setup(s => s.ValidateEndpointResponsesAgainstHsdsProfileAsync(
+                It.IsAny<List<EndpointTestResult>>(),
+                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<OpenApiValidationOptions>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var endpointTestingMock = new Mock<IEndpointTestingService>();
+        endpointTestingMock
+            .Setup(s => s.TestEndpointsAsync(
+                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<string>(),
+                It.IsAny<OpenApiValidationOptions>(),
+                It.IsAny<DataSourceAuthentication>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Callback(() => callOrder.Add("endpoints"))
+            .ReturnsAsync(new List<EndpointTestResult>
+            {
+                new()
+                {
+                    Path = "/services",
+                    Method = "GET",
+                    IsTested = true,
+                    Status = EndpointTestStatus.PassedValidation,
+                    TestResults = new List<HttpTestResult>()
+                }
+            });
+
+        var httpClient = new HttpClient(new MockHttpMessageHandler((req, ct) =>
+        {
+            var requestUrl = req.RequestUri?.ToString() ?? string.Empty;
+            if (string.Equals(requestUrl, feedSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateOpenApi30Spec())
+                };
+            }
+
+            if (string.Equals(requestUrl, hsdsProfileUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateHsdsProfileSpec())
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+        }));
+
+        var service = new OpenApiValidationService(
+            _loggerMock.Object,
+            httpClient,
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            _authOptions,
+            openApiSpecificationService: specServiceMock.Object,
+            hsdsComplianceService: hsdsServiceMock.Object,
+            endpointTestingService: endpointTestingMock.Object);
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            BaseUrl = "https://feed.example.com",
+            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
+            Options = new OpenApiValidationOptions
+            {
+                ValidateSpecification = true,
+                TestEndpoints = true
+            }
+        };
+
+        try
+        {
+            // Act
+            var result = await service.ValidateOpenApiSpecificationAsync(request);
+
+            // Assert
+            Assert.That(callOrder, Is.EqualTo(new[] { "spec", "hsds", "endpoints" }));
+            Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
+            Assert.That(result.SpecificationValidation, Is.Not.Null);
+            Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "SPEC_ERROR"), Is.True);
+            Assert.That(result.SpecificationValidation.Errors.Any(e => e.ErrorCode == "HSDS_MISSING_ENDPOINT"), Is.True);
+        }
+        finally
+        {
+            httpClient.Dispose();
+        }
+    }
+
+    [Test]
     public async Task ValidateOpenApiSpecificationAsync_WithEmptyPaginatedFeed_AddsWarning()
     {
         // Arrange
