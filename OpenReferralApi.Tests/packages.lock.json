@@ -129,6 +129,11 @@
           "jose-jwt": "4.1.0"
         }
       },
+      "HtmlAgilityPack": {
+        "type": "Transitive",
+        "resolved": "1.12.4",
+        "contentHash": "ljqvBabvFwKoLniuoQKO8b5bJfJweKLs4fUNS/V5dsvpo0A8MlJqxxn9XVmP2DaskbUXty6IYaWAi1SArGIMeQ=="
+      },
       "Humanizer.Core": {
         "type": "Transitive",
         "resolved": "3.0.1",
@@ -880,6 +885,7 @@
       "openreferralapi.core": {
         "type": "Project",
         "dependencies": {
+          "HtmlAgilityPack": "[1.12.4, )",
           "Microsoft.Extensions.Caching.Abstractions": "[10.0.3, )",
           "Microsoft.Extensions.Http": "[10.0.3, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.3, )",
