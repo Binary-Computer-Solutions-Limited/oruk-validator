@@ -88,26 +88,40 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  # --- JOB 2: SECURITY & CODE QUALITY ---
-  security-scans:
-    name: Security Scan (${{ matrix.scan }})
+  # --- JOB 2: CODE QUALITY ---
+  code-quality:
+    name: Code Quality Analysis
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      # --- CODEQL SCAN ---
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4.32.6
+        with:
+          languages: csharp
+          build-mode: none
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4.32.6
+
+  trivy-fs-scan:
+    name: Trivy Filesystem Scan
     runs-on: ubuntu-latest
     needs: build-and-test
-    if: always() && needs.build-and-test.result == 'success'
     permissions:
       security-events: write
       actions: read
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        scan: [codeql, trivy-fs]
     steps:
       - uses: actions/checkout@v6.0.2
 
       # --- TRIVY FS SCAN ---
       - name: Cache Trivy DB
-        if: matrix.scan == 'trivy-fs'
         uses: actions/cache@v5.0.4
         with:
           path: .trivycache
@@ -115,7 +129,6 @@ jobs:
           restore-keys: trivy-db-fs-${{ runner.os }}-
 
       - name: Trivy Filesystem Scan
-        if: matrix.scan == 'trivy-fs'
         uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: "fs"
@@ -126,30 +139,16 @@ jobs:
           cache-dir: .trivycache
 
       - name: Upload Trivy FS results
-        if: always() && matrix.scan == 'trivy-fs'
+        if: always() && hashFiles('trivy-fs-results.sarif') != ''
         uses: github/codeql-action/upload-sarif@v4.32.6
         with:
-          sarif_file: "trivy-fs-results.sarif"
-
-      # --- CODEQL SCAN ---
-      - name: Initialize CodeQL
-        if: matrix.scan == 'codeql'
-        uses: github/codeql-action/init@v4.32.6
-        with:
-          languages: csharp
-          build-mode: none
-
-      - name: Perform CodeQL Analysis
-        if: matrix.scan == 'codeql'
-        uses: github/codeql-action/analyze@v4.32.6
+          sarif_file: "trivy-fs-results.sarif"   
 
   # --- JOB 3: DOCKER & DAST ---
   # Now depends only on Build-and-Test to enable parallel execution
   docker-and-dast:
     name: Docker & DAST
     needs: build-and-test
-    # REQUIRED: Prevents skip if build-and-test succeeded
-    if: always() && needs.build-and-test.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -230,21 +229,24 @@ jobs:
   # It only runs if all preceding parallel jobs succeed.
   workflow-status:
     name: Final Workflow Status
-    needs: [security-scans, docker-and-dast]
+    needs: [code-quality, trivy-fs-scan, docker-and-dast]
     runs-on: ubuntu-latest
     if: always() # Ensures this runs even if others are skipped or fail so we can evaluate them
     steps:
       - name: Check All Jobs Status
         run: |
           # 1. Get the results
-          SEC_RESULT="${{ needs.security-scans.result }}"
+          CODE_QUALITY_RESULT="${{ needs.code-quality.result }}"
+          TRIVY_FS_RESULT="${{ needs.trivy-fs-scan.result }}"
           DOCKER_RESULT="${{ needs.docker-and-dast.result }}"
 
-          echo "Security Scan Status: $SEC_RESULT"
+          echo "Code Quality Status: $CODE_QUALITY_RESULT"
+          echo "Trivy FS Scan Status: $TRIVY_FS_RESULT"
           echo "Docker & DAST Status: $DOCKER_RESULT"
 
           # 2. Strict Check: If ANY job actually failed or was cancelled, we fail.
-          if [[ "$SEC_RESULT" == "failure" || "$SEC_RESULT" == "cancelled" ]] || \
+          if [[ "$CODE_QUALITY_RESULT" == "failure" || "$CODE_QUALITY_RESULT" == "cancelled" ]] || \
+             [[ "$TRIVY_FS_RESULT" == "failure" || "$TRIVY_FS_RESULT" == "cancelled" ]] || \
              [[ "$DOCKER_RESULT" == "failure" || "$DOCKER_RESULT" == "cancelled" ]]; then
             echo "::error::One or more required jobs failed or were cancelled."
             exit 1
