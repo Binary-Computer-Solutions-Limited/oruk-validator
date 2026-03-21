@@ -4,12 +4,6 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using OpenReferralApi.Core.Models.Configuration;
-using OpenReferralApi.Core.Models.Endpoints;
-using OpenReferralApi.Core.Models.Feeds;
-using OpenReferralApi.Core.Models.Schema;
-using OpenReferralApi.Core.Models.Security;
-using OpenReferralApi.Core.Models.Validation;
 
 namespace OpenReferralApi.Core.Services;
 

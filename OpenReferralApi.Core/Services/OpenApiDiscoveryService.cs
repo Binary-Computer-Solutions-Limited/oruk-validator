@@ -1,4 +1,3 @@
-using System.Net.Http;
 using System.Text.RegularExpressions;
 using HtmlAgilityPack;
 using Microsoft.Extensions.Logging;

@@ -1,9 +1,9 @@
+using System.Net;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using Moq.Protected;
 using OpenReferralApi.Core.Services;
-using System.Net;
 
 namespace OpenReferralApi.Tests.Services;
 

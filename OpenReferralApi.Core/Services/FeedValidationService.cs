@@ -1,13 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using MongoDB.Driver;
 using MongoDB.Bson;
-using OpenReferralApi.Core.Models.Configuration;
-using OpenReferralApi.Core.Models.Endpoints;
-using OpenReferralApi.Core.Models.Feeds;
-using OpenReferralApi.Core.Models.Schema;
-using OpenReferralApi.Core.Models.Security;
-using OpenReferralApi.Core.Models.Validation;
+using MongoDB.Driver;
 
 namespace OpenReferralApi.Core.Services;
 

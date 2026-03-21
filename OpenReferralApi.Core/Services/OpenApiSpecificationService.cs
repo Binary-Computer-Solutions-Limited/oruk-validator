@@ -2,12 +2,6 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Schema;
-using OpenReferralApi.Core.Models.Configuration;
-using OpenReferralApi.Core.Models.Endpoints;
-using OpenReferralApi.Core.Models.Feeds;
-using OpenReferralApi.Core.Models.Schema;
-using OpenReferralApi.Core.Models.Security;
-using OpenReferralApi.Core.Models.Validation;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
 
 namespace OpenReferralApi.Core.Services;
