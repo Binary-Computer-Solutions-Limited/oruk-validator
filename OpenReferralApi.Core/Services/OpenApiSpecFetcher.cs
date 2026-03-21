@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
+using YamlDotNet.Serialization;
 
 namespace OpenReferralApi.Core.Services;
 
@@ -134,18 +135,19 @@ internal class OpenApiSpecFetcher
             response.EnsureSuccessStatusCode();
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
+            var normalizedContent = EnsureJson(content);
 
             // Only resolve references if requested (lazy evaluation)
             // This avoids expensive resolution when we're only validating spec structure
             // or when endpoints won't be tested
             if (resolveReferences)
             {
-                var resolvedContent = await _schemaResolverService.ResolveAsync(content, specUrl, validatedAuth);
-                return JObject.Parse(resolvedContent);
+                var resolvedContent = await _schemaResolverService.ResolveAsync(normalizedContent, specUrl, validatedAuth);
+                return JObject.Parse(EnsureJson(resolvedContent));
             }
 
             // Return unresolved document for spec validation or later lazy resolution
-            return JObject.Parse(content);
+            return JObject.Parse(normalizedContent);
         }
         catch (Exception ex)
         {
@@ -255,6 +257,37 @@ internal class OpenApiSpecFetcher
         }
 
         return null;
+    }
+
+    private static string EnsureJson(string rawContent)
+    {
+        if (string.IsNullOrWhiteSpace(rawContent))
+        {
+            throw new FormatException("OpenAPI spec content was empty.");
+        }
+
+        var trimmedContent = rawContent.TrimStart();
+        if (trimmedContent.StartsWith("{", StringComparison.Ordinal) ||
+            trimmedContent.StartsWith("[", StringComparison.Ordinal))
+        {
+            return rawContent;
+        }
+
+        try
+        {
+            var deserializer = new DeserializerBuilder().Build();
+            var yamlObject = deserializer.Deserialize(new StringReader(rawContent));
+
+            var serializer = new SerializerBuilder()
+                .JsonCompatible()
+                .Build();
+
+            return serializer.Serialize(yamlObject);
+        }
+        catch (Exception ex)
+        {
+            throw new FormatException("OpenAPI spec content was neither valid JSON nor valid YAML.", ex);
+        }
     }
 
     /// <summary>

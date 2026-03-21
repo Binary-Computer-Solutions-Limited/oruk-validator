@@ -384,6 +384,11 @@
         "resolved": "10.1.4",
         "contentHash": "A1ewmv/Xq5YkjQoSW29Kc9IoIC6pu210F1Fmzmj1EO7QJLTs6w3tOJatST6s41+Y8eUr5A1JLiXZ14U5EgN6ow=="
       },
+      "YamlDotNet": {
+        "type": "Transitive",
+        "resolved": "16.3.0",
+        "contentHash": "SgMOdxbz8X65z8hraIs6hOEdnkH6hESTAIUa7viEngHOYaH+6q5XJmwr1+yb9vJpNQ19hCQY69xbFsLtXpobQA=="
+      },
       "ZstdSharp.Port": {
         "type": "Transitive",
         "resolved": "0.7.3",
@@ -395,7 +400,8 @@
           "HtmlAgilityPack": "[1.12.4, )",
           "MongoDB.Driver": "[3.7.0, )",
           "Newtonsoft.Json": "[13.0.4, )",
-          "Newtonsoft.Json.Schema": "[4.0.1, )"
+          "Newtonsoft.Json.Schema": "[4.0.1, )",
+          "YamlDotNet": "[16.3.0, )"
         }
       }
     }

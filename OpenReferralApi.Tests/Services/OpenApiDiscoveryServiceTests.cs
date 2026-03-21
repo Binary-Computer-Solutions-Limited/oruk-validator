@@ -40,12 +40,9 @@ public class OpenApiDiscoveryServiceTests
     public async Task FindOpenApiSpecAsync_WhenCommonPathContainsOpenApi_ReturnsPath()
     {
         // Arrange
-        SetupHttpResponseSequence(new[]
+        SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode statusCode, string content)>
         {
-            (HttpStatusCode.OK, "{\"openapi\":\"3.0.0\"}"),
-            (HttpStatusCode.NotFound, ""),
-            (HttpStatusCode.NotFound, ""),
-            (HttpStatusCode.NotFound, "")
+            ["/openapi.json"] = (HttpStatusCode.OK, "{\"openapi\":\"3.0.0\"}")
         });
 
         // Act
@@ -59,12 +56,9 @@ public class OpenApiDiscoveryServiceTests
     public async Task FindOpenApiSpecAsync_WhenOnlySecondCommonPathContainsSwagger_ReturnsSecondPath()
     {
         // Arrange
-        SetupHttpResponseSequence(new[]
+        SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode statusCode, string content)>
         {
-            (HttpStatusCode.NotFound, ""),
-            (HttpStatusCode.OK, "{\"swagger\":\"2.0\"}"),
-            (HttpStatusCode.NotFound, ""),
-            (HttpStatusCode.NotFound, "")
+            ["/swagger.json"] = (HttpStatusCode.OK, "{\"swagger\":\"2.0\"}")
         });
 
         // Act
@@ -72,6 +66,54 @@ public class OpenApiDiscoveryServiceTests
 
         // Assert
         Assert.That(result, Is.EqualTo("https://api.example.com/swagger.json"));
+    }
+
+    [Test]
+    public async Task FindOpenApiSpecAsync_WhenYamlSpecExistsAtStandardPath_ReturnsYamlPath()
+    {
+        // Arrange
+        SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode statusCode, string content)>
+        {
+            ["/openapi.yaml"] = (HttpStatusCode.OK, "openapi: 3.0.0\ninfo:\n  title: API\n  version: 1.0.0\npaths: {}")
+        });
+
+        // Act
+        var result = await _service.FindOpenApiSpecAsync("https://api.example.com");
+
+        // Assert
+        Assert.That(result, Is.EqualTo("https://api.example.com/openapi.yaml"));
+    }
+
+    [Test]
+    public async Task FindOpenApiSpecAsync_WhenYmlSpecExistsAtWellKnownPath_ReturnsYmlPath()
+    {
+        // Arrange
+        SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode statusCode, string content)>
+        {
+            ["/.well-known/openapi.yml"] = (HttpStatusCode.OK, "openapi: 3.0.0\ninfo:\n  title: API\n  version: 1.0.0\npaths: {}")
+        });
+
+        // Act
+        var result = await _service.FindOpenApiSpecAsync("https://api.example.com");
+
+        // Assert
+        Assert.That(result, Is.EqualTo("https://api.example.com/.well-known/openapi.yml"));
+    }
+
+    [Test]
+    public async Task FindOpenApiSpecAsync_WhenSwaggerConfigEndpointContainsYamlUrl_ReturnsDiscoveredYamlUrl()
+    {
+        // Arrange
+        SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode statusCode, string content)>
+        {
+            ["/swagger/swagger-config"] = (HttpStatusCode.OK, "{\"urls\":[{\"url\":\"/swagger/v2/swagger.yaml\",\"name\":\"V2\"}]}"),
+        });
+
+        // Act
+        var result = await _service.FindOpenApiSpecAsync("https://api.example.com");
+
+        // Assert
+        Assert.That(result, Is.EqualTo("https://api.example.com/swagger/v2/swagger.yaml"));
     }
 
     [Test]
@@ -87,13 +129,9 @@ public class OpenApiDiscoveryServiceTests
             </script>
             </body></html>";
 
-        SetupHttpResponseSequence(new[]
+        SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode statusCode, string content)>
         {
-            (HttpStatusCode.NotFound, ""),
-            (HttpStatusCode.NotFound, ""),
-            (HttpStatusCode.NotFound, ""),
-            (HttpStatusCode.NotFound, ""),
-            (HttpStatusCode.OK, html)
+            ["/root"] = (HttpStatusCode.OK, html)
         });
 
         // Act
@@ -116,13 +154,9 @@ public class OpenApiDiscoveryServiceTests
             </script>
             </body></html>";
 
-        SetupHttpResponseSequence(new[]
+        SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode statusCode, string content)>
         {
-            (HttpStatusCode.NotFound, ""),
-            (HttpStatusCode.NotFound, ""),
-            (HttpStatusCode.NotFound, ""),
-            (HttpStatusCode.NotFound, ""),
-            (HttpStatusCode.OK, html)
+            ["/root"] = (HttpStatusCode.OK, html)
         });
 
         // Act
@@ -137,13 +171,9 @@ public class OpenApiDiscoveryServiceTests
     {
         // Arrange
         var html = @"<html><body><script>const config = { url: '/not-openapi' };</script></body></html>";
-        SetupHttpResponseSequence(new[]
+        SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode statusCode, string content)>
         {
-            (HttpStatusCode.NotFound, ""),
-            (HttpStatusCode.NotFound, ""),
-            (HttpStatusCode.NotFound, ""),
-            (HttpStatusCode.NotFound, ""),
-            (HttpStatusCode.OK, html)
+            ["/"] = (HttpStatusCode.OK, html)
         });
 
         // Act
@@ -151,6 +181,117 @@ public class OpenApiDiscoveryServiceTests
 
         // Assert
         Assert.That(result, Is.Null);
+    }
+
+    [Test]
+    public async Task FindOpenApiSpecAsync_WhenUiHtmlContainsConfigUrl_ReturnsSpecFromConfigEndpoint()
+    {
+        // Arrange
+        var html = @"<!doctype html><html><body>
+            <script>
+                SwaggerUIBundle({
+                    configUrl: '/swagger/swagger-config',
+                    dom_id: '#swagger-ui'
+                });
+            </script>
+            </body></html>";
+
+        SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode statusCode, string content)>
+        {
+            ["/"] = (HttpStatusCode.OK, html),
+            ["/swagger/swagger-config"] = (HttpStatusCode.OK, "{\"url\":\"/swagger/v1/swagger.yaml\"}")
+        });
+
+        // Act
+        var result = await _service.FindOpenApiSpecAsync("https://api.example.com");
+
+        // Assert
+        Assert.That(result, Is.EqualTo("https://api.example.com/swagger/v1/swagger.yaml"));
+    }
+
+    [Test]
+    public async Task FindOpenApiSpecAsync_WhenUiHtmlContainsRedocInit_ReturnsSpecUrl()
+    {
+        // Arrange
+        var html = @"<!doctype html><html><body>
+            <script>
+                Redoc.init('/openapi.yaml', {});
+            </script>
+            </body></html>";
+
+        SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode statusCode, string content)>
+        {
+            ["/"] = (HttpStatusCode.OK, html)
+        });
+
+        // Act
+        var result = await _service.FindOpenApiSpecAsync("https://api.example.com");
+
+        // Assert
+        Assert.That(result, Is.EqualTo("https://api.example.com/openapi.yaml"));
+    }
+
+    [Test]
+    public async Task FindOpenApiSpecAsync_WhenUiHtmlContainsSpecUrlAttribute_ReturnsSpecUrl()
+    {
+        // Arrange
+        var html = @"<!doctype html><html><body>
+            <rapi-doc spec-url='/openapi.yml'></rapi-doc>
+            </body></html>";
+
+        SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode statusCode, string content)>
+        {
+            ["/"] = (HttpStatusCode.OK, html)
+        });
+
+        // Act
+        var result = await _service.FindOpenApiSpecAsync("https://api.example.com");
+
+        // Assert
+        Assert.That(result, Is.EqualTo("https://api.example.com/openapi.yml"));
+    }
+
+    [Test]
+    public async Task FindOpenApiSpecAsync_WhenSwaggerConfigEndpointIsInvalidJson_FallsBackToUiDiscovery()
+    {
+        // Arrange
+        var html = @"<!doctype html><html><body>
+            <script>
+                SwaggerUIBundle({
+                    url: '/openapi.json',
+                    dom_id: '#swagger-ui'
+                });
+            </script>
+            </body></html>";
+
+        SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode statusCode, string content)>
+        {
+            ["/swagger-config"] = (HttpStatusCode.OK, "not-json"),
+            ["/"] = (HttpStatusCode.OK, html)
+        });
+
+        // Act
+        var result = await _service.FindOpenApiSpecAsync("https://api.example.com");
+
+        // Assert
+        Assert.That(result, Is.EqualTo("https://api.example.com/openapi.json"));
+    }
+
+    [Test]
+    public async Task FindOpenApiSpecAsync_WhenSwaggerConfigContainsDuplicateUrls_ReturnsFirstUrl()
+    {
+        // Arrange
+        SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode statusCode, string content)>
+        {
+            ["/swagger-config"] = (HttpStatusCode.OK,
+                "{\"urls\":[{\"url\":\"/swagger/v1/swagger.json\"},{\"url\":\"/swagger/v1/swagger.json\"},{\"url\":\"/swagger/v2/swagger.json\"}]}")
+        });
+
+        // Act
+        var result = await _service.FindOpenApiSpecAsync("https://api.example.com");
+
+        // Assert
+        Assert.That(result, Is.EqualTo("https://api.example.com/swagger/v1/swagger.json"));
     }
 
     [Test]
@@ -211,9 +352,36 @@ public class OpenApiDiscoveryServiceTests
 
         // Assert
         Assert.That(result, Is.EqualTo("https://api.example.com/openapi.json"));
-        Assert.That(requestUris, Has.Count.EqualTo(4));
+        Assert.That(requestUris, Has.Count.EqualTo(13));
         Assert.That(requestUris, Has.None.EqualTo("https://api.example.com/"));
         Assert.That(requestUris, Has.None.EqualTo("https://api.example.com"));
+    }
+
+    [Test]
+    public async Task FindOpenApiSpecAsync_WhenUiHtmlContainsMultipleDefinitions_ReturnsFirstDiscoveredDefinition()
+    {
+        // Arrange
+        var html = @"<!doctype html><html><body>
+            <script>
+                SwaggerUIBundle({
+                    urls: [
+                        { url: '/swagger/v1/swagger.json', name: 'V1' },
+                        { url: '/swagger/v2/swagger.yaml', name: 'V2' }
+                    ]
+                });
+            </script>
+            </body></html>";
+
+        SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode statusCode, string content)>
+        {
+            ["/"] = (HttpStatusCode.OK, html)
+        });
+
+        // Act
+        var result = await _service.FindOpenApiSpecAsync("https://api.example.com");
+
+        // Assert
+        Assert.That(result, Is.EqualTo("https://api.example.com/swagger/v1/swagger.json"));
     }
 
     [Test]
@@ -254,22 +422,31 @@ public class OpenApiDiscoveryServiceTests
         Assert.That(callCount, Is.GreaterThanOrEqualTo(2));
     }
 
-    private void SetupHttpResponseSequence((HttpStatusCode statusCode, string content)[] responses)
+    private void SetupHttpResponseMap(IDictionary<string, (HttpStatusCode statusCode, string content)> responses)
     {
-        var sequence = _httpMessageHandlerMock
+        _httpMessageHandlerMock
             .Protected()
-            .SetupSequence<Task<HttpResponseMessage>>(
+            .Setup<Task<HttpResponseMessage>>(
                 "SendAsync",
                 ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>());
-
-        foreach (var (statusCode, content) in responses)
-        {
-            sequence = sequence.ReturnsAsync(new HttpResponseMessage
+                ItExpr.IsAny<CancellationToken>())
+            .Returns<HttpRequestMessage, CancellationToken>((request, _) =>
             {
-                StatusCode = statusCode,
-                Content = new StringContent(content)
+                var absolutePath = request.RequestUri?.AbsolutePath ?? "/";
+                if (responses.TryGetValue(absolutePath, out var configuredResponse))
+                {
+                    return Task.FromResult(new HttpResponseMessage
+                    {
+                        StatusCode = configuredResponse.statusCode,
+                        Content = new StringContent(configuredResponse.content)
+                    });
+                }
+
+                return Task.FromResult(new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.NotFound,
+                    Content = new StringContent(string.Empty)
+                });
             });
-        }
     }
 }

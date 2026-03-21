@@ -508,6 +508,131 @@ public class OpenApiSpecFetcherTests
             "SchemaResolverService.ResolveAsync should not be called when resolveReferences is false");
     }
 
+    [Test]
+    public async Task FetchOpenApiSpecFromUrlAsync_WithYamlContent_ParsesAsJsonObject()
+    {
+        // Arrange
+        var specUrl = "https://example.com/openapi.yaml";
+        var specYaml = CreateMinimalOpenApiSpecYaml();
+
+        var handler = new MockHttpMessageHandler(async request =>
+        {
+            return new HttpResponseMessage
+            {
+                StatusCode = System.Net.HttpStatusCode.OK,
+                Content = new StringContent(specYaml)
+            };
+        });
+
+        using var httpClient = new HttpClient(handler);
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory.Setup(f => f.CreateClient("OpenApiValidationService")).Returns(httpClient);
+        var fetcher = new OpenApiSpecFetcher(httpClientFactory.Object, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
+
+        // Act
+        var result = await fetcher.FetchOpenApiSpecFromUrlAsync(specUrl, null, CancellationToken.None, resolveReferences: false);
+
+        // Assert
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result["openapi"]?.ToString(), Is.EqualTo("3.0.0"));
+        Assert.That(result["paths"], Is.Not.Null);
+    }
+
+    [Test]
+    public async Task FetchOpenApiSpecFromUrlAsync_WithYamlContentAndReferenceResolution_SendsJsonToResolver()
+    {
+        // Arrange
+        var specUrl = "https://example.com/openapi.yaml";
+        var specYaml = CreateMinimalOpenApiSpecYaml();
+        string? capturedResolvedInput = null;
+
+        _schemaResolverServiceMock
+            .Setup(s => s.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication>()))
+            .Callback<string, string, DataSourceAuthentication>((content, _, _) => capturedResolvedInput = content)
+            .ReturnsAsync((string content, string _, DataSourceAuthentication _) => content);
+
+        var handler = new MockHttpMessageHandler(async request =>
+        {
+            return new HttpResponseMessage
+            {
+                StatusCode = System.Net.HttpStatusCode.OK,
+                Content = new StringContent(specYaml)
+            };
+        });
+
+        using var httpClient = new HttpClient(handler);
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory.Setup(f => f.CreateClient("OpenApiValidationService")).Returns(httpClient);
+        var fetcher = new OpenApiSpecFetcher(httpClientFactory.Object, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
+
+        // Act
+        var result = await fetcher.FetchOpenApiSpecFromUrlAsync(specUrl, null, CancellationToken.None, resolveReferences: true);
+
+        // Assert
+        Assert.That(result, Is.Not.Null);
+        Assert.That(capturedResolvedInput, Is.Not.Null);
+        Assert.That(capturedResolvedInput, Does.Contain("\"openapi\""));
+        Assert.That(capturedResolvedInput, Does.Not.Contain("openapi:"));
+    }
+
+    [Test]
+    public void FetchOpenApiSpecFromUrlAsync_WithEmptySpecContent_ThrowsFormatExceptionWrapped()
+    {
+        // Arrange
+        var specUrl = "https://example.com/openapi.json";
+
+        var handler = new MockHttpMessageHandler(async request =>
+        {
+            return new HttpResponseMessage
+            {
+                StatusCode = System.Net.HttpStatusCode.OK,
+                Content = new StringContent("   ")
+            };
+        });
+
+        using var httpClient = new HttpClient(handler);
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory.Setup(f => f.CreateClient("OpenApiValidationService")).Returns(httpClient);
+        var fetcher = new OpenApiSpecFetcher(httpClientFactory.Object, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
+
+        // Act + Assert
+        var ex = Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await fetcher.FetchOpenApiSpecFromUrlAsync(specUrl, null, CancellationToken.None, resolveReferences: false));
+
+        Assert.That(ex, Is.Not.Null);
+        Assert.That(ex!.InnerException, Is.InstanceOf<FormatException>());
+        Assert.That(ex.InnerException!.Message, Does.Contain("content was empty"));
+    }
+
+    [Test]
+    public void FetchOpenApiSpecFromUrlAsync_WithInvalidYamlContent_ThrowsFormatExceptionWrapped()
+    {
+        // Arrange
+        var specUrl = "https://example.com/openapi.yaml";
+
+        var handler = new MockHttpMessageHandler(async request =>
+        {
+            return new HttpResponseMessage
+            {
+                StatusCode = System.Net.HttpStatusCode.OK,
+                Content = new StringContent("openapi: [3.0.0")
+            };
+        });
+
+        using var httpClient = new HttpClient(handler);
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory.Setup(f => f.CreateClient("OpenApiValidationService")).Returns(httpClient);
+        var fetcher = new OpenApiSpecFetcher(httpClientFactory.Object, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
+
+        // Act + Assert
+        var ex = Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await fetcher.FetchOpenApiSpecFromUrlAsync(specUrl, null, CancellationToken.None, resolveReferences: false));
+
+        Assert.That(ex, Is.Not.Null);
+        Assert.That(ex!.InnerException, Is.InstanceOf<FormatException>());
+        Assert.That(ex.InnerException!.Message, Does.Contain("neither valid JSON nor valid YAML"));
+    }
+
     #endregion
 
     #region Helper Methods
@@ -522,6 +647,15 @@ public class OpenApiSpecFetcherTests
             },
             ""paths"": {}
         }";
+    }
+
+    private static string CreateMinimalOpenApiSpecYaml()
+    {
+        return @"openapi: 3.0.0
+info:
+  title: Test API
+  version: 1.0.0
+paths: {}";
     }
 
     #endregion
