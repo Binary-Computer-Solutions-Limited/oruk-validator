@@ -191,7 +191,7 @@ public class ProfileDiscoveryServiceTests
     }
 
     [Test]
-    public async Task DiscoverOpenApiUrlAsync_WithNoVersionOrOpenApiUrl_ReturnsDefaultSpec()
+    public async Task DiscoverOpenApiUrlAsync_WithNoVersionOrOpenApiUrl_ReturnsNullUrl()
     {
         // Arrange
         var baseUrl = "https://api.example.com";
@@ -203,13 +203,12 @@ public class ProfileDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
 
         // Assert
-        Assert.That(url, Does.Contain("1.0/openapi.json"));
-        Assert.That(reason, Does.Contain("Defaulted to HSDS-UK 1.0"));
-        Assert.That(reason, Does.Contain("no version or openapi_url found"));
+        Assert.That(url, Is.Null);
+        Assert.That(reason, Does.Contain("No version or openapi_url found"));
     }
 
     [Test]
-    public async Task DiscoverOpenApiUrlAsync_WithHttpError_ReturnsDefaultSpec()
+    public async Task DiscoverOpenApiUrlAsync_WithHttpError_ReturnsNullUrl()
     {
         // Arrange
         var baseUrl = "https://api.example.com";
@@ -220,13 +219,12 @@ public class ProfileDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
 
         // Assert
-        Assert.That(url, Does.Contain("1.0/openapi.json"));
-        Assert.That(reason, Does.Contain("Defaulted to HSDS-UK 1.0"));
-        Assert.That(reason, Does.Contain("base URL request failed"));
+        Assert.That(url, Is.Null);
+        Assert.That(reason, Does.Contain("Base URL request failed"));
     }
 
     [Test]
-    public async Task DiscoverOpenApiUrlAsync_WithInvalidJson_ReturnsDefaultSpec()
+    public async Task DiscoverOpenApiUrlAsync_WithInvalidJson_ReturnsNullUrl()
     {
         // Arrange
         var baseUrl = "https://api.example.com";
@@ -238,13 +236,12 @@ public class ProfileDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
 
         // Assert
-        Assert.That(url, Does.Contain("1.0/openapi.json"));
-        Assert.That(reason, Does.Contain("Defaulted to HSDS-UK 1.0"));
-        Assert.That(reason, Does.Contain("failed to parse"));
+        Assert.That(url, Is.Null);
+        Assert.That(reason, Does.Contain("Failed to parse"));
     }
 
     [Test]
-    public async Task DiscoverOpenApiUrlAsync_WithHttpException_ReturnsDefaultSpec()
+    public async Task DiscoverOpenApiUrlAsync_WithHttpException_ReturnsNullUrl()
     {
         // Arrange
         var baseUrl = "https://api.example.com";
@@ -261,13 +258,12 @@ public class ProfileDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
 
         // Assert
-        Assert.That(url, Does.Contain("1.0/openapi.json"));
-        Assert.That(reason, Does.Contain("Defaulted to HSDS-UK 1.0"));
-        Assert.That(reason, Does.Contain("error requesting base URL"));
+        Assert.That(url, Is.Null);
+        Assert.That(reason, Does.Contain("Error requesting base URL"));
     }
 
     [Test]
-    public async Task DiscoverOpenApiUrlAsync_WithInvalidVersionFormat_ReturnsDefaultSpec()
+    public async Task DiscoverOpenApiUrlAsync_WithInvalidVersionFormat_ReturnsNullUrl()
     {
         // Arrange
         var baseUrl = "https://api.example.com";
@@ -279,8 +275,8 @@ public class ProfileDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
 
         // Assert
-        Assert.That(url, Does.Contain("1.0/openapi.json"));
-        Assert.That(reason, Does.Contain("Defaulted to HSDS-UK 1.0"));
+        Assert.That(url, Is.Null);
+        Assert.That(reason, Does.Contain("No version or openapi_url found"));
     }
 
     [Test]

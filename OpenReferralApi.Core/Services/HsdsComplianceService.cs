@@ -31,15 +31,6 @@ public class HsdsComplianceService : IHsdsComplianceService
     };
 
     // In-memory lookup table for known HSDS baseline schemas by profile version.
-    private static readonly IReadOnlyDictionary<string, string> DefaultHsdsSchemaByVersion =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["1.0"] = "https://openreferraluk.org/specifications/1.0/openapi.json",
-            ["2.0"] = "https://openreferraluk.org/specifications/2.0/openapi.json",
-            ["3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json",
-            ["3.1"] = "https://openreferraluk.org/specifications/3.1/openapi.json"
-        };
-
     private readonly IJsonValidatorService _jsonValidatorService;
     private readonly IReadOnlyDictionary<string, string> _profileSchemaByVersion;
     private readonly SpecificationOptions? _specificationOptions;
@@ -315,7 +306,7 @@ public class HsdsComplianceService : IHsdsComplianceService
 
     private static IReadOnlyDictionary<string, string> BuildProfileSchemaLookup(SpecificationOptions? options)
     {
-        var lookup = new Dictionary<string, string>(DefaultHsdsSchemaByVersion, StringComparer.OrdinalIgnoreCase);
+        var lookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         if (options?.Urls != null)
         {

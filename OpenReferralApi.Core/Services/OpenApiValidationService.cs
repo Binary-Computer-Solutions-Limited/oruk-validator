@@ -192,7 +192,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 }
                 else if (usedBaseUrlDiscovery)
                 {
-                    request.ProfileReason = "Standard version [user: HSDS-UK-1.0] defaulted (version not found in '/' response or OpenAPI spec)";
+                    // No version found; HSDS profile validation will flag the unknown version error.
                 }
             }
 
@@ -238,11 +238,12 @@ public class OpenApiValidationService : IOpenApiValidationService
                                 new ValidationError
                                 {
                                     Path = "profile",
-                                    Message = "Unable to map feed profile version to a known HSDS schema for baseline comparison.",
+                                    Message = "Can only validate against known HSDS schema profiles. The data feed did not identify a recognised HSDS schema version.",
                                     ErrorCode = "HSDS_PROFILE_UNKNOWN",
-                                    Severity = "Warning"
+                                    Severity = "Error"
                                 }
                             }));
+                        specValidation.IsValid = false;
                     }
                 }
             }

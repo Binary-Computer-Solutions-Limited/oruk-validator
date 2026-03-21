@@ -46,7 +46,17 @@ public class HsdsComplianceServiceTests
     [Test]
     public void TryGetKnownHsdsSchemaUrl_ReturnsTrueForKnownVersion()
     {
-        var found = _service.TryGetKnownHsdsSchemaUrl("3.0", out var schemaUrl);
+        var service = new HsdsComplianceService(
+            _jsonValidatorServiceMock.Object,
+            Options.Create(new SpecificationOptions
+            {
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json"
+                }
+            }));
+
+        var found = service.TryGetKnownHsdsSchemaUrl("3.0", out var schemaUrl);
 
         Assert.That(found, Is.True);
         Assert.That(schemaUrl, Is.EqualTo("https://openreferraluk.org/specifications/3.0/openapi.json"));

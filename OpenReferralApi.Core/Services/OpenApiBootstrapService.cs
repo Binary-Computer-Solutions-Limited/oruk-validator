@@ -19,7 +19,6 @@ public class OpenApiBootstrapResult
 
 public class OpenApiBootstrapService : IOpenApiBootstrapService
 {
-    private const string DefaultProfileVersion = "HSDS-UK-1.0";
 
     private readonly IProfileDiscoveryService _profileDiscoveryService;
     private readonly IOpenApiDiscoveryService _openApiDiscoveryService;
@@ -66,10 +65,10 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
             return new OpenApiBootstrapResult
             {
                 OpenApiSchemaUrl = null,
-                ProfileVersion = rootProfileVersion ?? DefaultProfileVersion,
+                ProfileVersion = rootProfileVersion,
                 ProfileReason = rootProfileVersion != null
                     ? $"Standard version [user: {rootProfileVersion}] read from '/' endpoint"
-                    : $"Standard version [user: {DefaultProfileVersion}] defaulted (version not found in '/' response)",
+                    : "Version not found in '/' response",
                 DiscoveryReason = profileDiscovery.Reason,
                 UsedDataServiceOpenApi = false
             };
@@ -82,7 +81,7 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
 
         var profileReason = rootProfileVersion != null
             ? $"Standard version [user: {rootProfileVersion}] read from '/' endpoint"
-            : $"Standard version [user: {DefaultProfileVersion}] defaulted (version not found in '/' response)";
+            : "Version not found in '/' response";
 
         _logger.LogInformation(
             "Bootstrap discovery resolved schema URL {SchemaUrl} with profile context {ProfileReason}",
@@ -92,7 +91,7 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
         return new OpenApiBootstrapResult
         {
             OpenApiSchemaUrl = discoveredUrl,
-            ProfileVersion = rootProfileVersion ?? DefaultProfileVersion,
+            ProfileVersion = rootProfileVersion,
             ProfileReason = profileReason,
             DiscoveryReason = discoveryReason,
             UsedDataServiceOpenApi = profileDiscovery.HasExplicitOpenApiUrl || !string.IsNullOrWhiteSpace(feedSpecUrl)

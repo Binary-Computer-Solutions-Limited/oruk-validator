@@ -46,8 +46,6 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             return new ProfileDiscoveryResult();
         }
 
-        const float defaultSpecificationVersion = 1.0f;
-        var defaultSpec = $"{_baseSpecificationUrl}{defaultSpecificationVersion:0.0}/openapi.json";
         try
         {
             using var httpClient = _httpClientFactory.CreateClient("OpenApiValidationService");
@@ -59,11 +57,11 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             var resp = await httpClient.SendAsync(request, cancellationToken);
             if (!resp.IsSuccessStatusCode)
             {
-                _logger.LogInformation("BaseUrl request returned {Status}; defaulting to HSDS-UK 1.0 spec: {DefaultSpec}", resp.StatusCode, defaultSpec);
+                _logger.LogInformation("BaseUrl request returned {Status}; unable to determine HSDS schema version", resp.StatusCode);
                 return new ProfileDiscoveryResult
                 {
-                    Url = defaultSpec,
-                    Reason = "Defaulted to HSDS-UK 1.0 (base URL request failed)",
+                    Url = null,
+                    Reason = "Base URL request failed",
                     BaseUrlRequestSucceeded = false
                 };
             }
@@ -98,7 +96,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                     if (extractedVersion.HasValue)
                     {
                         var versionedSpec = $"{_baseSpecificationUrl}{extractedVersion.Value:0.0}/openapi.json";
-                        _logger.LogInformation("Detected version '{Version}'; using HSDS-UK {ExtractedVersion:0.0} spec: {OpenApiUrl}", SchemaResolverService.SanitizeStringForLogging(version), extractedVersion.Value, versionedSpec);
+                        _logger.LogInformation("Detected version '{Version}'; HSDS-UK {ExtractedVersion:0.0} spec: {OpenApiUrl}", SchemaResolverService.SanitizeStringForLogging(version), extractedVersion.Value, versionedSpec);
                         return new ProfileDiscoveryResult
                         {
                             Url = versionedSpec,
@@ -109,22 +107,22 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                     }
                 }
 
-                _logger.LogInformation("No openapi_url or version in BaseUrl response; defaulting to HSDS-UK 1.0 spec: {DefaultSpec}", defaultSpec);
+                _logger.LogInformation("No openapi_url or version in BaseUrl response; unable to determine HSDS schema version");
                 return new ProfileDiscoveryResult
                 {
-                    Url = defaultSpec,
-                    Reason = "Defaulted to HSDS-UK 1.0 (no version or openapi_url found)",
+                    Url = null,
+                    Reason = "No version or openapi_url found in '/' response",
                     BaseUrlRequestSucceeded = true,
                     BaseUrlResponseContent = content
                 };
             }
             catch (Exception jex)
             {
-                _logger.LogWarning(jex, "Failed to parse JSON from BaseUrl response; defaulting to HSDS-UK 1.0 spec: {DefaultSpec}", defaultSpec);
+                _logger.LogWarning(jex, "Failed to parse JSON from BaseUrl response; unable to determine HSDS schema version");
                 return new ProfileDiscoveryResult
                 {
-                    Url = defaultSpec,
-                    Reason = "Defaulted to HSDS-UK 1.0 (failed to parse base URL response)",
+                    Url = null,
+                    Reason = "Failed to parse '/' response",
                     BaseUrlRequestSucceeded = true,
                     BaseUrlResponseContent = content
                 };
@@ -136,11 +134,11 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error requesting BaseUrl to discover openapi_url; defaulting to HSDS-UK 1.0 spec: {DefaultSpec}", defaultSpec);
+            _logger.LogWarning(ex, "Error requesting BaseUrl to discover openapi_url; unable to determine HSDS schema version");
             return new ProfileDiscoveryResult
             {
-                Url = defaultSpec,
-                Reason = "Defaulted to HSDS-UK 1.0 (error requesting base URL)",
+                Url = null,
+                Reason = "Error requesting base URL",
                 BaseUrlRequestSucceeded = false
             };
         }

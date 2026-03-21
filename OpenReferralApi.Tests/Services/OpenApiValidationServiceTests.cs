@@ -30,8 +30,8 @@ public class OpenApiValidationServiceTests
             .Setup(s => s.DiscoverAsync(It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProfileDiscoveryResult
             {
-                Url = "https://openreferraluk.org/specifications/1.0/openapi.json",
-                Reason = "Defaulted to HSDS-UK 1.0 (no version or openapi_url found)"
+                Url = null,
+                Reason = "No version or openapi_url found in '/' response"
             });
         _feedSpecDiscoveryMock
             .Setup(s => s.FindOpenApiSpecAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -72,7 +72,15 @@ public class OpenApiValidationServiceTests
             _schemaResolverServiceMock.Object,
             _profileDiscoveryServiceMock.Object,
             _feedSpecDiscoveryMock.Object,
-            _authOptions);
+            _authOptions,
+            specificationOptions: Options.Create(new SpecificationOptions
+            {
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-1.0"] = "https://openreferraluk.org/specifications/1.0/openapi.json",
+                    ["HSDS-UK-3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json"
+                }
+            }));
     }
 
     [TearDown]
@@ -2695,7 +2703,15 @@ public class OpenApiValidationServiceTests
             _schemaResolverServiceMock.Object,
             _profileDiscoveryServiceMock.Object,
             _feedSpecDiscoveryMock.Object,
-            _authOptions);
+            _authOptions,
+            specificationOptions: Options.Create(new SpecificationOptions
+            {
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-1.0"] = "https://openreferraluk.org/specifications/1.0/openapi.json",
+                    ["HSDS-UK-3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json"
+                }
+            }));
     }
 
     private void SetupHttpMock(Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> handler)
@@ -2711,7 +2727,15 @@ public class OpenApiValidationServiceTests
             _schemaResolverServiceMock.Object,
             _profileDiscoveryServiceMock.Object,
             _feedSpecDiscoveryMock.Object,
-            _authOptions);
+            _authOptions,
+            specificationOptions: Options.Create(new SpecificationOptions
+            {
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-1.0"] = "https://openreferraluk.org/specifications/1.0/openapi.json",
+                    ["HSDS-UK-3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json"
+                }
+            }));
     }
 
     private static IHttpClientFactory CreateFactory(HttpClient httpClient)

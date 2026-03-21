@@ -51,15 +51,15 @@ public class OpenApiBootstrapServiceTests
     }
 
     [Test]
-    public async Task ResolveFromBaseUrlAsync_WithoutExplicitOpenApiUrl_UsesFeedDiscoveryAndDefaultsProfileVersion()
+    public async Task ResolveFromBaseUrlAsync_WithoutExplicitOpenApiUrl_UsesFeedDiscoveryAndReturnsNullProfileVersion()
     {
         // Arrange
         _profileDiscoveryMock
             .Setup(x => x.DiscoverAsync("https://api.example.com", It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProfileDiscoveryResult
             {
-                Url = "https://openreferraluk.org/specifications/1.0/openapi.json",
-                Reason = "Defaulted to HSDS-UK 1.0 (no version or openapi_url found)",
+                Url = null,
+                Reason = "No version or openapi_url found in '/' response",
                 BaseUrlResponseContent = "{}",
                 HasExplicitOpenApiUrl = false
             });
@@ -73,13 +73,12 @@ public class OpenApiBootstrapServiceTests
 
         // Assert
         Assert.That(result.OpenApiSchemaUrl, Is.EqualTo("https://api.example.com/openapi.json"));
-        Assert.That(result.ProfileVersion, Is.EqualTo("HSDS-UK-1.0"));
-        Assert.That(result.ProfileReason, Does.Contain("HSDS-UK-1.0"));
+        Assert.That(result.ProfileVersion, Is.Null);
         Assert.That(result.DiscoveryReason, Does.Contain("Feed spec discovered"));
     }
 
     [Test]
-    public async Task ResolveFromBaseUrlAsync_WhenNoSchemaUrlFound_ReturnsDefaultProfileVersion()
+    public async Task ResolveFromBaseUrlAsync_WhenNoSchemaUrlFound_ReturnsNullProfileVersion()
     {
         // Arrange
         _profileDiscoveryMock
@@ -87,7 +86,7 @@ public class OpenApiBootstrapServiceTests
             .ReturnsAsync(new ProfileDiscoveryResult
             {
                 Url = null,
-                Reason = "Defaulted to HSDS-UK 1.0 (base URL request failed)",
+                Reason = "Base URL request failed",
                 BaseUrlResponseContent = null,
                 HasExplicitOpenApiUrl = false
             });
@@ -101,8 +100,7 @@ public class OpenApiBootstrapServiceTests
 
         // Assert
         Assert.That(result.OpenApiSchemaUrl, Is.Null);
-        Assert.That(result.ProfileVersion, Is.EqualTo("HSDS-UK-1.0"));
-        Assert.That(result.ProfileReason, Does.Contain("HSDS-UK-1.0"));
+        Assert.That(result.ProfileVersion, Is.Null);
     }
 
     [Test]
