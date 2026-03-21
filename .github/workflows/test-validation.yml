@@ -1,7 +1,9 @@
 name: Build and Validate API
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: {}
+  push:
+    branches: [feature/hsds-validation-flow]
 
 env:
   DOTNET_VERSION: "10.0.x"
