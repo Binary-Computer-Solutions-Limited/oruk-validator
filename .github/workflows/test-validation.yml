@@ -1,0 +1,60 @@
+name: Build and Validate API
+
+on:
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: "10.0.x"
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        cache: true
+        cache-dependency-path: "**/packages.lock.json"
+
+    - name: Restore dependencies
+      run: dotnet restore --use-lock-file
+
+    - name: Build
+      run: dotnet build --no-restore --configuration Release
+
+    - name: Run API in background
+      # Adjust the path to your .csproj or compiled .dll
+      run: dotnet run --project YourProjectName.csproj --configuration Release & 
+      env:
+        ASPNETCORE_URLS: "http://localhost:6969"
+
+    - name: Wait for API to be ready
+      run: |
+        timeout 60s bash -c 'until curl -s localhost:6969 > /dev/null; do sleep 2; done'
+      shell: bash
+
+    - name: Run Validation Request
+      run: |
+        curl -X 'POST' \
+          'http://localhost:6969/openreferral/validate' \
+          -H 'accept: application/json' \
+          -H 'Content-Type: application/json' \
+          -d '{
+            "baseUrl": "https://bristol.openplace.directory/o/OpenReferralService/v3",
+            "options": {
+              "timeoutSeconds": 30,
+              "maxConcurrentRequests": 5,
+              "reportAdditionalFields": true,
+              "hsdsValidationMode": "SpecAndFeedRuntimeFast",
+              "testEndpoints": true,
+              "validateSpecification": true,
+              "testOptionalEndpoints": true,
+              "treatOptionalEndpointsAsWarnings": true,
+              "includeResponseBody": false,
+              "includeTestResults": true
+            }
+          }'
