@@ -35,7 +35,7 @@ public class SchemaResolverServiceTests
       MaxSizeMB = 100
     });
     
-    _service = new SchemaResolverService(CreateFactory(new HttpClient()), _loggerMock.Object, _memoryCache, _cacheOptions);
+    _service = new SchemaResolverService(CreateFactory(TestHttpClientFactory.CreateClient()), _loggerMock.Object, _memoryCache, _cacheOptions);
   }
 
   [TearDown]
@@ -240,7 +240,7 @@ public class SchemaResolverServiceTests
       return new HttpResponseMessage { StatusCode = System.Net.HttpStatusCode.NotFound };
     });
 
-    using var httpClient = new HttpClient(handler);
+    using var httpClient = TestHttpClientFactory.CreateClient(handler);
     var service = new SchemaResolverService(CreateFactory(httpClient), _loggerMock.Object, _memoryCache, _cacheOptions);
 
     // Act
@@ -286,7 +286,7 @@ public class SchemaResolverServiceTests
       return new HttpResponseMessage { StatusCode = System.Net.HttpStatusCode.NotFound };
     });
 
-    var httpClient = new HttpClient(handler);
+    var httpClient = TestHttpClientFactory.CreateClient(handler);
     var service = new SchemaResolverService(CreateFactory(httpClient), _loggerMock.Object, memoryCache, cacheOptions);
 
     // Create a simple schema with external ref
@@ -343,7 +343,7 @@ public class SchemaResolverServiceTests
       return new HttpResponseMessage { StatusCode = System.Net.HttpStatusCode.NotFound };
     });
 
-    var httpClient = new HttpClient(handler);
+    var httpClient = TestHttpClientFactory.CreateClient(handler);
     var service = new SchemaResolverService(CreateFactory(httpClient), _loggerMock.Object, memoryCache, cacheOptions);
 
     // Create a simple schema with external ref
@@ -383,7 +383,7 @@ public class SchemaResolverServiceTests
       };
     });
 
-    using var httpClient = new HttpClient(handler);
+    using var httpClient = TestHttpClientFactory.CreateClient(handler);
     var service = new SchemaResolverService(CreateFactory(httpClient), _loggerMock.Object, _memoryCache, _cacheOptions);
 
     var mainSchemaJson = @"{
@@ -421,7 +421,7 @@ public class SchemaResolverServiceTests
       };
     });
 
-    using var httpClient = new HttpClient(handler);
+    using var httpClient = TestHttpClientFactory.CreateClient(handler);
     var service = new SchemaResolverService(CreateFactory(httpClient), _loggerMock.Object, _memoryCache, _cacheOptions);
 
     var mainSchemaJson = @"{

@@ -21,7 +21,7 @@ public class OpenApiDiscoveryServiceTests
         _httpClientFactoryMock = new Mock<IHttpClientFactory>();
         _loggerMock = new Mock<ILogger<OpenApiDiscoveryService>>();
         _httpMessageHandlerMock = new Mock<HttpMessageHandler>();
-        _httpClient = new HttpClient(_httpMessageHandlerMock.Object);
+        _httpClient = TestHttpClientFactory.CreateClient(_httpMessageHandlerMock.Object);
 
         _httpClientFactoryMock
             .Setup(f => f.CreateClient("OpenApiValidationService"))

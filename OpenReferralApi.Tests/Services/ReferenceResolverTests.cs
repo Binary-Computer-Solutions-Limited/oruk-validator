@@ -62,7 +62,7 @@ public class ReferenceResolverTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
         var resolver = new ReferenceResolver(_loggerMock.Object, loader);
 
@@ -117,7 +117,7 @@ public class ReferenceResolverTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
         var resolver = new ReferenceResolver(_loggerMock.Object, loader);
 
@@ -172,7 +172,7 @@ public class ReferenceResolverTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
         var resolver = new ReferenceResolver(_loggerMock.Object, loader);
 
@@ -220,7 +220,7 @@ public class ReferenceResolverTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
         var resolver = new ReferenceResolver(_loggerMock.Object, loader);
 
@@ -273,7 +273,7 @@ public class ReferenceResolverTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
         var resolver = new ReferenceResolver(_loggerMock.Object, loader);
 
@@ -318,7 +318,7 @@ public class ReferenceResolverTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
         var resolver = new ReferenceResolver(_loggerMock.Object, loader);
 
@@ -365,7 +365,7 @@ public class ReferenceResolverTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
         var resolver = new ReferenceResolver(_loggerMock.Object, loader);
 
@@ -412,7 +412,7 @@ public class ReferenceResolverTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
         var resolver = new ReferenceResolver(_loggerMock.Object, loader);
 
@@ -452,7 +452,7 @@ public class ReferenceResolverTests
                         };
                 });
 
-                using var httpClient = new HttpClient(handler);
+                using var httpClient = TestHttpClientFactory.CreateClient(handler);
                 var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
                 var resolver = new ReferenceResolver(_loggerMock.Object, loader);
 
@@ -512,7 +512,7 @@ public class ReferenceResolverTests
                                 };
                         });
 
-                        using var httpClient = new HttpClient(handler);
+                        using var httpClient = TestHttpClientFactory.CreateClient(handler);
                         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
                         var resolver = new ReferenceResolver(_loggerMock.Object, loader);
 
@@ -580,7 +580,7 @@ public class ReferenceResolverTests
                     SlidingExpirationMinutes = 60
                 });
 
-                using var httpClient = new HttpClient(handler);
+                using var httpClient = TestHttpClientFactory.CreateClient(handler);
                 var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, cacheOptions);
 
                 var firstResolver = new ReferenceResolver(_loggerMock.Object, loader);
@@ -646,7 +646,7 @@ public class ReferenceResolverTests
                                 };
                         });
 
-                        using var httpClient = new HttpClient(handler);
+                        using var httpClient = TestHttpClientFactory.CreateClient(handler);
                         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
                         var resolver = new ReferenceResolver(_loggerMock.Object, loader);
 
@@ -703,7 +703,7 @@ public class ReferenceResolverTests
                         };
                     });
 
-                    using var httpClient = new HttpClient(handler);
+                    using var httpClient = TestHttpClientFactory.CreateClient(handler);
                     var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
                     var resolver = new ReferenceResolver(_loggerMock.Object, loader);
 
@@ -773,7 +773,7 @@ public class ReferenceResolverTests
                                 };
                         });
 
-                        using var httpClient = new HttpClient(handler);
+                        using var httpClient = TestHttpClientFactory.CreateClient(handler);
                         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
                         var resolver = new ReferenceResolver(_loggerMock.Object, loader);
 
@@ -841,7 +841,7 @@ public class ReferenceResolverTests
                         };
                     });
 
-                    using var httpClient = new HttpClient(handler);
+                    using var httpClient = TestHttpClientFactory.CreateClient(handler);
                     var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
                     var resolver = new ReferenceResolver(_loggerMock.Object, loader);
 
@@ -921,7 +921,7 @@ public class ReferenceResolverTests
                         };
                     });
 
-                    using var httpClient = new HttpClient(handler);
+                    using var httpClient = TestHttpClientFactory.CreateClient(handler);
                     var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
                     var resolver = new ReferenceResolver(_loggerMock.Object, loader);
 
@@ -1009,7 +1009,7 @@ public class ReferenceResolverTests
                         };
                     });
 
-                    using var httpClient = new HttpClient(handler);
+                    using var httpClient = TestHttpClientFactory.CreateClient(handler);
                     var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
                     var resolver = new ReferenceResolver(_loggerMock.Object, loader);
 
@@ -1082,7 +1082,7 @@ public class ReferenceResolverTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
         var resolver = new ReferenceResolver(_loggerMock.Object, loader);
 
@@ -1141,7 +1141,7 @@ public class ReferenceResolverTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
         var resolver = new ReferenceResolver(_loggerMock.Object, loader);
 

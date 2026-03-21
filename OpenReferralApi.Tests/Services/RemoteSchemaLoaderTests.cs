@@ -60,7 +60,7 @@ public class RemoteSchemaLoaderTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
 
         var auth = new DataSourceAuthentication
@@ -105,7 +105,7 @@ public class RemoteSchemaLoaderTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
 
         var auth = new DataSourceAuthentication
@@ -146,7 +146,7 @@ public class RemoteSchemaLoaderTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
 
         var auth = new DataSourceAuthentication
@@ -189,7 +189,7 @@ public class RemoteSchemaLoaderTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
 
         IAuthenticationConfig auth = new TestAuthenticationConfig
@@ -241,7 +241,7 @@ public class RemoteSchemaLoaderTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
 
         var auth = new DataSourceAuthentication
@@ -279,7 +279,7 @@ public class RemoteSchemaLoaderTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
 
         // Act & Assert
@@ -303,7 +303,7 @@ public class RemoteSchemaLoaderTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
 
         // Act & Assert
@@ -326,7 +326,7 @@ public class RemoteSchemaLoaderTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
 
         // Act & Assert
@@ -352,7 +352,7 @@ public class RemoteSchemaLoaderTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
 
         // Act
@@ -378,7 +378,7 @@ public class RemoteSchemaLoaderTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
 
         // Act
@@ -410,7 +410,7 @@ public class RemoteSchemaLoaderTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
 
         var auth = new DataSourceAuthentication
@@ -449,7 +449,7 @@ public class RemoteSchemaLoaderTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
 
         var auth = new DataSourceAuthentication
@@ -490,7 +490,7 @@ public class RemoteSchemaLoaderTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
 
         var auth = new DataSourceAuthentication
@@ -531,7 +531,7 @@ public class RemoteSchemaLoaderTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
 
         var auth = new DataSourceAuthentication
@@ -573,7 +573,7 @@ public class RemoteSchemaLoaderTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         var loader = new RemoteSchemaLoader(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
 
         var auth = new DataSourceAuthentication();  // Empty auth object
@@ -609,7 +609,7 @@ public class RemoteSchemaLoaderTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         
         var cacheOptions = Options.Create(new CacheOptions
         {
@@ -648,7 +648,7 @@ public class RemoteSchemaLoaderTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
         
         var cacheOptions = Options.Create(new CacheOptions
         {
@@ -688,7 +688,7 @@ public class RemoteSchemaLoaderTests
             };
         });
 
-        using var httpClient = new HttpClient(handler);
+        using var httpClient = TestHttpClientFactory.CreateClient(handler);
 
         var cacheOptions = Options.Create(new CacheOptions
         {

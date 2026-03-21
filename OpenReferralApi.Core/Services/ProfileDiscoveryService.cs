@@ -34,9 +34,9 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
 
     public ProfileDiscoveryService(IHttpClientFactory httpClientFactory, ILogger<ProfileDiscoveryService> logger, IOptions<SpecificationOptions> specificationOptions)
     {
-        _httpClientFactory = httpClientFactory;
-        _logger = logger;
-        _baseSpecificationUrl = specificationOptions.Value.BaseUrl;
+        _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _baseSpecificationUrl = specificationOptions?.Value.BaseUrl ?? throw new ArgumentNullException(nameof(specificationOptions));
     }
 
     public async Task<ProfileDiscoveryResult> DiscoverAsync(string baseUrl, DataSourceAuthentication? authentication = null, CancellationToken cancellationToken = default)
@@ -50,7 +50,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         var defaultSpec = $"{_baseSpecificationUrl}{defaultSpecificationVersion:0.0}/openapi.json";
         try
         {
-            using var httpClient = _httpClientFactory?.CreateClient("OpenApiValidationService") ?? new HttpClient();
+            using var httpClient = _httpClientFactory.CreateClient("OpenApiValidationService");
             httpClient.Timeout = TimeSpan.FromSeconds(10);
             _logger.LogInformation("Requesting BaseUrl to discover openapi_url: {BaseUrl}", SchemaResolverService.SanitizeUrlForLogging(baseUrl));
             using var request = new HttpRequestMessage(HttpMethod.Get, baseUrl);

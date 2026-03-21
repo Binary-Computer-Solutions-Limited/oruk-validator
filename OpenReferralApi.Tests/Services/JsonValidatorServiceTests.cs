@@ -57,7 +57,7 @@ public class JsonValidatorServiceTests
             .ReturnsAsync((string schemaJson, CancellationToken ct) => JSchema.Parse(schemaJson));
 
         var mockHandler = new MockHttpMessageHandler("{}", "{}");
-        _httpClient = new HttpClient(mockHandler);
+        _httpClient = TestHttpClientFactory.CreateClient(mockHandler);
 
         _service = new JsonValidatorService(
             _loggerMock.Object,
@@ -210,7 +210,7 @@ public class JsonValidatorServiceTests
         });
 
         _httpClient?.Dispose();
-        _httpClient = new HttpClient(countingHandler);
+        _httpClient = TestHttpClientFactory.CreateClient(countingHandler);
         _service = new JsonValidatorService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
@@ -639,7 +639,7 @@ public class JsonValidatorServiceTests
     {
         var mockHandler = new MockHttpMessageHandler(schemaJson, dataJson);
         _httpClient?.Dispose();
-        _httpClient = new HttpClient(mockHandler);
+        _httpClient = TestHttpClientFactory.CreateClient(mockHandler);
         _service = new JsonValidatorService(
             _loggerMock.Object,
             CreateFactory(_httpClient),

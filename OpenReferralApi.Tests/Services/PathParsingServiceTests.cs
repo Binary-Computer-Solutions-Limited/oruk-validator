@@ -19,7 +19,7 @@ public class PathParsingServiceTests
     {
         _loggerMock = new Mock<ILogger<PathParsingService>>();
         _httpMessageHandlerMock = new Mock<HttpMessageHandler>();
-        _httpClient = new HttpClient(_httpMessageHandlerMock.Object);
+        _httpClient = TestHttpClientFactory.CreateClient(_httpMessageHandlerMock.Object);
         _service = new PathParsingService(_loggerMock.Object, _httpClient);
     }
 

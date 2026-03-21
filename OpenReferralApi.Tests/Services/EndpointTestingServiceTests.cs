@@ -420,7 +420,7 @@ public class EndpointTestingServiceTests
     private void SetupService(Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> responder)
     {
         _httpClient?.Dispose();
-        _httpClient = new HttpClient(new DelegateHttpMessageHandler(responder));
+        _httpClient = TestHttpClientFactory.CreateClient(new DelegateHttpMessageHandler(responder));
         _service = new EndpointTestingService(
             _loggerMock.Object,
             CreateFactory(_httpClient),

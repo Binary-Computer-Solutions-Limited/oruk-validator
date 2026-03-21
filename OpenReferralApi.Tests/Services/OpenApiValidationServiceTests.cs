@@ -61,7 +61,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync((string schema, string baseUri, DataSourceAuthentication auth) => schema);
 
         var mockHandler = new MockHttpMessageHandler();
-        _httpClient = new HttpClient(mockHandler);
+        _httpClient = TestHttpClientFactory.CreateClient(mockHandler);
 
         _authOptions = Options.Create(new AuthenticationOptions { AllowUserSuppliedAuth = true });
 
@@ -957,7 +957,7 @@ public class OpenApiValidationServiceTests
         var mockHandler = new MockHttpMessageHandler((req, ct) =>
             new HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
         
-        var httpClient = new HttpClient(mockHandler);
+        var httpClient = TestHttpClientFactory.CreateClient(mockHandler);
         var service = new OpenApiValidationService(
             _loggerMock.Object, CreateFactory(httpClient), _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object, _profileDiscoveryServiceMock.Object, _feedSpecDiscoveryMock.Object,
@@ -997,7 +997,7 @@ public class OpenApiValidationServiceTests
         var mockHandler = new MockHttpMessageHandler((req, ct) =>
             throw new HttpRequestException("Network failed"));
         
-        var httpClient = new HttpClient(mockHandler);
+        var httpClient = TestHttpClientFactory.CreateClient(mockHandler);
         var service = new OpenApiValidationService(
             _loggerMock.Object, CreateFactory(httpClient), _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object, _profileDiscoveryServiceMock.Object, _feedSpecDiscoveryMock.Object,
@@ -1040,7 +1040,7 @@ public class OpenApiValidationServiceTests
                 Content = new StringContent("Not valid JSON at all {{{")
             });
         
-        var httpClient = new HttpClient(mockHandler);
+        var httpClient = TestHttpClientFactory.CreateClient(mockHandler);
         var service = new OpenApiValidationService(
             _loggerMock.Object, CreateFactory(httpClient), _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object, _profileDiscoveryServiceMock.Object, _feedSpecDiscoveryMock.Object,
@@ -1226,7 +1226,7 @@ public class OpenApiValidationServiceTests
             };
         });
         _httpClient?.Dispose();
-        _httpClient = new HttpClient(mockHandler);
+        _httpClient = TestHttpClientFactory.CreateClient(mockHandler);
         _service = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
@@ -1476,7 +1476,7 @@ public class OpenApiValidationServiceTests
                 }
             });
 
-        var httpClient = new HttpClient(new MockHttpMessageHandler((req, ct) =>
+        var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((req, ct) =>
         {
             var requestUrl = req.RequestUri?.ToString() ?? string.Empty;
             if (string.Equals(requestUrl, feedSpecUrl, StringComparison.OrdinalIgnoreCase))
@@ -2622,7 +2622,7 @@ public class OpenApiValidationServiceTests
         });
 
         _httpClient?.Dispose();
-        _httpClient = new HttpClient(mockHandler);
+        _httpClient = TestHttpClientFactory.CreateClient(mockHandler);
         var service = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
@@ -2686,7 +2686,7 @@ public class OpenApiValidationServiceTests
         });
 
         _httpClient?.Dispose();
-        _httpClient = new HttpClient(mockHandler);
+        _httpClient = TestHttpClientFactory.CreateClient(mockHandler);
 
         _service = new OpenApiValidationService(
             _loggerMock.Object,
@@ -2702,7 +2702,7 @@ public class OpenApiValidationServiceTests
     {
         var mockHandler = new MockHttpMessageHandler(handler);
         _httpClient?.Dispose();
-        _httpClient = new HttpClient(mockHandler);
+        _httpClient = TestHttpClientFactory.CreateClient(mockHandler);
 
         _service = new OpenApiValidationService(
             _loggerMock.Object,

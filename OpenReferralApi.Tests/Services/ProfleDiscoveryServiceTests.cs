@@ -24,7 +24,7 @@ public class ProfileDiscoveryServiceTests
         _loggerMock = new Mock<ILogger<ProfileDiscoveryService>>();
         _httpMessageHandlerMock = new Mock<HttpMessageHandler>();
         _specificationOptionsMock = new Mock<IOptions<SpecificationOptions>>();
-        _httpClient = new HttpClient(_httpMessageHandlerMock.Object);
+        _httpClient = TestHttpClientFactory.CreateClient(_httpMessageHandlerMock.Object);
         
         _httpClientFactoryMock
             .Setup(f => f.CreateClient("OpenApiValidationService"))
