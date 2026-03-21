@@ -423,9 +423,16 @@ public class EndpointTestingServiceTests
         _httpClient = new HttpClient(new DelegateHttpMessageHandler(responder));
         _service = new EndpointTestingService(
             _loggerMock.Object,
-            _httpClient,
+            CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _hsdsComplianceServiceMock.Object);
+    }
+
+    private static IHttpClientFactory CreateFactory(HttpClient httpClient)
+    {
+        var mock = new Mock<IHttpClientFactory>();
+        mock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
+        return mock.Object;
     }
 
     private static JObject CreateRequiredEndpointSpec()

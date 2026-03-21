@@ -11,18 +11,18 @@ namespace OpenReferralApi.Core.Services;
 /// </summary>
 internal class OpenApiSpecFetcher
 {
-    private readonly HttpClient _httpClient;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger _logger;
     private readonly ISchemaResolverService _schemaResolverService;
     private readonly bool _allowUserSuppliedAuth;
 
     public OpenApiSpecFetcher(
-        HttpClient httpClient,
+        IHttpClientFactory httpClientFactory,
         ILogger logger,
         ISchemaResolverService schemaResolverService,
         bool allowUserSuppliedAuth)
     {
-        _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _schemaResolverService = schemaResolverService ?? throw new ArgumentNullException(nameof(schemaResolverService));
         _allowUserSuppliedAuth = allowUserSuppliedAuth;
@@ -129,7 +129,8 @@ internal class OpenApiSpecFetcher
                 }
             }
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var httpClient = _httpClientFactory.CreateClient(nameof(OpenApiValidationService));
+            var response = await httpClient.SendAsync(request, cancellationToken);
             response.EnsureSuccessStatusCode();
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);

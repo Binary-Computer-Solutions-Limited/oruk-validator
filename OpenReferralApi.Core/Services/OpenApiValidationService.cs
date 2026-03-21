@@ -56,7 +56,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
     public OpenApiValidationService(
         ILogger<OpenApiValidationService> logger,
-        HttpClient httpClient,
+        IHttpClientFactory httpClientFactory,
         IJsonValidatorService jsonValidatorService,
         ISchemaResolverService schemaResolverService,
         IProfileDiscoveryService discoveryService,
@@ -76,7 +76,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         _openApiDiscoveryService = feedSpecDiscoveryService;
         _openApiSpecificationService = openApiSpecificationService ?? new OpenApiSpecificationService(NullLogger<OpenApiSpecificationService>.Instance, jsonValidatorService);
         _hsdsComplianceService = hsdsComplianceService ?? new HsdsComplianceService(jsonValidatorService, specificationOptions);
-        _endpointTestingService = endpointTestingService ?? new EndpointTestingService(NullLogger<EndpointTestingService>.Instance, httpClient, jsonValidatorService, _hsdsComplianceService, specificationOptions);
+        _endpointTestingService = endpointTestingService ?? new EndpointTestingService(NullLogger<EndpointTestingService>.Instance, httpClientFactory, jsonValidatorService, _hsdsComplianceService, specificationOptions);
         _authenticationValidationService = authenticationValidationService ?? new AuthenticationValidationService(NullLogger<AuthenticationValidationService>.Instance, authOptions);
         _allowUserSuppliedAuth = authOptions.Value.AllowUserSuppliedAuth;
         var effectiveCacheOptions = cacheOptions?.Value;
@@ -84,7 +84,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         _profileSchemaCacheTtl = effectiveCacheOptions != null && effectiveCacheOptions.ExpirationMinutes > 0
             ? TimeSpan.FromMinutes(effectiveCacheOptions.ExpirationMinutes)
             : TimeSpan.FromHours(2);
-        _specFetcher = new OpenApiSpecFetcher(httpClient, logger, schemaResolverService, allowUserSuppliedAuth: _allowUserSuppliedAuth);
+        _specFetcher = new OpenApiSpecFetcher(httpClientFactory, logger, schemaResolverService, allowUserSuppliedAuth: _allowUserSuppliedAuth);
         _openApiBootstrapService = openApiBootstrapService ?? new OpenApiBootstrapService(
             _profileDiscoveryService,
             _openApiDiscoveryService,

@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.Extensions.Logging;
+using System.Net.Http;
 
 namespace OpenReferralApi.Core.Services;
 

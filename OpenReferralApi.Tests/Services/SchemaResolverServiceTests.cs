@@ -12,7 +12,6 @@ namespace OpenReferralApi.Tests.Services;
 public class SchemaResolverServiceTests
 {
   private Mock<ILogger<SchemaResolverService>> _loggerMock;
-  private Mock<HttpClient> _httpClientMock;
   private IMemoryCache _memoryCache;
   private IOptions<CacheOptions> _cacheOptions;
   private SchemaResolverService _service;
@@ -21,7 +20,6 @@ public class SchemaResolverServiceTests
   public void Setup()
   {
     _loggerMock = new Mock<ILogger<SchemaResolverService>>();
-    _httpClientMock = new Mock<HttpClient>();
     
     // Create real MemoryCache for testing
     _memoryCache = new MemoryCache(new MemoryCacheOptions
@@ -37,7 +35,7 @@ public class SchemaResolverServiceTests
       MaxSizeMB = 100
     });
     
-    _service = new SchemaResolverService(_httpClientMock.Object, _loggerMock.Object, _memoryCache, _cacheOptions);
+    _service = new SchemaResolverService(CreateFactory(new HttpClient()), _loggerMock.Object, _memoryCache, _cacheOptions);
   }
 
   [TearDown]
@@ -243,7 +241,7 @@ public class SchemaResolverServiceTests
     });
 
     using var httpClient = new HttpClient(handler);
-    var service = new SchemaResolverService(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
+    var service = new SchemaResolverService(CreateFactory(httpClient), _loggerMock.Object, _memoryCache, _cacheOptions);
 
     // Act
     var result = await service.CreateSchemaFromJsonAsync(rootSchemaJson, "https://json-schema.org/draft/2020-12/schema");
@@ -289,7 +287,7 @@ public class SchemaResolverServiceTests
     });
 
     var httpClient = new HttpClient(handler);
-    var service = new SchemaResolverService(httpClient, _loggerMock.Object, memoryCache, cacheOptions);
+    var service = new SchemaResolverService(CreateFactory(httpClient), _loggerMock.Object, memoryCache, cacheOptions);
 
     // Create a simple schema with external ref
     var mainSchemaJson = @"{
@@ -346,7 +344,7 @@ public class SchemaResolverServiceTests
     });
 
     var httpClient = new HttpClient(handler);
-    var service = new SchemaResolverService(httpClient, _loggerMock.Object, memoryCache, cacheOptions);
+    var service = new SchemaResolverService(CreateFactory(httpClient), _loggerMock.Object, memoryCache, cacheOptions);
 
     // Create a simple schema with external ref
     var mainSchemaJson = @"{
@@ -386,7 +384,7 @@ public class SchemaResolverServiceTests
     });
 
     using var httpClient = new HttpClient(handler);
-    var service = new SchemaResolverService(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
+    var service = new SchemaResolverService(CreateFactory(httpClient), _loggerMock.Object, _memoryCache, _cacheOptions);
 
     var mainSchemaJson = @"{
       ""type"": ""object"",
@@ -424,7 +422,7 @@ public class SchemaResolverServiceTests
     });
 
     using var httpClient = new HttpClient(handler);
-    var service = new SchemaResolverService(httpClient, _loggerMock.Object, _memoryCache, _cacheOptions);
+    var service = new SchemaResolverService(CreateFactory(httpClient), _loggerMock.Object, _memoryCache, _cacheOptions);
 
     var mainSchemaJson = @"{
       ""type"": ""object"",
@@ -452,6 +450,13 @@ public class SchemaResolverServiceTests
   }
 
   #endregion
+
+  private static IHttpClientFactory CreateFactory(HttpClient httpClient)
+  {
+    var mock = new Mock<IHttpClientFactory>();
+    mock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
+    return mock.Object;
+  }
 
   /// <summary>
   /// Mock HTTP message handler for testing

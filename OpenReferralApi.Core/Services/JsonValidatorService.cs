@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Net.Http;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Schema;
@@ -22,7 +24,7 @@ public class JsonValidatorService : IJsonValidatorService
     private static readonly ConcurrentDictionary<string, CachedExternalSchemaDocument> ExternalSchemaUriCache = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly ILogger<JsonValidatorService> _logger;
-    private readonly HttpClient _httpClient;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly IPathParsingService _pathParsingService;
     private readonly IRequestProcessingService _requestProcessingService;
     private readonly ISchemaResolverService _schemaResolverService;
@@ -31,14 +33,14 @@ public class JsonValidatorService : IJsonValidatorService
 
     public JsonValidatorService(
         ILogger<JsonValidatorService> logger,
-        HttpClient httpClient,
+        IHttpClientFactory httpClientFactory,
         IPathParsingService pathParsingService,
         IRequestProcessingService requestProcessingService,
         ISchemaResolverService schemaResolverService,
         IOptions<CacheOptions>? cacheOptions = null)
     {
         _logger = logger;
-        _httpClient = httpClient;
+        _httpClientFactory = httpClientFactory;
         _pathParsingService = pathParsingService;
         _requestProcessingService = requestProcessingService;
         _schemaResolverService = schemaResolverService;
@@ -279,7 +281,8 @@ public class JsonValidatorService : IJsonValidatorService
             {
                 _logger.LogInformation("Loading schema from URI: {SchemaUri}", normalizedSchemaUri);
 
-                var response = await _httpClient.GetAsync(validatedUri, ct);
+                var httpClient = _httpClientFactory.CreateClient();
+                var response = await httpClient.GetAsync(validatedUri, ct);
                 response.EnsureSuccessStatusCode();
                 var schemaJson = await response.Content.ReadAsStringAsync(ct);
 
@@ -397,9 +400,10 @@ public class JsonValidatorService : IJsonValidatorService
                 // Use PathParsingService for URL validation
                 var validatedUri = await _pathParsingService.ValidateAndParseDataUrlAsync(dataUrl, options);
 
+                var httpClient = _httpClientFactory.CreateClient();
                 using var request = new HttpRequestMessage(HttpMethod.Get, validatedUri);
 
-                var response = await _httpClient.SendAsync(request, ct);
+                var response = await httpClient.SendAsync(request, ct);
                 response.EnsureSuccessStatusCode();
 
                 var content = await response.Content.ReadAsStringAsync(ct);

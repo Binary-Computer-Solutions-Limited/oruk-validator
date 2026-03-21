@@ -67,7 +67,7 @@ public class OpenApiValidationServiceTests
 
         _service = new OpenApiValidationService(
             _loggerMock.Object,
-            _httpClient,
+            CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
             _profileDiscoveryServiceMock.Object,
@@ -922,7 +922,7 @@ public class OpenApiValidationServiceTests
         var lenientSpecOptions = Options.Create(new SpecificationOptions { StrictOwnSchemaValidation = false });
         var serviceWithLenientPolicy = new OpenApiValidationService(
             _loggerMock.Object,
-            _httpClient,
+            CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
             _profileDiscoveryServiceMock.Object,
@@ -959,7 +959,7 @@ public class OpenApiValidationServiceTests
         
         var httpClient = new HttpClient(mockHandler);
         var service = new OpenApiValidationService(
-            _loggerMock.Object, httpClient, _jsonValidatorServiceMock.Object,
+            _loggerMock.Object, CreateFactory(httpClient), _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object, _profileDiscoveryServiceMock.Object, _feedSpecDiscoveryMock.Object,
             Options.Create(new AuthenticationOptions { AllowUserSuppliedAuth = true }));
 
@@ -999,7 +999,7 @@ public class OpenApiValidationServiceTests
         
         var httpClient = new HttpClient(mockHandler);
         var service = new OpenApiValidationService(
-            _loggerMock.Object, httpClient, _jsonValidatorServiceMock.Object,
+            _loggerMock.Object, CreateFactory(httpClient), _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object, _profileDiscoveryServiceMock.Object, _feedSpecDiscoveryMock.Object,
             Options.Create(new AuthenticationOptions { AllowUserSuppliedAuth = true }));
 
@@ -1042,7 +1042,7 @@ public class OpenApiValidationServiceTests
         
         var httpClient = new HttpClient(mockHandler);
         var service = new OpenApiValidationService(
-            _loggerMock.Object, httpClient, _jsonValidatorServiceMock.Object,
+            _loggerMock.Object, CreateFactory(httpClient), _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object, _profileDiscoveryServiceMock.Object, _feedSpecDiscoveryMock.Object,
             Options.Create(new AuthenticationOptions { AllowUserSuppliedAuth = true }));
 
@@ -1162,7 +1162,7 @@ public class OpenApiValidationServiceTests
 
         var serviceWithCache = new OpenApiValidationService(
             _loggerMock.Object,
-            _httpClient,
+            CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
             _profileDiscoveryServiceMock.Object,
@@ -1229,7 +1229,7 @@ public class OpenApiValidationServiceTests
         _httpClient = new HttpClient(mockHandler);
         _service = new OpenApiValidationService(
             _loggerMock.Object,
-            _httpClient,
+            CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
             _profileDiscoveryServiceMock.Object,
@@ -1500,7 +1500,7 @@ public class OpenApiValidationServiceTests
 
         var service = new OpenApiValidationService(
             _loggerMock.Object,
-            httpClient,
+            CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
             _profileDiscoveryServiceMock.Object,
@@ -2625,7 +2625,7 @@ public class OpenApiValidationServiceTests
         _httpClient = new HttpClient(mockHandler);
         var service = new OpenApiValidationService(
             _loggerMock.Object,
-            _httpClient,
+            CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
             _profileDiscoveryServiceMock.Object,
@@ -2690,7 +2690,7 @@ public class OpenApiValidationServiceTests
 
         _service = new OpenApiValidationService(
             _loggerMock.Object,
-            _httpClient,
+            CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
             _profileDiscoveryServiceMock.Object,
@@ -2706,12 +2706,19 @@ public class OpenApiValidationServiceTests
 
         _service = new OpenApiValidationService(
             _loggerMock.Object,
-            _httpClient,
+            CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
             _profileDiscoveryServiceMock.Object,
             _feedSpecDiscoveryMock.Object,
             _authOptions);
+    }
+
+    private static IHttpClientFactory CreateFactory(HttpClient httpClient)
+    {
+        var mock = new Mock<IHttpClientFactory>();
+        mock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
+        return mock.Object;
     }
 
     private string CreateOpenApi30Spec()

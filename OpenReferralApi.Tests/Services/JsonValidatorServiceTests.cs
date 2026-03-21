@@ -61,7 +61,7 @@ public class JsonValidatorServiceTests
 
         _service = new JsonValidatorService(
             _loggerMock.Object,
-            _httpClient,
+            CreateFactory(_httpClient),
             _pathParsingServiceMock.Object,
             _requestProcessingServiceMock.Object,
             _schemaResolverServiceMock.Object);
@@ -213,7 +213,7 @@ public class JsonValidatorServiceTests
         _httpClient = new HttpClient(countingHandler);
         _service = new JsonValidatorService(
             _loggerMock.Object,
-            _httpClient,
+            CreateFactory(_httpClient),
             _pathParsingServiceMock.Object,
             _requestProcessingServiceMock.Object,
             _schemaResolverServiceMock.Object);
@@ -642,10 +642,17 @@ public class JsonValidatorServiceTests
         _httpClient = new HttpClient(mockHandler);
         _service = new JsonValidatorService(
             _loggerMock.Object,
-            _httpClient,
+            CreateFactory(_httpClient),
             _pathParsingServiceMock.Object,
             _requestProcessingServiceMock.Object,
             _schemaResolverServiceMock.Object);
+    }
+
+    private static IHttpClientFactory CreateFactory(HttpClient httpClient)
+    {
+        var mock = new Mock<IHttpClientFactory>();
+        mock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
+        return mock.Object;
     }
 
     private sealed class MockHttpMessageHandler : HttpMessageHandler

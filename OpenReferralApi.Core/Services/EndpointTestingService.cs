@@ -27,20 +27,20 @@ public class EndpointTestingService : IEndpointTestingService
     private static readonly Regex ArrayIndexRegex = new(@"\[[^\]]*\]", RegexOptions.Compiled);
 
     private readonly ILogger<EndpointTestingService> _logger;
-    private readonly HttpClient _httpClient;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly IJsonValidatorService _jsonValidatorService;
     private readonly IHsdsComplianceService _hsdsComplianceService;
     private readonly SpecificationOptions? _specificationOptions;
 
     public EndpointTestingService(
         ILogger<EndpointTestingService> logger,
-        HttpClient httpClient,
+        IHttpClientFactory httpClientFactory,
         IJsonValidatorService jsonValidatorService,
         IHsdsComplianceService hsdsComplianceService,
         IOptions<SpecificationOptions>? specificationOptions = null)
     {
         _logger = logger;
-        _httpClient = httpClient;
+        _httpClientFactory = httpClientFactory;
         _jsonValidatorService = jsonValidatorService;
         _hsdsComplianceService = hsdsComplianceService;
         _specificationOptions = specificationOptions?.Value;
@@ -653,9 +653,11 @@ public class EndpointTestingService : IEndpointTestingService
             cts.CancelAfter(timeout);
 
             // Use the injected HttpClient so test HttpMessageHandler mocks are respected.
+            // Do NOT dispose - IHttpClientFactory manages the lifetime of pooled handlers.
             TimeSpan dnsLookup = TimeSpan.Zero, tcpConnection = TimeSpan.Zero, tlsHandshake = TimeSpan.Zero;
             var sendStart = Stopwatch.StartNew();
-            var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+            var httpClient = _httpClientFactory.CreateClient(nameof(EndpointTestingService));
+            var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
             var timeToHeaders = sendStart.Elapsed;
 
             // Prepare to read content and measure transfer time

@@ -70,7 +70,9 @@ public class OpenApiSpecFetcherTests
         });
 
         using var httpClient = new HttpClient(handler);
-        var fetcher = new OpenApiSpecFetcher(httpClient, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory.Setup(f => f.CreateClient("OpenApiValidationService")).Returns(httpClient);
+        var fetcher = new OpenApiSpecFetcher(httpClientFactory.Object, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
 
         var auth = new DataSourceAuthentication
         {
@@ -107,7 +109,9 @@ public class OpenApiSpecFetcherTests
         });
 
         using var httpClient = new HttpClient(handler);
-        var fetcher = new OpenApiSpecFetcher(httpClient, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory.Setup(f => f.CreateClient("OpenApiValidationService")).Returns(httpClient);
+        var fetcher = new OpenApiSpecFetcher(httpClientFactory.Object, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
 
         var auth = new DataSourceAuthentication
         {
@@ -143,7 +147,9 @@ public class OpenApiSpecFetcherTests
         });
 
         using var httpClient = new HttpClient(handler);
-        var fetcher = new OpenApiSpecFetcher(httpClient, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory.Setup(f => f.CreateClient("OpenApiValidationService")).Returns(httpClient);
+        var fetcher = new OpenApiSpecFetcher(httpClientFactory.Object, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
 
         var auth = new DataSourceAuthentication
         {
@@ -178,7 +184,9 @@ public class OpenApiSpecFetcherTests
         });
 
         using var httpClient = new HttpClient(handler);
-        var fetcher = new OpenApiSpecFetcher(httpClient, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory.Setup(f => f.CreateClient("OpenApiValidationService")).Returns(httpClient);
+        var fetcher = new OpenApiSpecFetcher(httpClientFactory.Object, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
 
         var auth = new DataSourceAuthentication
         {
@@ -217,7 +225,9 @@ public class OpenApiSpecFetcherTests
         });
 
         using var httpClient = new HttpClient(handler);
-        var fetcher = new OpenApiSpecFetcher(httpClient, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory.Setup(f => f.CreateClient("OpenApiValidationService")).Returns(httpClient);
+        var fetcher = new OpenApiSpecFetcher(httpClientFactory.Object, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
 
         var auth = new DataSourceAuthentication
         {
@@ -259,7 +269,9 @@ public class OpenApiSpecFetcherTests
         });
 
         using var httpClient = new HttpClient(handler);
-        var fetcher = new OpenApiSpecFetcher(httpClient, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory.Setup(f => f.CreateClient("OpenApiValidationService")).Returns(httpClient);
+        var fetcher = new OpenApiSpecFetcher(httpClientFactory.Object, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
 
         var auth = new DataSourceAuthentication
         {
@@ -294,7 +306,9 @@ public class OpenApiSpecFetcherTests
         });
 
         using var httpClient = new HttpClient(handler);
-        var fetcher = new OpenApiSpecFetcher(httpClient, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory.Setup(f => f.CreateClient("OpenApiValidationService")).Returns(httpClient);
+        var fetcher = new OpenApiSpecFetcher(httpClientFactory.Object, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
 
         var auth = new DataSourceAuthentication();  // Completely empty
 
@@ -326,7 +340,9 @@ public class OpenApiSpecFetcherTests
         });
 
         using var httpClient = new HttpClient(handler);
-        var fetcher = new OpenApiSpecFetcher(httpClient, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory.Setup(f => f.CreateClient("OpenApiValidationService")).Returns(httpClient);
+        var fetcher = new OpenApiSpecFetcher(httpClientFactory.Object, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
 
         // Act
         var result = await fetcher.FetchOpenApiSpecFromUrlAsync(specUrl, null, CancellationToken.None);
@@ -355,7 +371,9 @@ public class OpenApiSpecFetcherTests
         });
 
         using var httpClient = new HttpClient(handler);
-        var fetcher = new OpenApiSpecFetcher(httpClient, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory.Setup(f => f.CreateClient("OpenApiValidationService")).Returns(httpClient);
+        var fetcher = new OpenApiSpecFetcher(httpClientFactory.Object, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
 
         // Act & Assert
         var ex = Assert.ThrowsAsync<InvalidOperationException>(async () =>
@@ -380,7 +398,9 @@ public class OpenApiSpecFetcherTests
         });
 
         using var httpClient = new HttpClient(handler);
-        var fetcher = new OpenApiSpecFetcher(httpClient, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory.Setup(f => f.CreateClient("OpenApiValidationService")).Returns(httpClient);
+        var fetcher = new OpenApiSpecFetcher(httpClientFactory.Object, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
 
         // Act & Assert
         var ex = Assert.ThrowsAsync<InvalidOperationException>(async () =>
@@ -408,7 +428,9 @@ public class OpenApiSpecFetcherTests
         });
 
         using var httpClient = new HttpClient(handler);
-        var fetcher = new OpenApiSpecFetcher(httpClient, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory.Setup(f => f.CreateClient("OpenApiValidationService")).Returns(httpClient);
+        var fetcher = new OpenApiSpecFetcher(httpClientFactory.Object, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
 
         // Act
         var result = await fetcher.FetchOpenApiSpecFromUrlAsync(specUrl, null, CancellationToken.None);
@@ -439,7 +461,9 @@ public class OpenApiSpecFetcherTests
         });
 
         using var httpClient = new HttpClient(handler);
-        var fetcher = new OpenApiSpecFetcher(httpClient, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory.Setup(f => f.CreateClient("OpenApiValidationService")).Returns(httpClient);
+        var fetcher = new OpenApiSpecFetcher(httpClientFactory.Object, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
 
         // Act
         var result = await fetcher.FetchOpenApiSpecFromUrlAsync(specUrl, null, CancellationToken.None, resolveReferences: true);
@@ -469,7 +493,9 @@ public class OpenApiSpecFetcherTests
         });
 
         using var httpClient = new HttpClient(handler);
-        var fetcher = new OpenApiSpecFetcher(httpClient, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory.Setup(f => f.CreateClient("OpenApiValidationService")).Returns(httpClient);
+        var fetcher = new OpenApiSpecFetcher(httpClientFactory.Object, _loggerMock.Object, _schemaResolverServiceMock.Object, allowUserSuppliedAuth: true);
 
         // Act
         var result = await fetcher.FetchOpenApiSpecFromUrlAsync(specUrl, null, CancellationToken.None, resolveReferences: false);

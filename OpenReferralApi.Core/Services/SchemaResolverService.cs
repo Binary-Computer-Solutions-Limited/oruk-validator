@@ -61,7 +61,7 @@ public interface ISchemaResolverService
 /// </remarks>
 public class SchemaResolverService : ISchemaResolverService
 {
-  private readonly HttpClient _httpClient;
+  private readonly IHttpClientFactory _httpClientFactory;
   private readonly ILogger<SchemaResolverService> _logger;
   private readonly IMemoryCache _memoryCache;
   private readonly CacheOptions _cacheOptions;
@@ -72,24 +72,25 @@ public class SchemaResolverService : ISchemaResolverService
   /// <summary>
   /// Initializes a new instance of the SchemaResolver for remote schema resolution.
   /// </summary>
-  /// <param name="httpClient">HTTP client for fetching remote schemas.</param>
+  /// <param name="httpClientFactory">HTTP client factory for fetching remote schemas.</param>
   /// <param name="logger">Logger instance.</param>
   /// <param name="memoryCache">Memory cache for persistent schema caching.</param>
   /// <param name="cacheOptions">Cache configuration options.</param>
   /// <param name="specificationOptions">Specification configuration options for URL rewriting.</param>
   public SchemaResolverService(
-    HttpClient httpClient,
+    IHttpClientFactory httpClientFactory,
     ILogger<SchemaResolverService> logger,
     IMemoryCache memoryCache,
     IOptions<CacheOptions> cacheOptions,
     IOptions<SpecificationOptions>? specificationOptions = null,
     IOptions<SchemaResolutionOptions>? schemaResolutionOptions = null)
   {
-    _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+    _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
     _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     _memoryCache = memoryCache ?? throw new ArgumentNullException(nameof(memoryCache));
     _cacheOptions = cacheOptions?.Value ?? throw new ArgumentNullException(nameof(cacheOptions));
     _localSpecificationBaseUrl = specificationOptions?.Value?.BaseUrl;
+    var httpClient = httpClientFactory.CreateClient();
     _remoteSchemaLoader = new RemoteSchemaLoader(
       httpClient,
       logger,
