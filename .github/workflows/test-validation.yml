@@ -30,7 +30,7 @@ jobs:
 
     - name: Run API in background
       # Adjust the path to your .csproj or compiled .dll
-      run: dotnet run --project YourProjectName.csproj --configuration Release & 
+      run: dotnet run --project OpenReferralApi/OpenReferralApi.csproj --configuration Release & 
       env:
         ASPNETCORE_URLS: "http://localhost:6969"
 
