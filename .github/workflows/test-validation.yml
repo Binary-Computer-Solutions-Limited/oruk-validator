@@ -58,7 +58,7 @@ jobs:
               "options": {
               "timeoutSeconds": 30,
               "maxConcurrentRequests": 5,
-              "reportAdditionalFields": false,
+              "reportAdditionalFields": true,
               "hsdsValidationMode": "SpecAndFeedRuntimeFast",
               "testEndpoints": true,
               "validateSpecification": true,
