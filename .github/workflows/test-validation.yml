@@ -15,8 +15,18 @@ jobs:
       fail-fast: false
       matrix:
         base-url: 
-          - "https://opensessions.io/api/rpde/OpenReferralFeed"
+          - "https://bristol.openplace.directory/o/OpenReferralService/v3"
+          - "https://api.familyinfo.buckinghamshire.gov.uk/api/v1"
           - "https://api.porism.com/ServiceDirectoryServiceCQC"
+          - "http://dorset.localplacedirectory.org.uk/aggregator"
+          - "https://lgaapi.connecttosupport.org/"
+          - "https://northlincs.openplace.directory/o/OpenReferralService/v3"
+          - "https://opensessions.io/api/rpde/OpenReferralFeed"
+          - "https://shropshire.openplace.directory/o/OpenReferralService/v3"
+          - "https://directory.southampton.gov.uk/api"
+          - "https://api.suffolk.gov.uk/ServiceDirectoryServiceCQC"
+          - "https://api.towerhamlets.gov.uk/ServiceDirectoryServiceCQC"
+          - "https://api.westsussex.gov.uk/ServiceDirectoryServiceCQC"
 
     steps:
     - uses: actions/checkout@v4
