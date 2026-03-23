@@ -8,7 +8,7 @@ using OpenReferralApi.Core.Services;
 namespace OpenReferralApi.Tests.Services;
 
 [TestFixture]
-public class ProfileDiscoveryServiceTests
+public class ProfleDiscoveryServiceTests
 {
     private Mock<IHttpClientFactory> _httpClientFactoryMock;
     private Mock<ILogger<ProfileDiscoveryService>> _loggerMock;
@@ -16,7 +16,6 @@ public class ProfileDiscoveryServiceTests
     private Mock<IOptions<SpecificationOptions>> _specificationOptionsMock;
     private HttpClient _httpClient;
     private ProfileDiscoveryService _service;
-
     [SetUp]
     public void Setup()
     {
@@ -238,6 +237,90 @@ public class ProfileDiscoveryServiceTests
         // Assert
         Assert.That(url, Is.Null);
         Assert.That(reason, Does.Contain("Failed to parse"));
+    }
+
+    [Test]
+    public async Task DiscoverOpenApiUrlAsync_WithHtmlBaseResponse_ProbesKnownOpenApiLocations()
+    {
+        // Arrange
+        var baseUrl = "https://api.example.com";
+
+        _httpMessageHandlerMock
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .Returns<HttpRequestMessage, CancellationToken>((request, _) =>
+            {
+                var uri = request.RequestUri?.AbsoluteUri;
+                if (uri == "https://api.example.com" || uri == "https://api.example.com/")
+                {
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent("<html><body>swagger ui</body></html>")
+                    });
+                }
+
+                if (uri == "https://api.example.com/openapi.json")
+                {
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent("{\"openapi\":\"3.0.0\"}")
+                    });
+                }
+
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)
+                {
+                    Content = new StringContent(string.Empty)
+                });
+            });
+
+        // Act
+        var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
+
+        // Assert
+        Assert.That(url, Is.EqualTo("https://api.example.com/openapi.json"));
+        Assert.That(reason, Does.Contain("discovered by probing"));
+    }
+
+    [Test]
+    public async Task DiscoverOpenApiUrlAsync_WithHtmlBaseResponseAndSwaggerUiUrl_ExtractsSpecUrl()
+    {
+        // Arrange
+        var baseUrl = "https://api.example.com/root";
+        var html = "<html><script>SwaggerUIBundle({ url: '/v3/api-docs' });</script></html>";
+
+        _httpMessageHandlerMock
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .Returns<HttpRequestMessage, CancellationToken>((request, _) =>
+            {
+                var response = new HttpResponseMessage(HttpStatusCode.NotFound)
+                {
+                    Content = new StringContent(string.Empty)
+                };
+
+                if (request.RequestUri != null && request.RequestUri.AbsoluteUri == baseUrl)
+                {
+                    response = new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(html)
+                    };
+                }
+
+                return Task.FromResult(response);
+            });
+
+        // Act
+        var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
+
+        // Assert
+        Assert.That(url, Is.EqualTo("https://api.example.com/v3/api-docs"));
+        Assert.That(reason, Does.Contain("Swagger UI HTML"));
     }
 
     [Test]

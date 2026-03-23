@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Text.RegularExpressions;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -28,6 +29,24 @@ public class ProfileDiscoveryResult
 
 public class ProfileDiscoveryService : IProfileDiscoveryService
 {
+    private static readonly string[] FallbackSpecPaths =
+    {
+        "openapi.json",
+        "swagger.json",
+        ".well-known/openapi.json",
+        "api-docs",
+        "v3/api-docs",
+        "swagger/v1/swagger.json"
+    };
+
+    private static readonly Regex SwaggerUiDefinitionUrlRegex = new(
+        @"(?<![a-zA-Z0-9_])url\s*[:=]\s*[""']([^""']+(?:openapi|swagger|api-docs)[^""']*)[""']",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static readonly Regex SwaggerUiConfigUrlRegex = new(
+        @"configUrl\s*[:=]\s*[""']([^""']+)[""']",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<ProfileDiscoveryService> _logger;
     private readonly string _baseSpecificationUrl;
@@ -108,6 +127,18 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                 }
 
                 _logger.LogInformation("No openapi_url or version in BaseUrl response; unable to determine HSDS schema version");
+                var fallback = await DiscoverOpenApiFromFallbacksAsync(httpClient, baseUrl, content, cancellationToken);
+                if (!string.IsNullOrWhiteSpace(fallback.url))
+                {
+                    return new ProfileDiscoveryResult
+                    {
+                        Url = fallback.url,
+                        Reason = fallback.reason,
+                        BaseUrlRequestSucceeded = true,
+                        BaseUrlResponseContent = content
+                    };
+                }
+
                 return new ProfileDiscoveryResult
                 {
                     Url = null,
@@ -119,6 +150,19 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             catch (Exception jex)
             {
                 _logger.LogWarning(jex, "Failed to parse JSON from BaseUrl response; unable to determine HSDS schema version");
+
+                var fallback = await DiscoverOpenApiFromFallbacksAsync(httpClient, baseUrl, content, cancellationToken);
+                if (!string.IsNullOrWhiteSpace(fallback.url))
+                {
+                    return new ProfileDiscoveryResult
+                    {
+                        Url = fallback.url,
+                        Reason = fallback.reason,
+                        BaseUrlRequestSucceeded = true,
+                        BaseUrlResponseContent = content
+                    };
+                }
+
                 return new ProfileDiscoveryResult
                 {
                     Url = null,
@@ -214,5 +258,147 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         }
 
         return null;
+    }
+
+    private async Task<(string? url, string? reason)> DiscoverOpenApiFromFallbacksAsync(HttpClient client, string baseUrl, string? baseUrlContent, CancellationToken cancellationToken)
+    {
+        var normalizedBaseUrl = baseUrl.TrimEnd('/');
+
+        foreach (var path in FallbackSpecPaths)
+        {
+            try
+            {
+                var specUrl = BuildAbsoluteUrl(normalizedBaseUrl, path);
+                using var request = new HttpRequestMessage(HttpMethod.Get, specUrl);
+                var response = await client.SendAsync(request, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    continue;
+                }
+
+                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                if (LooksLikeOpenApiDocument(content))
+                {
+                    _logger.LogInformation("Discovered OpenAPI spec via fallback probing at {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(specUrl));
+                    return (specUrl, $"OpenAPI URL discovered by probing '{path}'");
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Fallback probe failed for path {Path}", path);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(baseUrlContent) && baseUrlContent.Contains("<html", StringComparison.OrdinalIgnoreCase))
+        {
+            var discoveredUrl = await DiscoverFromSwaggerUiHtmlAsync(client, normalizedBaseUrl, baseUrlContent, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(discoveredUrl))
+            {
+                return (discoveredUrl, "OpenAPI URL discovered from Swagger UI HTML");
+            }
+        }
+
+        return (null, null);
+    }
+
+    private async Task<string?> DiscoverFromSwaggerUiHtmlAsync(HttpClient client, string baseUrl, string html, CancellationToken cancellationToken)
+    {
+        foreach (Match match in SwaggerUiDefinitionUrlRegex.Matches(html))
+        {
+            var candidate = match.Groups[1].Value;
+            if (string.IsNullOrWhiteSpace(candidate))
+            {
+                continue;
+            }
+
+            var resolved = ResolveUrl(baseUrl, candidate);
+            if (!string.IsNullOrWhiteSpace(resolved))
+            {
+                _logger.LogInformation("Discovered OpenAPI URL from Swagger UI definition: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(resolved));
+                return resolved;
+            }
+        }
+
+        foreach (Match match in SwaggerUiConfigUrlRegex.Matches(html))
+        {
+            var configPath = match.Groups[1].Value;
+            if (string.IsNullOrWhiteSpace(configPath))
+            {
+                continue;
+            }
+
+            var configUrl = ResolveUrl(baseUrl, configPath);
+            if (string.IsNullOrWhiteSpace(configUrl))
+            {
+                continue;
+            }
+
+            try
+            {
+                using var configRequest = new HttpRequestMessage(HttpMethod.Get, configUrl);
+                var configResp = await client.SendAsync(configRequest, cancellationToken);
+                if (!configResp.IsSuccessStatusCode)
+                {
+                    continue;
+                }
+
+                var configContent = await configResp.Content.ReadAsStringAsync(cancellationToken);
+                var token = JToken.Parse(configContent);
+                var discovered = token["url"]?.ToString();
+                if (!string.IsNullOrWhiteSpace(discovered))
+                {
+                    var resolved = ResolveUrl(baseUrl, discovered);
+                    if (!string.IsNullOrWhiteSpace(resolved))
+                    {
+                        _logger.LogInformation("Discovered OpenAPI URL from Swagger config: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(resolved));
+                        return resolved;
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to read swagger config at {ConfigUrl}", SchemaResolverService.SanitizeUrlForLogging(configUrl));
+            }
+        }
+
+        return null;
+    }
+
+    private static bool LooksLikeOpenApiDocument(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return false;
+        }
+
+        return content.Contains("\"openapi\"", StringComparison.OrdinalIgnoreCase)
+            || content.Contains("\"swagger\"", StringComparison.OrdinalIgnoreCase)
+            || content.Contains("openapi:", StringComparison.OrdinalIgnoreCase)
+            || content.Contains("swagger:", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildAbsoluteUrl(string baseUrl, string relativePath)
+    {
+        return $"{baseUrl}/{relativePath.TrimStart('/')}";
+    }
+
+    private static string? ResolveUrl(string baseUrl, string path)
+    {
+        try
+        {
+            return new Uri(new Uri(baseUrl + "/"), path).ToString();
+        }
+        catch
+        {
+            return null;
+        }
     }
 }
