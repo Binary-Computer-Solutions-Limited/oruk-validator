@@ -48,7 +48,7 @@ jobs:
           -H 'accept: application/json' \
           -H 'Content-Type: application/json' \
           -d '{
-            "baseUrl": "https://dorset.localplacedirectory.org.uk/aggregator",
+            "baseUrl": "https://opensessions.io/api/rpde/OpenReferralFeed",
             "options": {
               "timeoutSeconds": 30,
               "maxConcurrentRequests": 5,
