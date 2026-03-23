@@ -41,7 +41,8 @@ jobs:
 
     - name: Run Validation Request
       run: |
-        curl -X 'POST' \
+        # Added -i to see response headers and body in the logs
+        curl -i -X 'POST' \
           'http://localhost:6969/openreferral/validate' \
           -H 'accept: application/json' \
           -H 'Content-Type: application/json' \
@@ -60,3 +61,10 @@ jobs:
               "includeTestResults": true
             }
           }'
+
+    - name: Output API Logs
+      # This runs even if the curl command fails
+      if: always()
+      run: |
+        echo "--- API LOGS ---"
+        cat api.log
