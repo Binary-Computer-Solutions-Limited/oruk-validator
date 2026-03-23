@@ -29,8 +29,9 @@ jobs:
       run: dotnet build --no-restore --configuration Release
 
     - name: Run API in background
-      # Adjust the path to your .csproj or compiled .dll
-      run: dotnet run --project OpenReferralApi/OpenReferralApi.csproj --configuration Release & 
+      # Redirect stdout and stderr to api.log
+      run: |
+        dotnet run --project OpenReferralApi/OpenReferralApi.csproj --configuration Release > api.log 2>&1 &
       env:
         ASPNETCORE_URLS: "http://localhost:6969"
 
