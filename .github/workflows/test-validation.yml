@@ -11,6 +11,12 @@ env:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        base-url: 
+          - "https://opensessions.io/api/rpde/OpenReferralFeed"
+          - "https://api.porism.com/ServiceDirectoryServiceCQC"
 
     steps:
     - uses: actions/checkout@v4
@@ -48,8 +54,8 @@ jobs:
           -H 'accept: application/json' \
           -H 'Content-Type: application/json' \
           -d '{
-            "baseUrl": "https://opensessions.io/api/rpde/OpenReferralFeed",
-            "options": {
+              "baseUrl": "${{ matrix.base-url }}",
+              "options": {
               "timeoutSeconds": 30,
               "maxConcurrentRequests": 5,
               "reportAdditionalFields": false,
