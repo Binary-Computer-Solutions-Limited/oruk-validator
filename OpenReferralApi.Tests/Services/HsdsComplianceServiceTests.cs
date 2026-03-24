@@ -405,7 +405,8 @@ public class HsdsComplianceServiceTests
         var options = new OpenApiValidationOptions();
         var serviceWithLenientPolicy = new HsdsComplianceService(
             _jsonValidatorServiceMock.Object,
-            Options.Create(new SpecificationOptions { StrictOwnSchemaValidation = false }));
+          specificationOptions: Options.Create(new SpecificationOptions()),
+          openApiValidationOptions: Options.Create(new OpenApiValidationServerOptions { StrictOwnSchemaValidation = false }));
 
         await serviceWithLenientPolicy.ValidateEndpointResponsesAgainstHsdsProfileAsync(endpointTests, hsdsSpec, options, CancellationToken.None);
 
@@ -430,7 +431,8 @@ public class HsdsComplianceServiceTests
 
         var serviceWithLenientPolicy = new HsdsComplianceService(
             _jsonValidatorServiceMock.Object,
-            Options.Create(new SpecificationOptions { StrictOwnSchemaValidation = false }));
+          specificationOptions: Options.Create(new SpecificationOptions()),
+          openApiValidationOptions: Options.Create(new OpenApiValidationServerOptions { StrictOwnSchemaValidation = false }));
         serviceWithLenientPolicy.ApplyAdditionalFieldPolicy(result);
 
         Assert.That(result.Errors.Single(e => e.ErrorCode == "ADDITIONAL_FIELD").Severity, Is.EqualTo("Warning"));

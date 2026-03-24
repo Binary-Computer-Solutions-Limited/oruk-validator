@@ -33,15 +33,16 @@ public class HsdsComplianceService : IHsdsComplianceService
     // In-memory lookup table for known HSDS baseline schemas by profile version.
     private readonly IJsonValidatorService _jsonValidatorService;
     private readonly IReadOnlyDictionary<string, string> _profileSchemaByVersion;
-    private readonly SpecificationOptions? _specificationOptions;
+    private readonly OpenApiValidationServerOptions? _openApiValidationOptions;
 
     public HsdsComplianceService(
         IJsonValidatorService jsonValidatorService,
-        IOptions<SpecificationOptions>? specificationOptions = null)
+        IOptions<SpecificationOptions>? specificationOptions = null,
+        IOptions<OpenApiValidationServerOptions>? openApiValidationOptions = null)
     {
         _jsonValidatorService = jsonValidatorService;
-        _specificationOptions = specificationOptions?.Value;
-        _profileSchemaByVersion = BuildProfileSchemaLookup(_specificationOptions);
+        _openApiValidationOptions = openApiValidationOptions?.Value;
+        _profileSchemaByVersion = BuildProfileSchemaLookup(specificationOptions?.Value);
     }
 
     public string? ExtractClaimedProfileVersion(string? profileReason, string? schemaUrl)
@@ -264,7 +265,7 @@ public class HsdsComplianceService : IHsdsComplianceService
             return;
         }
 
-        var strictOwnSchemaValidation = _specificationOptions?.StrictOwnSchemaValidation ?? true;
+        var strictOwnSchemaValidation = _openApiValidationOptions?.StrictOwnSchemaValidation ?? true;
         var additionalFieldSeverity = strictOwnSchemaValidation ? "Error" : "Warning";
         foreach (var error in additionalFieldErrors)
         {

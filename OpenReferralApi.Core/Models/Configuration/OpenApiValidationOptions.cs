@@ -80,6 +80,13 @@ public class OpenApiValidationServerOptions
     public const string SectionName = "OpenApiValidation";
 
     /// <summary>
+    /// Controls whether live feed responses are validated strictly against the feed's own schema.
+    /// When true, any validation errors (including additional fields) are raised as errors.
+    /// When false, validation failures are downgraded to warnings.
+    /// </summary>
+    public bool StrictOwnSchemaValidation { get; set; } = true;
+
+    /// <summary>
     /// Selects the HSDS conformance depth.
     /// SpecAndFeedRuntimeFast performs strict feed-vs-own-spec runtime validation and feed-spec-vs-HSDS-spec comparison.
     /// FullHsdsRuntime additionally validates live feed responses against HSDS response schemas.

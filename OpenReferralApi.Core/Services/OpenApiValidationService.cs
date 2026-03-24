@@ -78,8 +78,8 @@ public class OpenApiValidationService : IOpenApiValidationService
         _profileDiscoveryService = discoveryService;
         _openApiDiscoveryService = feedSpecDiscoveryService;
         _openApiSpecificationService = openApiSpecificationService ?? new OpenApiSpecificationService(NullLogger<OpenApiSpecificationService>.Instance, jsonValidatorService);
-        _hsdsComplianceService = hsdsComplianceService ?? new HsdsComplianceService(jsonValidatorService, specificationOptions);
-        _endpointTestingService = endpointTestingService ?? new EndpointTestingService(NullLogger<EndpointTestingService>.Instance, httpClientFactory, jsonValidatorService, _hsdsComplianceService, specificationOptions);
+        _hsdsComplianceService = hsdsComplianceService ?? new HsdsComplianceService(jsonValidatorService, specificationOptions, openApiValidationServerOptions);
+        _endpointTestingService = endpointTestingService ?? new EndpointTestingService(NullLogger<EndpointTestingService>.Instance, httpClientFactory, jsonValidatorService, _hsdsComplianceService, openApiValidationServerOptions);
         _authenticationValidationService = authenticationValidationService ?? new AuthenticationValidationService(NullLogger<AuthenticationValidationService>.Instance, authOptions);
         _allowUserSuppliedAuth = authOptions.Value.AllowUserSuppliedAuth;
         _hsdsValidationMode = openApiValidationServerOptions?.Value?.HsdsValidationMode ?? HsdsValidationMode.SpecAndFeedRuntimeFast;

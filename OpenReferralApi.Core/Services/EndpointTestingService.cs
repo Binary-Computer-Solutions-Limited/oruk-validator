@@ -30,20 +30,20 @@ public class EndpointTestingService : IEndpointTestingService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IJsonValidatorService _jsonValidatorService;
     private readonly IHsdsComplianceService _hsdsComplianceService;
-    private readonly SpecificationOptions? _specificationOptions;
+    private readonly OpenApiValidationServerOptions? _openApiValidationOptions;
 
     public EndpointTestingService(
         ILogger<EndpointTestingService> logger,
         IHttpClientFactory httpClientFactory,
         IJsonValidatorService jsonValidatorService,
         IHsdsComplianceService hsdsComplianceService,
-        IOptions<SpecificationOptions>? specificationOptions = null)
+        IOptions<OpenApiValidationServerOptions>? openApiValidationOptions = null)
     {
         _logger = logger;
         _httpClientFactory = httpClientFactory;
         _jsonValidatorService = jsonValidatorService;
         _hsdsComplianceService = hsdsComplianceService;
-        _specificationOptions = specificationOptions?.Value;
+        _openApiValidationOptions = openApiValidationOptions?.Value;
     }
     public async Task<List<EndpointTestResult>> TestEndpointsAsync(JObject openApiSpec, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, string? documentUri, CancellationToken cancellationToken = default)
     {
@@ -745,7 +745,7 @@ public class EndpointTestingService : IEndpointTestingService
                                         Options = new ValidationOptions
                                         {
                                             ReportAdditionalFields = (options?.ReportAdditionalFields ?? false)
-                                                || (_specificationOptions?.StrictOwnSchemaValidation ?? true)
+                                                || (_openApiValidationOptions?.StrictOwnSchemaValidation ?? true)
                                         }
                                     };
                                     var validationResult = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);

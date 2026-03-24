@@ -1022,7 +1022,7 @@ public class OpenApiValidationServiceTests
 
         SetupHttpMock(CreateOpenApi30SpecWithResponseSchema(), endpointResponseBody: "[{\"name\":\"ok\",\"extra\":\"x\"}]");
 
-        var lenientSpecOptions = Options.Create(new SpecificationOptions { StrictOwnSchemaValidation = false });
+        var lenientValidationOptions = Options.Create(new OpenApiValidationServerOptions { StrictOwnSchemaValidation = false });
         var serviceWithLenientPolicy = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
@@ -1031,7 +1031,7 @@ public class OpenApiValidationServiceTests
             _profileDiscoveryServiceMock.Object,
             _feedSpecDiscoveryMock.Object,
             _authOptions,
-            specificationOptions: lenientSpecOptions);
+            openApiValidationServerOptions: lenientValidationOptions);
 
         // Act — server setting StrictOwnSchemaValidation = false downgrades errors to warnings
         var result = await serviceWithLenientPolicy.ValidateOpenApiSpecificationAsync(request);

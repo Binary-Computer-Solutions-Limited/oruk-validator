@@ -3,9 +3,9 @@ namespace OpenReferralApi.Core.Models.Configuration;
 public class SpecificationOptions
 {
     public const string SectionName = "Specification";
-    
-    public string BaseUrl { get; set; } = "";
 
+    public string BaseUrl { get; set; } = "";
+    
     /// <summary>
     /// Enables schema warmup on application startup.
     /// </summary>
@@ -15,13 +15,6 @@ public class SpecificationOptions
     /// Delay before warmup starts so app startup is not blocked.
     /// </summary>
     public int WarmupStartupDelaySeconds { get; set; } = 5;
-
-    /// <summary>
-    /// Controls whether live feed responses are validated strictly against the feed's own schema.
-    /// When true, any validation errors (including additional fields) are raised as errors.
-    /// When false, validation failures are downgraded to warnings.
-    /// </summary>
-    public bool StrictOwnSchemaValidation { get; set; } = true;
 
     /// <summary>
     /// Optional configuration-based profile-name to OpenAPI URL mappings.
