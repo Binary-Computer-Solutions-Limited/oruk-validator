@@ -14,7 +14,6 @@ public class OpenApiValidationServiceTests
     private Mock<ISchemaResolverService> _schemaResolverServiceMock;
     private Mock<IProfileDiscoveryService> _profileDiscoveryServiceMock;
     private Mock<IOpenApiDiscoveryService> _feedSpecDiscoveryMock;
-    private IOptions<AuthenticationOptions> _authOptions;
     private IOptions<OpenApiValidationServerOptions> _openApiValidationServerOptions;
     private HttpClient _httpClient;
     private OpenApiValidationService _service;
@@ -64,10 +63,10 @@ public class OpenApiValidationServiceTests
         var mockHandler = new MockHttpMessageHandler();
         _httpClient = TestHttpClientFactory.CreateClient(mockHandler);
 
-        _authOptions = Options.Create(new AuthenticationOptions { AllowUserSuppliedAuth = true });
         _openApiValidationServerOptions = Options.Create(new OpenApiValidationServerOptions
         {
-            HsdsValidationMode = HsdsValidationMode.SpecAndFeedRuntimeFast
+            HsdsValidationMode = HsdsValidationMode.SpecAndFeedRuntimeFast,
+            AllowUserSuppliedAuth = true
         });
 
         _service = new OpenApiValidationService(
@@ -77,7 +76,6 @@ public class OpenApiValidationServiceTests
             _schemaResolverServiceMock.Object,
             _profileDiscoveryServiceMock.Object,
             _feedSpecDiscoveryMock.Object,
-            _authOptions,
             specificationOptions: Options.Create(new SpecificationOptions
             {
                 Urls = new Dictionary<string, string>
@@ -893,7 +891,6 @@ public class OpenApiValidationServiceTests
             _schemaResolverServiceMock.Object,
             _profileDiscoveryServiceMock.Object,
             _feedSpecDiscoveryMock.Object,
-            _authOptions,
             hsdsComplianceService: hsdsComplianceServiceMock.Object,
             endpointTestingService: endpointTestingServiceMock.Object,
             authenticationValidationService: null,
@@ -1030,7 +1027,6 @@ public class OpenApiValidationServiceTests
             _schemaResolverServiceMock.Object,
             _profileDiscoveryServiceMock.Object,
             _feedSpecDiscoveryMock.Object,
-            _authOptions,
             openApiValidationServerOptions: lenientValidationOptions);
 
         // Act — server setting StrictOwnSchemaValidation = false downgrades errors to warnings
@@ -1063,8 +1059,7 @@ public class OpenApiValidationServiceTests
         var httpClient = TestHttpClientFactory.CreateClient(mockHandler);
         var service = new OpenApiValidationService(
             _loggerMock.Object, CreateFactory(httpClient), _jsonValidatorServiceMock.Object,
-            _schemaResolverServiceMock.Object, _profileDiscoveryServiceMock.Object, _feedSpecDiscoveryMock.Object,
-            Options.Create(new AuthenticationOptions { AllowUserSuppliedAuth = true }));
+            _schemaResolverServiceMock.Object, _profileDiscoveryServiceMock.Object, _feedSpecDiscoveryMock.Object);
 
         try
         {
@@ -1103,8 +1098,7 @@ public class OpenApiValidationServiceTests
         var httpClient = TestHttpClientFactory.CreateClient(mockHandler);
         var service = new OpenApiValidationService(
             _loggerMock.Object, CreateFactory(httpClient), _jsonValidatorServiceMock.Object,
-            _schemaResolverServiceMock.Object, _profileDiscoveryServiceMock.Object, _feedSpecDiscoveryMock.Object,
-            Options.Create(new AuthenticationOptions { AllowUserSuppliedAuth = true }));
+            _schemaResolverServiceMock.Object, _profileDiscoveryServiceMock.Object, _feedSpecDiscoveryMock.Object);
 
         try
         {
@@ -1146,8 +1140,7 @@ public class OpenApiValidationServiceTests
         var httpClient = TestHttpClientFactory.CreateClient(mockHandler);
         var service = new OpenApiValidationService(
             _loggerMock.Object, CreateFactory(httpClient), _jsonValidatorServiceMock.Object,
-            _schemaResolverServiceMock.Object, _profileDiscoveryServiceMock.Object, _feedSpecDiscoveryMock.Object,
-            Options.Create(new AuthenticationOptions { AllowUserSuppliedAuth = true }));
+            _schemaResolverServiceMock.Object, _profileDiscoveryServiceMock.Object, _feedSpecDiscoveryMock.Object);
 
         try
         {
@@ -1270,7 +1263,6 @@ public class OpenApiValidationServiceTests
             _schemaResolverServiceMock.Object,
             _profileDiscoveryServiceMock.Object,
             _feedSpecDiscoveryMock.Object,
-            _authOptions,
             cacheOptions: Options.Create(new CacheOptions
             {
                 Enabled = true,
@@ -1336,8 +1328,7 @@ public class OpenApiValidationServiceTests
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
             _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
-            Options.Create(new AuthenticationOptions { AllowUserSuppliedAuth = true }));
+            _feedSpecDiscoveryMock.Object);
 
         // Act
         var result = _service.ValidateOpenApiSpecificationAsync(request, cts.Token).GetAwaiter().GetResult();
@@ -1608,7 +1599,6 @@ public class OpenApiValidationServiceTests
             _schemaResolverServiceMock.Object,
             _profileDiscoveryServiceMock.Object,
             _feedSpecDiscoveryMock.Object,
-            _authOptions,
             openApiSpecificationService: specServiceMock.Object,
             hsdsComplianceService: hsdsServiceMock.Object,
             endpointTestingService: endpointTestingMock.Object);
@@ -2733,7 +2723,7 @@ public class OpenApiValidationServiceTests
             _schemaResolverServiceMock.Object,
             _profileDiscoveryServiceMock.Object,
             _feedSpecDiscoveryMock.Object,
-            Options.Create(new AuthenticationOptions { AllowUserSuppliedAuth = false }));
+            openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions { AllowUserSuppliedAuth = false }));
 
         var request = new OpenApiValidationRequest
         {
@@ -2798,7 +2788,6 @@ public class OpenApiValidationServiceTests
             _schemaResolverServiceMock.Object,
             _profileDiscoveryServiceMock.Object,
             _feedSpecDiscoveryMock.Object,
-            _authOptions,
             specificationOptions: Options.Create(new SpecificationOptions
             {
                 Urls = new Dictionary<string, string>
@@ -2806,7 +2795,8 @@ public class OpenApiValidationServiceTests
                     ["HSDS-UK-1.0"] = "https://openreferraluk.org/specifications/1.0/openapi.json",
                     ["HSDS-UK-3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json"
                 }
-            }));
+            }),
+            openApiValidationServerOptions: _openApiValidationServerOptions);
     }
 
     private void SetupHttpMock(Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> handler)
@@ -2822,7 +2812,6 @@ public class OpenApiValidationServiceTests
             _schemaResolverServiceMock.Object,
             _profileDiscoveryServiceMock.Object,
             _feedSpecDiscoveryMock.Object,
-            _authOptions,
             specificationOptions: Options.Create(new SpecificationOptions
             {
                 Urls = new Dictionary<string, string>
@@ -2830,7 +2819,8 @@ public class OpenApiValidationServiceTests
                     ["HSDS-UK-1.0"] = "https://openreferraluk.org/specifications/1.0/openapi.json",
                     ["HSDS-UK-3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json"
                 }
-            }));
+            }),
+            openApiValidationServerOptions: _openApiValidationServerOptions);
     }
 
     private static IHttpClientFactory CreateFactory(HttpClient httpClient)

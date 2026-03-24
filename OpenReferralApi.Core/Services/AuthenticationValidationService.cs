@@ -15,7 +15,7 @@ public class AuthenticationValidationService : IAuthenticationValidationService
 
     public AuthenticationValidationService(
         ILogger<AuthenticationValidationService> logger,
-        IOptions<AuthenticationOptions> authOptions)
+        IOptions<OpenApiValidationServerOptions> authOptions)
     {
         _logger = logger;
         _allowUserSuppliedAuth = authOptions.Value.AllowUserSuppliedAuth;

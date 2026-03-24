@@ -63,7 +63,6 @@ public class OpenApiValidationService : IOpenApiValidationService
         ISchemaResolverService schemaResolverService,
         IProfileDiscoveryService discoveryService,
         IOpenApiDiscoveryService feedSpecDiscoveryService,
-        IOptions<AuthenticationOptions> authOptions,
         IOpenApiSpecificationService? openApiSpecificationService = null,
         IHsdsComplianceService? hsdsComplianceService = null,
         IEndpointTestingService? endpointTestingService = null,
@@ -80,8 +79,8 @@ public class OpenApiValidationService : IOpenApiValidationService
         _openApiSpecificationService = openApiSpecificationService ?? new OpenApiSpecificationService(NullLogger<OpenApiSpecificationService>.Instance, jsonValidatorService);
         _hsdsComplianceService = hsdsComplianceService ?? new HsdsComplianceService(jsonValidatorService, specificationOptions, openApiValidationServerOptions);
         _endpointTestingService = endpointTestingService ?? new EndpointTestingService(NullLogger<EndpointTestingService>.Instance, httpClientFactory, jsonValidatorService, _hsdsComplianceService, openApiValidationServerOptions);
-        _authenticationValidationService = authenticationValidationService ?? new AuthenticationValidationService(NullLogger<AuthenticationValidationService>.Instance, authOptions);
-        _allowUserSuppliedAuth = authOptions.Value.AllowUserSuppliedAuth;
+        _authenticationValidationService = authenticationValidationService ?? new AuthenticationValidationService(NullLogger<AuthenticationValidationService>.Instance, openApiValidationServerOptions ?? Options.Create(new OpenApiValidationServerOptions()));
+        _allowUserSuppliedAuth = openApiValidationServerOptions?.Value?.AllowUserSuppliedAuth ?? false;
         _hsdsValidationMode = openApiValidationServerOptions?.Value?.HsdsValidationMode ?? HsdsValidationMode.SpecAndFeedRuntimeFast;
         var effectiveCacheOptions = cacheOptions?.Value;
         _profileSchemaCacheEnabled = effectiveCacheOptions?.Enabled == true;

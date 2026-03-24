@@ -221,7 +221,7 @@ public class AuthenticationValidationServiceTests
 
     private AuthenticationValidationService CreateService(bool allowUserSuppliedAuth)
     {
-        var options = Options.Create(new AuthenticationOptions
+        var options = Options.Create(new OpenApiValidationServerOptions
         {
             AllowUserSuppliedAuth = allowUserSuppliedAuth
         });
