@@ -16,15 +16,6 @@ public enum HsdsValidationMode
 public class OpenApiValidationOptions : ValidationOptionsBase
 {
     /// <summary>
-    /// Selects the HSDS conformance depth.
-    /// SpecAndFeedRuntimeFast performs strict feed-vs-own-spec runtime validation and feed-spec-vs-HSDS-spec comparison.
-    /// FullHsdsRuntime additionally validates live feed responses against HSDS response schemas.
-    /// </summary>
-    [DefaultValue(HsdsValidationMode.SpecAndFeedRuntimeFast)]
-    [JsonProperty("hsdsValidationMode")]
-    public HsdsValidationMode HsdsValidationMode { get; set; } = HsdsValidationMode.SpecAndFeedRuntimeFast;
-
-    /// <summary>
     /// Whether to perform live endpoint testing against the API server
     /// Set to false for specification-only validation without HTTP requests
     /// Requires a valid BaseUrl in the request when enabled
@@ -79,4 +70,20 @@ public class OpenApiValidationOptions : ValidationOptionsBase
     public bool IncludeTestResults { get; set; } = true;
 
     /// <summary>
+}
+
+/// <summary>
+/// Server-side OpenAPI validation settings not overridable by client payloads.
+/// </summary>
+public class OpenApiValidationServerOptions
+{
+    public const string SectionName = "OpenApiValidation";
+
+    /// <summary>
+    /// Selects the HSDS conformance depth.
+    /// SpecAndFeedRuntimeFast performs strict feed-vs-own-spec runtime validation and feed-spec-vs-HSDS-spec comparison.
+    /// FullHsdsRuntime additionally validates live feed responses against HSDS response schemas.
+    /// </summary>
+    [DefaultValue(HsdsValidationMode.SpecAndFeedRuntimeFast)]
+    public HsdsValidationMode HsdsValidationMode { get; set; } = HsdsValidationMode.SpecAndFeedRuntimeFast;
 }

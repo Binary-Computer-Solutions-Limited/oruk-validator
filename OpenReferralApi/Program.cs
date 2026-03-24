@@ -53,6 +53,9 @@ builder.Services.Configure<RateLimitingOptions>(
 builder.Services.Configure<OpenTelemetryOptions>(
     builder.Configuration.GetSection(OpenTelemetryOptions.SectionName));
 
+builder.Services.Configure<OpenApiValidationServerOptions>(
+    builder.Configuration.GetSection(OpenApiValidationServerOptions.SectionName));
+
 // Add services to the container.
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>

@@ -51,8 +51,10 @@ public class OpenApiValidationService : IOpenApiValidationService
     private readonly IAuthenticationValidationService _authenticationValidationService;
     private readonly OpenApiSpecFetcher _specFetcher;
     private readonly bool _allowUserSuppliedAuth;
+    private readonly HsdsValidationMode _hsdsValidationMode;
     private readonly bool _profileSchemaCacheEnabled;
     private readonly TimeSpan _profileSchemaCacheTtl;
+    private readonly IReadOnlyDictionary<string, string> _specificationUrls;
 
     public OpenApiValidationService(
         ILogger<OpenApiValidationService> logger,
@@ -68,7 +70,8 @@ public class OpenApiValidationService : IOpenApiValidationService
         IAuthenticationValidationService? authenticationValidationService = null,
         IOpenApiBootstrapService? openApiBootstrapService = null,
         IOptions<CacheOptions>? cacheOptions = null,
-        IOptions<SpecificationOptions>? specificationOptions = null)
+        IOptions<SpecificationOptions>? specificationOptions = null,
+        IOptions<OpenApiValidationServerOptions>? openApiValidationServerOptions = null)
     {
         _logger = logger;
         _schemaResolverService = schemaResolverService;
@@ -79,11 +82,13 @@ public class OpenApiValidationService : IOpenApiValidationService
         _endpointTestingService = endpointTestingService ?? new EndpointTestingService(NullLogger<EndpointTestingService>.Instance, httpClientFactory, jsonValidatorService, _hsdsComplianceService, specificationOptions);
         _authenticationValidationService = authenticationValidationService ?? new AuthenticationValidationService(NullLogger<AuthenticationValidationService>.Instance, authOptions);
         _allowUserSuppliedAuth = authOptions.Value.AllowUserSuppliedAuth;
+        _hsdsValidationMode = openApiValidationServerOptions?.Value?.HsdsValidationMode ?? HsdsValidationMode.SpecAndFeedRuntimeFast;
         var effectiveCacheOptions = cacheOptions?.Value;
         _profileSchemaCacheEnabled = effectiveCacheOptions?.Enabled == true;
         _profileSchemaCacheTtl = effectiveCacheOptions != null && effectiveCacheOptions.ExpirationMinutes > 0
             ? TimeSpan.FromMinutes(effectiveCacheOptions.ExpirationMinutes)
             : TimeSpan.FromHours(2);
+        _specificationUrls = new Dictionary<string, string>(specificationOptions?.Value?.Urls ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase);
         _specFetcher = new OpenApiSpecFetcher(httpClientFactory, logger, schemaResolverService, allowUserSuppliedAuth: _allowUserSuppliedAuth);
         _openApiBootstrapService = openApiBootstrapService ?? new OpenApiBootstrapService(
             _profileDiscoveryService,
@@ -157,10 +162,13 @@ public class OpenApiValidationService : IOpenApiValidationService
             JObject? resolvedHsdsProfileSpec = null;
             string? knownHsdsSchemaUrl = null;
 
-            if (_hsdsComplianceService.TryGetKnownHsdsSchemaUrl(claimedProfileVersion, out var mappedProfileSchemaUrl))
+            if (_hsdsComplianceService.TryGetKnownHsdsSchemaUrl(claimedProfileVersion, out var resolvedKnownHsdsSchemaUrl))
             {
-                knownHsdsSchemaUrl = mappedProfileSchemaUrl;
-                resolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(mappedProfileSchemaUrl, null, cancellationToken, cacheScope: "profile");
+                knownHsdsSchemaUrl = resolvedKnownHsdsSchemaUrl;
+                if (!string.IsNullOrWhiteSpace(knownHsdsSchemaUrl))
+                {
+                    resolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(knownHsdsSchemaUrl, null, cancellationToken, cacheScope: "profile");
+                }
             }
 
             // Always resolve and cache the feed OpenAPI specification before validation/testing.
@@ -205,13 +213,16 @@ public class OpenApiValidationService : IOpenApiValidationService
             }
 
             claimedProfileVersion = _hsdsComplianceService.ExtractClaimedProfileVersion(request.ProfileReason, request.OpenApiSchema?.Url);
-            if (resolvedHsdsProfileSpec == null && _hsdsComplianceService.TryGetKnownHsdsSchemaUrl(claimedProfileVersion, out var knownHsdsSchemaUrlAfterDiscovery))
+            if (resolvedHsdsProfileSpec == null && _hsdsComplianceService.TryGetKnownHsdsSchemaUrl(claimedProfileVersion, out resolvedKnownHsdsSchemaUrl))
             {
-                knownHsdsSchemaUrl = knownHsdsSchemaUrlAfterDiscovery;
-                resolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(knownHsdsSchemaUrlAfterDiscovery, null, cancellationToken, cacheScope: "profile");
+                knownHsdsSchemaUrl = resolvedKnownHsdsSchemaUrl;
+                if (!string.IsNullOrWhiteSpace(knownHsdsSchemaUrl))
+                {
+                    resolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(knownHsdsSchemaUrl, null, cancellationToken, cacheScope: "profile");
+                }
             }
 
-            // Compare feed specification against the known HSDS baseline profile, when discoverable.
+            // Compare feed specification against the known HSDS baseline profile before endpoint testing.
             if (request.Options.ValidateSpecification && specValidation != null)
             {
                 if (resolvedHsdsProfileSpec != null)
@@ -248,23 +259,23 @@ public class OpenApiValidationService : IOpenApiValidationService
                 }
             }
 
-            // Test endpoints if requested
+            // Test endpoints after specification and HSDS profile checks.
             List<EndpointTestResult> endpointTests = new();
             if (request.Options.TestEndpoints && !string.IsNullOrEmpty(request.BaseUrl))
             {
                 endpointTests = await _endpointTestingService.TestEndpointsAsync(openApiSpec, request.BaseUrl, request.Options, dataSourceRequestAuth, request.OpenApiSchema?.Url, cancellationToken);
                 result.EndpointTests = endpointTests;
+            }
 
-                if (request.Options.HsdsValidationMode == HsdsValidationMode.FullHsdsRuntime)
+            if (_hsdsValidationMode == HsdsValidationMode.FullHsdsRuntime)
+            {
+                if (resolvedHsdsProfileSpec != null)
                 {
-                    if (resolvedHsdsProfileSpec != null)
-                    {
-                        await _hsdsComplianceService.ValidateEndpointResponsesAgainstHsdsProfileAsync(endpointTests, resolvedHsdsProfileSpec, request.Options, cancellationToken);
-                    }
-                    else
-                    {
-                        result.Notifications.Add("Full HSDS runtime mode requested, but no known HSDS profile schema could be resolved.");
-                    }
+                    await _hsdsComplianceService.ValidateEndpointResponsesAgainstHsdsProfileAsync(endpointTests, resolvedHsdsProfileSpec, request.Options, cancellationToken);
+                }
+                else
+                {
+                    result.Notifications.Add("Full HSDS runtime mode requested, but no known HSDS profile schema could be resolved.");
                 }
             }
 
@@ -368,6 +379,22 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
 
         return deduplicatedErrors;
+    }
+
+    private string? GetKnownHsdsSchemaUrlFromOptions(string? profileVersion)
+    {
+        if (string.IsNullOrWhiteSpace(profileVersion) || _specificationUrls.Count == 0)
+        {
+            return null;
+        }
+
+        var key = $"HSDS-UK-{profileVersion.Trim()}";
+        if (_specificationUrls.TryGetValue(key, out var mappedUrl) && !string.IsNullOrWhiteSpace(mappedUrl))
+        {
+            return mappedUrl;
+        }
+
+        return null;
     }
 
     private async Task<JObject> GetCachedResolvedOpenApiSpecAsync(
