@@ -261,6 +261,45 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         return null;
     }
 
+    /// <summary>
+    /// Attempts to extract HSDS version from an OpenAPI spec's "openapi" field.
+    /// Returns the extracted major.minor version and a flag indicating if it was incorrectly defined.
+    /// For example, "3.0.3" would extract to 3.0 and flag isIncorrect=true.
+    /// </summary>
+    private (float? version, string? openapiValue) TryExtractHsdsVersionFromOpenApiSpec(string specContent)
+    {
+        if (string.IsNullOrWhiteSpace(specContent))
+        {
+            return (null, null);
+        }
+
+        try
+        {
+            var spec = JObject.Parse(specContent);
+            var openapiVersion = spec.SelectToken("openapi")?.ToString();
+
+            if (!string.IsNullOrEmpty(openapiVersion))
+            {
+                // Extract major.minor version (e.g., "3.0" from "3.0.3")
+                var versionParts = openapiVersion.Split('.');
+                if (versionParts.Length >= 2)
+                {
+                    var majorMinor = $"{versionParts[0]}.{versionParts[1]}";
+                    if (float.TryParse(majorMinor, out var version))
+                    {
+                        return (version, openapiVersion);
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Ignore parsing errors
+        }
+
+        return (null, null);
+    }
+
     private async Task<(string? url, string? reason)> DiscoverOpenApiFromFallbacksAsync(HttpClient client, string baseUrl, string? baseUrlContent, CancellationToken cancellationToken)
     {
         var normalizedBaseUrl = baseUrl.TrimEnd('/');
@@ -282,6 +321,20 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                 var content = await response.Content.ReadAsStringAsync(cancellationToken);
                 if (LooksLikeOpenApiDocument(content))
                 {
+                    // Try to extract HSDS version from the "openapi" field if no proper version field exists
+                    var (extractedVersion, openapiValue) = TryExtractHsdsVersionFromOpenApiSpec(content);
+                    if (extractedVersion.HasValue)
+                    {
+                        var versionedSpecUrl = $"{_baseSpecificationUrl}{extractedVersion.Value:0.0}/openapi.json";
+                        _logger.LogWarning(
+                            "Discovered OpenAPI spec at {SpecUrl} incorrectly defines HSDS schema version in 'openapi' field (value: {OpenapiValue}). " +
+                            "This should be defined in a proper HSDS version field. Mapping to standard HSDS spec: {VersionedSpecUrl}",
+                            SchemaResolverService.SanitizeUrlForLogging(specUrl),
+                            SchemaResolverService.SanitizeStringForLogging(openapiValue ?? "unknown"),
+                            SchemaResolverService.SanitizeUrlForLogging(versionedSpecUrl));
+                        return (versionedSpecUrl, $"HSDS version {extractedVersion.Value:0.0} mapped from OpenAPI 'openapi' field at '{path}'");
+                    }
+
                     _logger.LogInformation("Discovered OpenAPI spec via fallback probing at {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(specUrl));
                     return (specUrl, $"OpenAPI URL discovered by probing '{path}'");
                 }
