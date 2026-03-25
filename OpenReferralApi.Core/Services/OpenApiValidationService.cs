@@ -173,6 +173,10 @@ public class OpenApiValidationService : IOpenApiValidationService
             }
 
             // Always resolve and cache the feed OpenAPI specification before validation/testing.
+            // Track whether the feed spec fell back to the HSDS profile spec so that we can avoid
+            // redundant double-validation in FullHsdsRuntime mode (the endpoint tests would already
+            // be running against the HSDS profile schema in that case).
+            var feedSpecFellBackToHsdsProfile = false;
             JObject openApiSpec;
             try
             {
@@ -188,6 +192,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
                 openApiSpec = (JObject)resolvedHsdsProfileSpec.DeepClone();
                 request.OpenApiSchema.Url = knownHsdsSchemaUrl;
+                feedSpecFellBackToHsdsProfile = true;
                 result.Notifications.Add("Unable to fetch OpenAPI specification from the feed URL. Falling back to the HSDS profile OpenAPI specification.");
             }
 
@@ -289,7 +294,17 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             if (_hsdsValidationMode == HsdsValidationMode.FullHsdsRuntime)
             {
-                if (resolvedHsdsProfileSpec != null)
+                if (feedSpecFellBackToHsdsProfile)
+                {
+                    // The feed's own OpenAPI spec could not be fetched, so endpoint responses were
+                    // already validated against the HSDS profile schema by TestEndpointsAsync above.
+                    // A second pass against the same schema would produce duplicate errors, so skip it.
+                    result.Notifications.Add(
+                        "Full HSDS runtime validation was skipped: the feed's OpenAPI specification " +
+                        "could not be fetched, so endpoint responses were already validated against " +
+                        "the HSDS profile specification during endpoint testing. No second pass is needed.");
+                }
+                else if (resolvedHsdsProfileSpec != null)
                 {
                     await _hsdsComplianceService.ValidateEndpointResponsesAgainstHsdsProfileAsync(endpointTests, resolvedHsdsProfileSpec, request.Options, cancellationToken);
                 }

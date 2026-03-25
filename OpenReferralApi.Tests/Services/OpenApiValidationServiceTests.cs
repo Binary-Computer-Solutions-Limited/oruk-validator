@@ -1095,6 +1095,144 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
+    public async Task ValidateOpenApiSpecificationAsync_FullMode_WhenFeedSpecFetchFails_SkipsSecondHsdsPassAndAddsNotification()
+    {
+        // Arrange – feed spec fetch will fail; the HSDS profile spec is the fallback.
+        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
+
+        var hsdsComplianceServiceMock = new Mock<IHsdsComplianceService>();
+        hsdsComplianceServiceMock
+            .Setup(s => s.ExtractClaimedProfileVersion(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns("3.0");
+
+        hsdsComplianceServiceMock
+            .Setup(s => s.TryGetKnownHsdsSchemaUrl("3.0", out hsdsSpecUrl))
+            .Returns(true);
+
+        hsdsComplianceServiceMock
+            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>()))
+            .Returns(new List<OpenReferralApi.Core.Models.Validation.ValidationError>());
+
+        var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
+        endpointTestingServiceMock
+            .Setup(s => s.TestEndpointsAsync(
+                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<string>(),
+                It.IsAny<OpenApiValidationOptions>(),
+                It.IsAny<DataSourceAuthentication>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<EndpointTestResult>
+            {
+                new()
+                {
+                    Path = "/organisations",
+                    Method = "GET",
+                    IsTested = true,
+                    Status = EndpointTestStatus.PassedValidation,
+                    TestResults = new List<HttpTestResult>
+                    {
+                        new()
+                        {
+                            ResponseStatusCode = 200,
+                            ResponseBody = "[{\"id\":\"1\"}]",
+                            IsSuccessStatusCode = true,
+                            ValidationResult = new ValidationResult
+                            {
+                                IsValid = true,
+                                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>(),
+                                SchemaVersion = "test",
+                                Duration = TimeSpan.Zero
+                            }
+                        }
+                    }
+                }
+            });
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            BaseUrl = "https://feed.example.com",
+            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
+            Options = new OpenApiValidationOptions
+            {
+                ValidateSpecification = true,
+                TestEndpoints = true
+            }
+        };
+
+        var fullModeServerOptions = Options.Create(new OpenApiValidationServerOptions
+        {
+            HsdsValidationMode = HsdsValidationMode.FullHsdsRuntime
+        });
+
+        // Feed spec URL returns a network error; HSDS profile URL succeeds.
+        var fullModeHttpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>
+        {
+            var requestUrl = httpRequest.RequestUri?.ToString() ?? string.Empty;
+            if (string.Equals(requestUrl, feedSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new HttpRequestException("Simulated network failure fetching feed spec");
+            }
+
+            if (string.Equals(requestUrl, hsdsSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateHsdsProfileSpec())
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent("[{\"id\":\"1\"}]")
+            };
+        }));
+
+        using var _ = fullModeHttpClient;
+
+        var serviceWithFullMode = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(fullModeHttpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            hsdsComplianceService: hsdsComplianceServiceMock.Object,
+            endpointTestingService: endpointTestingServiceMock.Object,
+            authenticationValidationService: null,
+            openApiBootstrapService: null,
+            cacheOptions: null,
+            specificationOptions: Options.Create(new SpecificationOptions
+            {
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-1.0"] = "https://openreferraluk.org/specifications/1.0/openapi.json",
+                    ["HSDS-UK-3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json"
+                }
+            }),
+            openApiValidationServerOptions: fullModeServerOptions);
+
+        // Act
+        var result = await serviceWithFullMode.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert – the fallback notification is present.
+        Assert.That(result.Notifications, Has.Some.Contains("Falling back to the HSDS profile OpenAPI specification"));
+
+        // Assert – the skip notification explains why the second pass was not run.
+        Assert.That(result.Notifications, Has.Some.Contains("Full HSDS runtime validation was skipped"));
+
+        // Assert – ValidateEndpointResponsesAgainstHsdsProfileAsync must NOT have been called,
+        // because TestEndpointsAsync already ran against the HSDS profile spec (the fallback).
+        hsdsComplianceServiceMock.Verify(s => s.ValidateEndpointResponsesAgainstHsdsProfileAsync(
+            It.IsAny<List<EndpointTestResult>>(),
+            It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+            It.IsAny<OpenApiValidationOptions>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
     public async Task ValidateOpenApiSpecificationAsync_WhenStrictOwnSchemaValidationTrue_FailsEndpointValidation()
     {
         // Arrange
