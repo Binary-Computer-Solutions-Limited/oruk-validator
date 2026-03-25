@@ -34,6 +34,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         "openapi.json",
         "swagger.json",
         ".well-known/openapi.json",
+        "api-docs/openapi.json",
         "api-docs",
         "v3/api-docs",
         "swagger/v1/swagger.json"
@@ -269,10 +270,12 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             try
             {
                 var specUrl = BuildAbsoluteUrl(normalizedBaseUrl, path);
+                _logger.LogDebug("Probing fallback path: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(specUrl));
                 using var request = new HttpRequestMessage(HttpMethod.Get, specUrl);
                 var response = await client.SendAsync(request, cancellationToken);
                 if (!response.IsSuccessStatusCode)
                 {
+                    _logger.LogDebug("Fallback path {Path} returned {StatusCode}", path, (int)response.StatusCode);
                     continue;
                 }
 
@@ -282,6 +285,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                     _logger.LogInformation("Discovered OpenAPI spec via fallback probing at {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(specUrl));
                     return (specUrl, $"OpenAPI URL discovered by probing '{path}'");
                 }
+                _logger.LogDebug("Fallback path {Path} returned 200 but content does not look like an OpenAPI document", path);
             }
             catch (OperationCanceledException)
             {
