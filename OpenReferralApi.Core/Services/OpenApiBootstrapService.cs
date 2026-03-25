@@ -45,7 +45,7 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
 
         // Try detected version from discovered OpenAPI spec first, then fall back to root endpoint
         var rootProfileVersion = !string.IsNullOrWhiteSpace(profileDiscovery.DetectedHsdsProfileVersion)
-            ? profileDiscovery.DetectedHsdsProfileVersion
+            ? NormalizeProfileVersion(profileDiscovery.DetectedHsdsProfileVersion)
             : TryExtractProfileVersionFromJson(profileDiscovery.BaseUrlResponseContent);
 
         string? feedSpecUrl = null;

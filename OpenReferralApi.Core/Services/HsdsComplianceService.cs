@@ -285,6 +285,7 @@ public class HsdsComplianceService : IHsdsComplianceService
 
         var cleaned = rawVersion
             .Replace("HSDS-UK-", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("HSDS-", string.Empty, StringComparison.OrdinalIgnoreCase)
             .Replace("V", string.Empty, StringComparison.OrdinalIgnoreCase)
             .Trim();
 
