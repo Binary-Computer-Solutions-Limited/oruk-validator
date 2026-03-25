@@ -71,7 +71,7 @@ public class OpenApiSpecificationServiceTests
         var spec = JObject.Parse("""
         {
           "openapi": "3.1.0",
-          "jsonSchemaDialect": "http://json-schema.org/draft-07/schema#",
+          "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
           "info": { "title": "Test", "version": "1.0.0" },
           "paths": {
             "/services": {
@@ -89,7 +89,7 @@ public class OpenApiSpecificationServiceTests
 
         Assert.That(result.IsValid, Is.True);
         Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.SchemaUri, Is.EqualTo("http://json-schema.org/draft-07/schema#"));
+        Assert.That(capturedRequest!.SchemaUri, Is.EqualTo("https://json-schema.org/draft/2020-12/schema"));
     }
 
     [Test]
@@ -122,7 +122,7 @@ public class OpenApiSpecificationServiceTests
 
         Assert.That(result.IsValid, Is.True);
         Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.SchemaUri, Is.EqualTo("https://spec.openapis.org/oas/3.0/schema/latest.json"));
+        Assert.That(capturedRequest!.SchemaUri, Is.EqualTo("https://json-schema.org/draft/2020-12/schema"));
     }
 
     [Test]

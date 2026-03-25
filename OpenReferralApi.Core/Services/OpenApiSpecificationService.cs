@@ -236,22 +236,12 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
 
         if (!string.IsNullOrWhiteSpace(version))
         {
-            if (version.StartsWith("3.1", StringComparison.OrdinalIgnoreCase))
+            // Use the root schema from configured KnownJsonSchemaUrls
+            var knownUrls = _schemaResolutionOptions.Value.KnownJsonSchemaUrls;
+            if (knownUrls?.Count > 0)
             {
-                return "https://spec.openapis.org/oas/3.1/schema/latest.json";
+                return knownUrls[0];
             }
-
-            if (version.StartsWith("3.0", StringComparison.OrdinalIgnoreCase))
-            {
-                return "https://spec.openapis.org/oas/3.0/schema/latest.json";
-            }
-
-            if (version.StartsWith("2.0", StringComparison.OrdinalIgnoreCase))
-            {
-                return "https://raw.githubusercontent.com/swagger-api/swagger-spec/master/versions/2.0.json";
-            }
-
-            return null;
         }
 
         return null;
@@ -260,21 +250,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
     private bool IsKnownJsonSchemaDialect(string dialect)
     {
         var knownUrls = _schemaResolutionOptions.Value.KnownJsonSchemaUrls;
-        if (knownUrls?.Contains(dialect, StringComparer.OrdinalIgnoreCase) == true)
-        {
-            return true;
-        }
-
-        // Fallback to known common schema dialects if not configured
-        return dialect switch
-        {
-            "https://json-schema.org/draft/2020-12/schema" => true,
-            "https://json-schema.org/draft/2019-09/schema" => true,
-            "http://json-schema.org/draft-07/schema#" => true,
-            "http://json-schema.org/draft-06/schema#" => true,
-            "http://json-schema.org/draft-04/schema#" => true,
-            _ => false
-        };
+        return knownUrls?.Contains(dialect, StringComparer.OrdinalIgnoreCase) == true;
     }
 
     private static List<ValidationError> NormalizeAndDeduplicateValidationErrors(IEnumerable<ValidationError> errors)
