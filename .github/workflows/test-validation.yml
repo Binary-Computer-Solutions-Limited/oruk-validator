@@ -79,11 +79,18 @@ jobs:
             }
           }' | tee validation-results.log 2>&1 || true
 
+    - name: Sanitize Artifact Name
+      id: slug
+      run: |
+        # Replace all non-alphanumeric characters with a hyphen
+        CLEAN_NAME=$(echo "${{ matrix.base-url }}" | sed 's/[^a-zA-Z0-9]/-/g')
+        echo "url_slug=$CLEAN_NAME" >> $GITHUB_OUTPUT
+    
     - name: Upload API log artifact
       uses: actions/upload-artifact@v7.0.0
       if: always()
       with:
-        name: api-log-${{ matrix.base-url }}
+        name: api-log-${{ steps.slug.outputs.url_slug }}
         path: |
           OpenReferralApi/logs/*.log
           validation-results.log
