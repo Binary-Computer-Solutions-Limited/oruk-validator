@@ -600,6 +600,159 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
+    public async Task ValidateOpenApiSpecificationAsync_FallsBackToHsdsProfileSpecWhenFeedSpecFetchFails()
+    {
+        // Arrange
+        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false },
+            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
+        };
+
+        SetupHttpMock((httpRequest, ct) =>
+        {
+            var requestUrl = httpRequest.RequestUri?.ToString();
+            if (string.Equals(requestUrl, feedSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+            }
+
+            if (string.Equals(requestUrl, hsdsSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateHsdsProfileSpec())
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+        });
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.SpecificationValidation, Is.Not.Null);
+        Assert.That(result.Notifications, Has.Some.EqualTo("Unable to fetch OpenAPI specification from the feed URL. Falling back to the HSDS profile OpenAPI specification."));
+        Assert.That(request.OpenApiSchema!.Url, Is.EqualTo(hsdsSpecUrl));
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_AddsUnknownProfileErrorWhenProfileContextCannotBeMapped()
+    {
+        // Arrange
+        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false },
+            ProfileReason = "Standard version [user: 9.9] read from '/' endpoint"
+        };
+
+        SetupHttpMock(CreateOpenApi30Spec());
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.False);
+        Assert.That(result.SpecificationValidation, Is.Not.Null);
+        Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_PROFILE_UNKNOWN"), Is.True);
+        Assert.That(result.SpecificationValidation.IsValid, Is.False);
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_ExtractsProfileVersionFromOpenApiExtension()
+    {
+        // Arrange
+        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false }
+        };
+
+        SetupHttpMock((httpRequest, ct) =>
+        {
+            var requestUrl = httpRequest.RequestUri?.ToString();
+            if (string.Equals(requestUrl, feedSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateOpenApi30SpecWithHsdsVersionExtension("3.0"))
+                };
+            }
+
+            if (string.Equals(requestUrl, hsdsSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateHsdsProfileSpec())
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+        });
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.Metadata?.Profile, Is.EqualTo("3.0"));
+        Assert.That(result.Metadata?.ProfileReason, Does.Contain("3.0"));
+        Assert.That(result.Notifications, Is.Empty);
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_ExtractsProfileVersionFromOpenApiFieldAndWarns()
+    {
+        // Arrange
+        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false }
+        };
+
+        SetupHttpMock((httpRequest, ct) =>
+        {
+            var requestUrl = httpRequest.RequestUri?.ToString();
+            if (string.Equals(requestUrl, feedSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateOpenApiSpecWithMisusedOpenApiField("HSDS-UK-3.0"))
+                };
+            }
+
+            if (string.Equals(requestUrl, hsdsSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateHsdsProfileSpec())
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+        });
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.Metadata?.Profile, Is.EqualTo("3.0"));
+        Assert.That(result.Notifications.Any(notification => notification.Contains("incorrectly defined in the 'openapi' field", StringComparison.OrdinalIgnoreCase)), Is.True);
+    }
+
+    [Test]
     public async Task ValidateOpenApiSpecificationAsync_ReportsAdditionalHsdsRequestFieldAsInfoOnly()
     {
         // Arrange
@@ -3325,6 +3478,24 @@ public class OpenApiValidationServiceTests
         }";
     }
 
+    private static string CreateOpenApi30SpecWithHsdsVersionExtension(string hsdsVersion)
+    {
+        return @"{
+            ""openapi"": ""3.0.0"",
+            ""x-hsds-version"": """ + hsdsVersion + @""",
+            ""info"": { ""title"": ""Test API"", ""version"": ""1.0.0"" },
+            ""paths"": {
+                ""/organisations"": {
+                    ""get"": {
+                        ""responses"": {
+                            ""200"": { ""description"": ""OK"" }
+                        }
+                    }
+                }
+            }
+        }";
+    }
+
     private string CreateFeedSpecPermissiveOrganisationResponse()
     {
         return @"{
@@ -3458,6 +3629,23 @@ public class OpenApiValidationServiceTests
                         },
                         ""responses"": {
                             ""201"": { ""description"": ""Created"" }
+                        }
+                    }
+                }
+            }
+        }";
+    }
+
+    private static string CreateOpenApiSpecWithMisusedOpenApiField(string openApiValue)
+    {
+        return @"{
+            ""openapi"": """ + openApiValue + @""",
+            ""info"": { ""title"": ""Test API"", ""version"": ""1.0.0"" },
+            ""paths"": {
+                ""/organisations"": {
+                    ""get"": {
+                        ""responses"": {
+                            ""200"": { ""description"": ""OK"" }
                         }
                     }
                 }
