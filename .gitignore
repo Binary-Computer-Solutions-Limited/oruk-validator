@@ -68,7 +68,6 @@ results*.json
 docs/
 logs/
 
-.docs
 test-output.log
 test-result.txt
 
