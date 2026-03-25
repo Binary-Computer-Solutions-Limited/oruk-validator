@@ -277,6 +277,12 @@ public class OpenApiValidationService : IOpenApiValidationService
             List<EndpointTestResult> endpointTests = new();
             if (request.Options.TestEndpoints && !string.IsNullOrEmpty(request.BaseUrl))
             {
+                var pathDeduplicationWarning = RemoveDuplicatedBasePathFromOpenApiPaths(openApiSpec, request.BaseUrl);
+                if (!string.IsNullOrWhiteSpace(pathDeduplicationWarning))
+                {
+                    result.Notifications.Add(pathDeduplicationWarning);
+                }
+
                 endpointTests = await _endpointTestingService.TestEndpointsAsync(openApiSpec, request.BaseUrl, request.Options, dataSourceRequestAuth, request.OpenApiSchema?.Url, cancellationToken);
                 result.EndpointTests = endpointTests;
             }
@@ -393,6 +399,139 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
 
         return deduplicatedErrors;
+    }
+
+    private static string? RemoveDuplicatedBasePathFromOpenApiPaths(JObject openApiSpec, string? baseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(baseUrl)
+            || openApiSpec["paths"] is not JObject pathsObject
+            || pathsObject.Count == 0)
+        {
+            return null;
+        }
+
+        var baseUri = TryParseBaseUri(baseUrl);
+        if (baseUri == null)
+        {
+            return null;
+        }
+
+        var basePath = NormalizePath(baseUri.AbsolutePath);
+        if (string.IsNullOrEmpty(basePath) || basePath == "/")
+        {
+            return null;
+        }
+
+        var updatedPaths = new JObject();
+        var duplicatedEntries = new List<string>();
+        var duplicateCollisions = new List<string>();
+
+        foreach (var property in pathsObject.Properties())
+        {
+            var originalPath = NormalizePath(property.Name);
+            var deduplicatedPath = TryStripDuplicateBasePath(originalPath, basePath) ?? originalPath;
+
+            if (!string.Equals(deduplicatedPath, originalPath, StringComparison.Ordinal))
+            {
+                duplicatedEntries.Add(originalPath);
+            }
+
+            if (updatedPaths.TryGetValue(deduplicatedPath, out _))
+            {
+                duplicateCollisions.Add(deduplicatedPath);
+                if (!updatedPaths.TryGetValue(originalPath, out _))
+                {
+                    updatedPaths[originalPath] = property.Value;
+                }
+
+                continue;
+            }
+
+            updatedPaths[deduplicatedPath] = property.Value;
+        }
+
+        if (duplicatedEntries.Count == 0)
+        {
+            return null;
+        }
+
+        if (duplicateCollisions.Count > 0)
+        {
+            var uniqueCollisions = string.Join(", ", duplicateCollisions.Distinct(StringComparer.Ordinal));
+            return $"Warning: OpenAPI endpoint paths duplicate the base URL prefix '{basePath}', but automatic de-duplication was skipped for colliding paths: {uniqueCollisions}.";
+        }
+
+        pathsObject.RemoveAll();
+        foreach (var updatedProperty in updatedPaths.Properties())
+        {
+            pathsObject.Add(updatedProperty.Name, updatedProperty.Value);
+        }
+
+        return $"Warning: Removed duplicated base URL prefix '{basePath}' from {duplicatedEntries.Count} OpenAPI endpoint path(s) before endpoint testing.";
+    }
+
+    private static Uri? TryParseBaseUri(string? baseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            return null;
+        }
+
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri)
+            || !string.Equals(baseUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(baseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return baseUri;
+    }
+
+    private static string NormalizePath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return "/";
+        }
+
+        var normalized = path.Replace('\\', '/').Trim();
+        if (!normalized.StartsWith('/'))
+        {
+            normalized = $"/{normalized}";
+        }
+
+        while (normalized.Contains("//", StringComparison.Ordinal))
+        {
+            normalized = normalized.Replace("//", "/", StringComparison.Ordinal);
+        }
+
+        if (normalized.Length > 1 && normalized.EndsWith('/'))
+        {
+            normalized = normalized.TrimEnd('/');
+        }
+
+        return normalized;
+    }
+
+    private static string? TryStripDuplicateBasePath(string endpointPath, string basePath)
+    {
+        if (!endpointPath.StartsWith(basePath, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        if (endpointPath.Length == basePath.Length)
+        {
+            return "/";
+        }
+
+        if (endpointPath[basePath.Length] != '/')
+        {
+            return null;
+        }
+
+        var stripped = endpointPath[basePath.Length..];
+        return NormalizePath(stripped);
     }
 
     private string? GetKnownHsdsSchemaUrlFromOptions(string? profileVersion)

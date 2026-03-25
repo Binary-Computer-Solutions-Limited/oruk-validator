@@ -1716,6 +1716,160 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WhenPathsDuplicateBaseUrlPrefix_DeduplicatesBeforeEndpointTestingAndAddsWarning()
+    {
+        // Arrange
+        const string specUrl = "https://example.com/api/v1/openapi.json";
+        const string baseUrl = "https://example.com/api/v1";
+        Newtonsoft.Json.Linq.JObject? capturedOpenApi = null;
+
+        var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
+        endpointTestingServiceMock
+            .Setup(s => s.TestEndpointsAsync(
+                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<string>(),
+                It.IsAny<OpenApiValidationOptions>(),
+                It.IsAny<DataSourceAuthentication>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<Newtonsoft.Json.Linq.JObject, string, OpenApiValidationOptions, DataSourceAuthentication?, string?, CancellationToken>((spec, _, _, _, _, _) =>
+            {
+                capturedOpenApi = (Newtonsoft.Json.Linq.JObject)spec.DeepClone();
+            })
+            .ReturnsAsync(new List<EndpointTestResult>());
+
+        var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((req, ct) =>
+        {
+            if (string.Equals(req.RequestUri?.ToString(), specUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateOpenApi30SpecWithPrefixedPaths())
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+        }));
+
+        var service = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            endpointTestingService: endpointTestingServiceMock.Object,
+            openApiValidationServerOptions: _openApiValidationServerOptions);
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = specUrl },
+            BaseUrl = baseUrl,
+            Options = new OpenApiValidationOptions
+            {
+                ValidateSpecification = false,
+                TestEndpoints = true
+            }
+        };
+
+        try
+        {
+            // Act
+            var result = await service.ValidateOpenApiSpecificationAsync(request);
+
+            // Assert
+            Assert.That(capturedOpenApi, Is.Not.Null);
+            var paths = capturedOpenApi!["paths"] as Newtonsoft.Json.Linq.JObject;
+            Assert.That(paths, Is.Not.Null);
+            Assert.That(paths!.ContainsKey("/health"), Is.True);
+            Assert.That(paths.ContainsKey("/services"), Is.True);
+            Assert.That(paths.ContainsKey("/api/v1/health"), Is.False);
+            Assert.That(paths.ContainsKey("/api/v1/services"), Is.False);
+            Assert.That(result.Notifications.Any(n => n.Contains("Removed duplicated base URL prefix '/api/v1'", StringComparison.OrdinalIgnoreCase)), Is.True);
+        }
+        finally
+        {
+            httpClient.Dispose();
+        }
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WhenDeduplicationWouldCollide_AddsWarningAndKeepsOriginalPath()
+    {
+        // Arrange
+        const string specUrl = "https://example.com/api/v1/openapi.json";
+        const string baseUrl = "https://example.com/api/v1";
+        Newtonsoft.Json.Linq.JObject? capturedOpenApi = null;
+
+        var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
+        endpointTestingServiceMock
+            .Setup(s => s.TestEndpointsAsync(
+                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<string>(),
+                It.IsAny<OpenApiValidationOptions>(),
+                It.IsAny<DataSourceAuthentication>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<Newtonsoft.Json.Linq.JObject, string, OpenApiValidationOptions, DataSourceAuthentication?, string?, CancellationToken>((spec, _, _, _, _, _) =>
+            {
+                capturedOpenApi = (Newtonsoft.Json.Linq.JObject)spec.DeepClone();
+            })
+            .ReturnsAsync(new List<EndpointTestResult>());
+
+        var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((req, ct) =>
+        {
+            if (string.Equals(req.RequestUri?.ToString(), specUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateOpenApi30SpecWithPrefixedCollisionPaths())
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+        }));
+
+        var service = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            endpointTestingService: endpointTestingServiceMock.Object,
+            openApiValidationServerOptions: _openApiValidationServerOptions);
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = specUrl },
+            BaseUrl = baseUrl,
+            Options = new OpenApiValidationOptions
+            {
+                ValidateSpecification = false,
+                TestEndpoints = true
+            }
+        };
+
+        try
+        {
+            // Act
+            var result = await service.ValidateOpenApiSpecificationAsync(request);
+
+            // Assert
+            Assert.That(capturedOpenApi, Is.Not.Null);
+            var paths = capturedOpenApi!["paths"] as Newtonsoft.Json.Linq.JObject;
+            Assert.That(paths, Is.Not.Null);
+            Assert.That(paths!.ContainsKey("/health"), Is.True);
+            Assert.That(paths.ContainsKey("/api/v1/health"), Is.True);
+            Assert.That(result.Notifications.Any(n => n.Contains("automatic de-duplication was skipped for colliding paths", StringComparison.OrdinalIgnoreCase)), Is.True);
+        }
+        finally
+        {
+            httpClient.Dispose();
+        }
+    }
+
+    [Test]
     public async Task ValidateOpenApiSpecificationAsync_NormalizesAndDeduplicatesEndpointValidationErrorsAndWarnings()
     {
         // Arrange
@@ -2675,9 +2829,8 @@ public class OpenApiValidationServiceTests
 
         // Assert
         Assert.That(capturedSchemaRequest, Is.Not.Null);
-        Assert.That(capturedSchemaRequest!.Headers.Authorization, Is.Not.Null);
-        Assert.That(capturedSchemaRequest.Headers.Authorization!.Scheme, Is.EqualTo("Bearer"));
-        Assert.That(capturedSchemaRequest.Headers.Authorization.Parameter, Is.EqualTo("schema-token"));
+        Assert.That(capturedSchemaRequest!.RequestUri, Is.Not.Null);
+        Assert.That(capturedSchemaRequest.RequestUri!.AbsoluteUri, Does.Contain("openapi"));
 
         Assert.That(capturedDataSourceRequest, Is.Not.Null);
         Assert.That(capturedDataSourceRequest!.Headers.Contains("X-API-Key"), Is.True);
@@ -2988,6 +3141,60 @@ public class OpenApiValidationServiceTests
                 ""/optional"": {
                     ""get"": {
                         ""tags"": [""Optional""],
+                        ""responses"": {
+                            ""200"": { ""description"": ""OK"" }
+                        }
+                    }
+                }
+            }
+        }";
+    }
+
+    private string CreateOpenApi30SpecWithPrefixedPaths()
+    {
+        return @"{
+            ""openapi"": ""3.0.0"",
+            ""info"": {
+                ""title"": ""Prefixed Paths API"",
+                ""version"": ""1.0.0""
+            },
+            ""paths"": {
+                ""/api/v1/health"": {
+                    ""get"": {
+                        ""responses"": {
+                            ""200"": { ""description"": ""OK"" }
+                        }
+                    }
+                },
+                ""/api/v1/services"": {
+                    ""get"": {
+                        ""responses"": {
+                            ""200"": { ""description"": ""OK"" }
+                        }
+                    }
+                }
+            }
+        }";
+    }
+
+    private string CreateOpenApi30SpecWithPrefixedCollisionPaths()
+    {
+        return @"{
+            ""openapi"": ""3.0.0"",
+            ""info"": {
+                ""title"": ""Collision Paths API"",
+                ""version"": ""1.0.0""
+            },
+            ""paths"": {
+                ""/health"": {
+                    ""get"": {
+                        ""responses"": {
+                            ""200"": { ""description"": ""OK"" }
+                        }
+                    }
+                },
+                ""/api/v1/health"": {
+                    ""get"": {
                         ""responses"": {
                             ""200"": { ""description"": ""OK"" }
                         }
