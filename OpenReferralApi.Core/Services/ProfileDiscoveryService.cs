@@ -25,6 +25,11 @@ public class ProfileDiscoveryResult
     public bool BaseUrlRequestSucceeded { get; init; }
     public string? BaseUrlResponseContent { get; init; }
     public bool HasExplicitOpenApiUrl { get; init; }
+    /// <summary>
+    /// If detected during discovery, contains the HSDS profile version (e.g., "3.0")
+    /// extracted from the discovered OpenAPI spec's "openapi" field.
+    /// </summary>
+    public string? DetectedHsdsProfileVersion { get; init; }
 }
 
 public class ProfileDiscoveryService : IProfileDiscoveryService
@@ -136,7 +141,8 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                         Url = fallback.url,
                         Reason = fallback.reason,
                         BaseUrlRequestSucceeded = true,
-                        BaseUrlResponseContent = content
+                        BaseUrlResponseContent = content,
+                        DetectedHsdsProfileVersion = fallback.detectedVersion
                     };
                 }
 
@@ -160,7 +166,8 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                         Url = fallback.url,
                         Reason = fallback.reason,
                         BaseUrlRequestSucceeded = true,
-                        BaseUrlResponseContent = content
+                        BaseUrlResponseContent = content,
+                        DetectedHsdsProfileVersion = fallback.detectedVersion
                     };
                 }
 
@@ -300,7 +307,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         return (null, null);
     }
 
-    private async Task<(string? url, string? reason)> DiscoverOpenApiFromFallbacksAsync(HttpClient client, string baseUrl, string? baseUrlContent, CancellationToken cancellationToken)
+    private async Task<(string? url, string? reason, string? detectedVersion)> DiscoverOpenApiFromFallbacksAsync(HttpClient client, string baseUrl, string? baseUrlContent, CancellationToken cancellationToken)
     {
         var normalizedBaseUrl = baseUrl.TrimEnd('/');
 
@@ -325,18 +332,18 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                     var (extractedVersion, openapiValue) = TryExtractHsdsVersionFromOpenApiSpec(content);
                     if (extractedVersion.HasValue)
                     {
-                        var versionedSpecUrl = $"{_baseSpecificationUrl}{extractedVersion.Value:0.0}/openapi.json";
+                        var detectedVersion = $"{extractedVersion.Value:0.0}";
                         _logger.LogWarning(
                             "Discovered OpenAPI spec at {SpecUrl} incorrectly defines HSDS schema version in 'openapi' field (value: {OpenapiValue}). " +
-                            "This should be defined in a proper HSDS version field. Mapping to standard HSDS spec: {VersionedSpecUrl}",
+                            "This should be defined in a proper HSDS version field. Detected HSDS profile version: {ProfileVersion}",
                             SchemaResolverService.SanitizeUrlForLogging(specUrl),
                             SchemaResolverService.SanitizeStringForLogging(openapiValue ?? "unknown"),
-                            SchemaResolverService.SanitizeUrlForLogging(versionedSpecUrl));
-                        return (versionedSpecUrl, $"HSDS version {extractedVersion.Value:0.0} mapped from OpenAPI 'openapi' field at '{path}'");
+                            detectedVersion);
+                        return (specUrl, $"OpenAPI URL discovered by probing '{path}' with detected HSDS version {detectedVersion} from 'openapi' field", detectedVersion);
                     }
 
                     _logger.LogInformation("Discovered OpenAPI spec via fallback probing at {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(specUrl));
-                    return (specUrl, $"OpenAPI URL discovered by probing '{path}'");
+                    return (specUrl, $"OpenAPI URL discovered by probing '{path}'", null);
                 }
                 _logger.LogDebug("Fallback path {Path} returned 200 but content does not look like an OpenAPI document", path);
             }
@@ -355,11 +362,11 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             var discoveredUrl = await DiscoverFromSwaggerUiHtmlAsync(client, normalizedBaseUrl, baseUrlContent, cancellationToken);
             if (!string.IsNullOrWhiteSpace(discoveredUrl))
             {
-                return (discoveredUrl, "OpenAPI URL discovered from Swagger UI HTML");
+                return (discoveredUrl, "OpenAPI URL discovered from Swagger UI HTML", null);
             }
         }
 
-        return (null, null);
+        return (null, null, null);
     }
 
     private async Task<string?> DiscoverFromSwaggerUiHtmlAsync(HttpClient client, string baseUrl, string html, CancellationToken cancellationToken)

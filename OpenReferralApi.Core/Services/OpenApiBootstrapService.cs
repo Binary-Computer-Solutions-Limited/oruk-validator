@@ -43,7 +43,10 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
 
         var profileDiscovery = await _profileDiscoveryService.DiscoverAsync(baseUrl, authentication, cancellationToken);
 
-        var rootProfileVersion = TryExtractProfileVersionFromJson(profileDiscovery.BaseUrlResponseContent);
+        // Try detected version from discovered OpenAPI spec first, then fall back to root endpoint
+        var rootProfileVersion = !string.IsNullOrWhiteSpace(profileDiscovery.DetectedHsdsProfileVersion)
+            ? profileDiscovery.DetectedHsdsProfileVersion
+            : TryExtractProfileVersionFromJson(profileDiscovery.BaseUrlResponseContent);
 
         string? feedSpecUrl = null;
         if (!profileDiscovery.HasExplicitOpenApiUrl)
@@ -67,7 +70,7 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
                 OpenApiSchemaUrl = null,
                 ProfileVersion = rootProfileVersion,
                 ProfileReason = rootProfileVersion != null
-                    ? $"Standard version [user: {rootProfileVersion}] read from '/' endpoint"
+                    ? $"Standard version [user: {rootProfileVersion}] detected"
                     : "Version not found in '/' response",
                 DiscoveryReason = profileDiscovery.Reason,
                 UsedDataServiceOpenApi = false
@@ -80,7 +83,7 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
             : profileDiscovery.Reason;
 
         var profileReason = rootProfileVersion != null
-            ? $"Standard version [user: {rootProfileVersion}] read from '/' endpoint"
+            ? $"Standard version [user: {rootProfileVersion}] detected"
             : "Version not found in '/' response";
 
         _logger.LogInformation(
