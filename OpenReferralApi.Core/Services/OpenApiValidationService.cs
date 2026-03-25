@@ -194,10 +194,23 @@ public class OpenApiValidationService : IOpenApiValidationService
             // If discovery could not infer an HSDS profile version, try extracting it from the OpenAPI document itself.
             if (!HasExplicitProfileVersionContext(request.ProfileReason, request.OpenApiSchema?.Url))
             {
-                var versionFromSpec = TryExtractProfileVersionFromOpenApiSpec(openApiSpec);
+                var (versionFromSpec, fromOpenapiField) = TryExtractProfileVersionFromOpenApiSpec(openApiSpec);
                 if (!string.IsNullOrWhiteSpace(versionFromSpec))
                 {
                     request.ProfileReason = $"Standard version [user: {versionFromSpec}] read from OpenAPI spec";
+                    if (fromOpenapiField)
+                    {
+                        _logger.LogWarning(
+                            "HSDS schema version was incorrectly defined in the 'openapi' field (value: {OpenapiValue}). " +
+                            "The 'openapi' field specifies the OpenAPI specification version, not the HSDS schema version. " +
+                            "Detected HSDS version {HsdsVersion} — please add an 'x-hsds-version' or 'version' field to the spec.",
+                            SchemaResolverService.SanitizeStringForLogging(openApiSpec.SelectToken("openapi")?.ToString() ?? string.Empty),
+                            versionFromSpec);
+                        result.Notifications.Add(
+                            $"Warning: The HSDS schema version was incorrectly defined in the 'openapi' field. " +
+                            $"Detected HSDS version {versionFromSpec} from this field as a fallback. " +
+                            $"Please use an 'x-hsds-version' field in your OpenAPI spec to declare the HSDS version.");
+                    }
                 }
                 else if (usedBaseUrlDiscovery)
                 {
@@ -244,31 +257,18 @@ public class OpenApiValidationService : IOpenApiValidationService
 
                     if (hasProfileContext)
                     {
-                        // If we have a ProfileReason indicating a version was detected (even if not in our known profiles),
-                        // report it as a warning instead of an error since we attempted to determine the version
-                        var hasDetectedVersion = !string.IsNullOrWhiteSpace(request.ProfileReason) 
-                            && request.ProfileReason.Contains("Standard version", StringComparison.OrdinalIgnoreCase);
-                        
-                        var severity = hasDetectedVersion ? "Warning" : "Error";
                         specValidation.Errors = NormalizeAndDeduplicateValidationErrors(
                             specValidation.Errors.Concat(new[]
                             {
                                 new ValidationError
                                 {
                                     Path = "profile",
-                                    Message = hasDetectedVersion 
-                                        ? "Could not validate against a known HSDS schema profile. Using the detected version instead."
-                                        : "Can only validate against known HSDS schema profiles. The data feed did not identify a recognised HSDS schema version.",
+                                    Message = "Can only validate against known HSDS schema profiles. The data feed did not identify a recognised HSDS schema version.",
                                     ErrorCode = "HSDS_PROFILE_UNKNOWN",
-                                    Severity = severity
+                                    Severity = "Error"
                                 }
                             }));
-                        
-                        // Only fail validation if we couldn't detect any version at all
-                        if (!hasDetectedVersion)
-                        {
-                            specValidation.IsValid = false;
-                        }
+                        specValidation.IsValid = false;
                     }
                 }
             }
@@ -528,7 +528,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         return !string.IsNullOrWhiteSpace(_hsdsComplianceService.ExtractClaimedProfileVersion(profileReason, schemaUrl));
     }
 
-    private static string? TryExtractProfileVersionFromOpenApiSpec(JObject openApiSpec)
+    private static (string? version, bool fromOpenapiField) TryExtractProfileVersionFromOpenApiSpec(JObject openApiSpec)
     {
         var candidateTokens = new[]
         {
@@ -544,11 +544,29 @@ public class OpenApiValidationService : IOpenApiValidationService
             var normalized = NormalizeVersionToken(tokenValue);
             if (!string.IsNullOrWhiteSpace(normalized))
             {
-                return normalized;
+                return (normalized, false);
             }
         }
 
-        return null;
+        // Last resort: use the "openapi" field (e.g. "3.0.3" -> "3.0").
+        // This is incorrect usage — the "openapi" field specifies the OpenAPI spec version,
+        // not the HSDS schema version — so we flag it as incorrectly defined.
+        var openapiValue = openApiSpec.SelectToken("openapi")?.ToString();
+        if (!string.IsNullOrWhiteSpace(openapiValue))
+        {
+            var parts = openapiValue.Split('.');
+            if (parts.Length >= 2)
+            {
+                var majorMinor = $"{parts[0]}.{parts[1]}";
+                var normalized = NormalizeVersionToken(majorMinor);
+                if (!string.IsNullOrWhiteSpace(normalized))
+                {
+                    return (normalized, true);
+                }
+            }
+        }
+
+        return (null, false);
     }
 
     private static string? NormalizeVersionToken(string? rawVersion)
