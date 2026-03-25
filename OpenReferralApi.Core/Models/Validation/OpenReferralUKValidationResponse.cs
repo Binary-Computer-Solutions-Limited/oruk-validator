@@ -20,6 +20,12 @@ public class OpenReferralUKValidationResponse
     public List<object> TestSuites { get; set; } = new();
 
     /// <summary>
+    /// Specification-level validation findings (for example OpenAPI schema/profile comparison errors)
+    /// </summary>
+    [JsonProperty("specificationValidation")]
+    public object? SpecificationValidation { get; set; }
+
+    /// <summary>
     /// User-facing notifications about processing issues such as specification fetch/resolve failures
     /// </summary>
     [JsonProperty("notifications")]

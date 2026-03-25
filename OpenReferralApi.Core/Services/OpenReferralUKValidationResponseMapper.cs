@@ -41,6 +41,22 @@ public class OpenReferralUKValidationResponseMapper : IOpenReferralUKValidationR
         // Feed is invalid only if any endpoint has FailedValidation status
         bool isValid = !(openApiResult?.EndpointTests?.Any(e => e.Status == EndpointTestStatus.FailedValidation) ?? false);
 
+        var specificationValidation = openApiResult?.SpecificationValidation == null
+            ? null
+            : new
+            {
+                isValid = openApiResult.SpecificationValidation.IsValid,
+                version = openApiResult.SpecificationValidation.Version,
+                errors = openApiResult.SpecificationValidation.Errors.Select(error => new
+                {
+                    name = error.ErrorCode,
+                    description = error.Severity,
+                    message = error.Message,
+                    errorIn = error.Path,
+                    errorAt = ""
+                }).ToList()
+            };
+
         return new OpenReferralUKValidationResponse
         {
             Service = new ServiceInfo
@@ -52,6 +68,7 @@ public class OpenReferralUKValidationResponseMapper : IOpenReferralUKValidationR
                 ProfileReason = openApiResult?.Metadata?.ProfileReason ?? "Unknown"
             },
             TestSuites = testSuites,
+            SpecificationValidation = specificationValidation,
             Notifications = openApiResult?.Notifications?.ToList() ?? new List<string>()
         };
     }

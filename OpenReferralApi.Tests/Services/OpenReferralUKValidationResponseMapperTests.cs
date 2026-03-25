@@ -48,6 +48,7 @@ public class OpenReferralUKValidationResponseMapperTests
         var json = JObject.FromObject(response);
         Assert.That(json["service"], Is.Not.Null);
         Assert.That(json["testSuites"], Is.Not.Null);
+        Assert.That(json["specificationValidation"], Is.Not.Null);
     }
 
     [Test]
@@ -158,5 +159,271 @@ public class OpenReferralUKValidationResponseMapperTests
 
         // Assert
         Assert.That(response.Service.Profile, Is.EqualTo("3.0"));
+    }
+
+    [Test]
+    public void MapToOpenReferralUKValidationResponse_MapsSpecificationValidationErrors()
+    {
+        // Arrange
+        var result = new OpenApiValidationResult
+        {
+            Metadata = new CommonValidationMetadata
+            {
+                BaseUrl = "https://api.example.com"
+            },
+            SpecificationValidation = new OpenApiSpecificationValidation
+            {
+                IsValid = false,
+                Version = "3.0.0",
+                Errors = new List<ValidationError>
+                {
+                    new()
+                    {
+                        ErrorCode = "HSDS_MISSING_ENDPOINT",
+                        Severity = "Error",
+                        Message = "Missing required HSDS endpoint: GET /organizations",
+                        Path = "paths.GET /organizations"
+                    }
+                }
+            },
+            EndpointTests = new List<EndpointTestResult>()
+        };
+
+        // Act
+        var response = _mapper.MapToOpenReferralUKValidationResponse(result);
+
+        // Assert
+        var json = JObject.FromObject(response);
+        var specValidation = json["specificationValidation"];
+
+        Assert.That(specValidation, Is.Not.Null);
+        Assert.That(specValidation!["isValid"]!.Value<bool>(), Is.False);
+        Assert.That(specValidation["version"]!.Value<string>(), Is.EqualTo("3.0.0"));
+
+        var errors = specValidation["errors"] as JArray;
+        Assert.That(errors, Is.Not.Null);
+        Assert.That(errors!.Count, Is.EqualTo(1));
+        Assert.That(errors[0]!["name"]!.Value<string>(), Is.EqualTo("HSDS_MISSING_ENDPOINT"));
+        Assert.That(errors[0]!["errorIn"]!.Value<string>(), Is.EqualTo("paths.GET /organizations"));
+    }
+
+    [Test]
+    public void MapToOpenReferralUKValidationResponse_WithRequiredAndOptionalEndpoints_MapsTwoComplianceSuites()
+    {
+        // Arrange
+        var result = new OpenApiValidationResult
+        {
+            Metadata = new CommonValidationMetadata
+            {
+                BaseUrl = "https://api.example.com"
+            },
+            EndpointTests = new List<EndpointTestResult>
+            {
+                new()
+                {
+                    Name = "Get Organizations",
+                    Method = "GET",
+                    Path = "/organizations",
+                    IsOptional = false,
+                    Status = EndpointTestStatus.PassedValidation,
+                    TestResults = new List<HttpTestResult>()
+                },
+                new()
+                {
+                    Name = "Get Services",
+                    Method = "GET",
+                    Path = "/services",
+                    IsOptional = true,
+                    Status = EndpointTestStatus.PassedWithWarnings,
+                    TestResults = new List<HttpTestResult>()
+                }
+            }
+        };
+
+        // Act
+        var response = _mapper.MapToOpenReferralUKValidationResponse(result);
+
+        // Assert
+        var json = JObject.FromObject(response);
+        var suites = json["testSuites"] as JArray;
+
+        Assert.That(suites, Is.Not.Null);
+        Assert.That(suites!.Count, Is.EqualTo(2));
+        Assert.That(suites[0]!["name"]!.Value<string>(), Is.EqualTo("Level 1 Compliance - Basic checks"));
+        Assert.That(suites[0]!["required"]!.Value<bool>(), Is.True);
+        Assert.That(suites[0]!["messageLevel"]!.Value<string>(), Is.EqualTo("error"));
+        Assert.That(suites[1]!["name"]!.Value<string>(), Is.EqualTo("Level 2 Compliance - Extended checks"));
+        Assert.That(suites[1]!["required"]!.Value<bool>(), Is.False);
+        Assert.That(suites[1]!["messageLevel"]!.Value<string>(), Is.EqualTo("warning"));
+    }
+
+    [Test]
+    public void MapToOpenReferralUKValidationResponse_WithFailedValidationEndpoint_SetsServiceInvalid()
+    {
+        // Arrange
+        var result = new OpenApiValidationResult
+        {
+            Metadata = new CommonValidationMetadata
+            {
+                BaseUrl = "https://api.example.com"
+            },
+            EndpointTests = new List<EndpointTestResult>
+            {
+                new()
+                {
+                    Method = "GET",
+                    Path = "/organizations",
+                    IsOptional = false,
+                    Status = EndpointTestStatus.FailedValidation,
+                    TestResults = new List<HttpTestResult>()
+                }
+            }
+        };
+
+        // Act
+        var response = _mapper.MapToOpenReferralUKValidationResponse(result);
+
+        // Assert
+        Assert.That(response.Service.IsValid, Is.False);
+    }
+
+    [Test]
+    public void MapToOpenReferralUKValidationResponse_UsesSpecificationVersionWhenMetadataProfileMissing()
+    {
+        // Arrange
+        var result = new OpenApiValidationResult
+        {
+            Metadata = new CommonValidationMetadata
+            {
+                BaseUrl = "https://api.example.com",
+                Profile = null,
+                ProfileReason = null
+            },
+            SpecificationValidation = new OpenApiSpecificationValidation
+            {
+                Version = "3.0.1"
+            },
+            EndpointTests = new List<EndpointTestResult>()
+        };
+
+        // Act
+        var response = _mapper.MapToOpenReferralUKValidationResponse(result);
+
+        // Assert
+        Assert.That(response.Service.Profile, Is.EqualTo("3.0.1"));
+        Assert.That(response.Service.ProfileReason, Is.EqualTo("Unknown"));
+    }
+
+    [Test]
+    public void MapToOpenReferralUKValidationResponse_DeduplicatesMessagesByErrorPathAcrossTestResults()
+    {
+        // Arrange
+        var duplicatePath = "organization.name";
+        var endpoint = new EndpointTestResult
+        {
+            Name = "Get Organizations",
+            Method = "GET",
+            Path = "/organizations",
+            IsOptional = false,
+            Status = EndpointTestStatus.FailedValidation,
+            TestResults = new List<HttpTestResult>
+            {
+                new()
+                {
+                    ValidationResult = new ValidationResult
+                    {
+                        IsValid = false,
+                        Errors = new List<ValidationError>
+                        {
+                            new()
+                            {
+                                ErrorCode = "ERR_ONE",
+                                Severity = "Error",
+                                Message = "First error",
+                                Path = duplicatePath
+                            }
+                        }
+                    }
+                },
+                new()
+                {
+                    ValidationResult = new ValidationResult
+                    {
+                        IsValid = false,
+                        Errors = new List<ValidationError>
+                        {
+                            new()
+                            {
+                                ErrorCode = "ERR_TWO",
+                                Severity = "Error",
+                                Message = "Second error same path",
+                                Path = duplicatePath
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        var result = new OpenApiValidationResult
+        {
+            Metadata = new CommonValidationMetadata
+            {
+                BaseUrl = "https://api.example.com"
+            },
+            EndpointTests = new List<EndpointTestResult> { endpoint }
+        };
+
+        // Act
+        var response = _mapper.MapToOpenReferralUKValidationResponse(result);
+
+        // Assert
+        var json = JObject.FromObject(response);
+        var messages = json["testSuites"]![0]!["tests"]![0]!["messages"] as JArray;
+
+        Assert.That(messages, Is.Not.Null);
+        Assert.That(messages!.Count, Is.EqualTo(1));
+        Assert.That(messages[0]!["errorIn"]!.Value<string>(), Is.EqualTo(duplicatePath));
+    }
+
+    [Test]
+    public void MapToOpenReferralUKValidationResponse_AddsPerformanceWarningForSlowPassedEndpoint()
+    {
+        // Arrange
+        var endpoint = new EndpointTestResult
+        {
+            Name = "Get Locations",
+            Method = "GET",
+            Path = "/locations",
+            IsOptional = false,
+            Status = EndpointTestStatus.PassedValidation,
+            TestResults = new List<HttpTestResult>
+            {
+                new() { ResponseTime = TimeSpan.FromMilliseconds(6000) },
+                new() { ResponseTime = TimeSpan.FromMilliseconds(7000) }
+            }
+        };
+
+        var result = new OpenApiValidationResult
+        {
+            Metadata = new CommonValidationMetadata
+            {
+                BaseUrl = "https://api.example.com"
+            },
+            EndpointTests = new List<EndpointTestResult> { endpoint }
+        };
+
+        // Act
+        var response = _mapper.MapToOpenReferralUKValidationResponse(result);
+
+        // Assert
+        var json = JObject.FromObject(response);
+        var messages = json["testSuites"]![0]!["tests"]![0]!["messages"] as JArray;
+
+        Assert.That(messages, Is.Not.Null);
+        Assert.That(messages!.Count, Is.EqualTo(1));
+        Assert.That(messages[0]!["name"]!.Value<string>(), Is.EqualTo("Performance"));
+        Assert.That(messages[0]!["description"]!.Value<string>(), Is.EqualTo("Warning"));
+        Assert.That(messages[0]!["message"]!.Value<string>(), Does.Contain("Average response time is 6500ms"));
     }
 }
