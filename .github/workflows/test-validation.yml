@@ -7,6 +7,8 @@ on:
 
 env:
   DOTNET_VERSION: "10.0.x"
+  ACTIONS_NODE_JS_FORCED_VERSION: "node20" # Or just ignore the warning via:
+  ACTIONS_STEP_DEBUG: false
 
 jobs:
   build-and-test:
