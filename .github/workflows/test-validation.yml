@@ -77,30 +77,15 @@ jobs:
               "includeResponseBody": false,
               "includeTestResults": true
             }
-          }'
-
-    - name: Output API Logs
-      # This runs even if the curl command fails
-      if: always()
-      run: |
-        echo "--- API LOGS ---"
-        cat api.log
+          }' | tee validation-results.log 2>&1 || true
 
     - name: Upload API log artifact
       uses: actions/upload-artifact@v7.0.0
       if: always()
       with:
-        name: api-log
+        name: api-log-${{ matrix.base-url }}
         path: |
-          OpenReferralApi/logs/service.json
-          OpenReferralApi/logs/schema.json
           OpenReferralApi/logs/*.log
+          validation-results.log
         if-no-files-found: warn 
-
-    - name: Upload API response artifact
-      uses: actions/upload-artifact@v7.0.0
-      if: always()
-      with:
-        name: api-response
-        path: artifacts/api-response.json
-        if-no-files-found: warn
+        retention-days: 5
