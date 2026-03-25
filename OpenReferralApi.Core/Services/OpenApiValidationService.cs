@@ -244,18 +244,31 @@ public class OpenApiValidationService : IOpenApiValidationService
 
                     if (hasProfileContext)
                     {
+                        // If we have a ProfileReason indicating a version was detected (even if not in our known profiles),
+                        // report it as a warning instead of an error since we attempted to determine the version
+                        var hasDetectedVersion = !string.IsNullOrWhiteSpace(request.ProfileReason) 
+                            && request.ProfileReason.Contains("Standard version", StringComparison.OrdinalIgnoreCase);
+                        
+                        var severity = hasDetectedVersion ? "Warning" : "Error";
                         specValidation.Errors = NormalizeAndDeduplicateValidationErrors(
                             specValidation.Errors.Concat(new[]
                             {
                                 new ValidationError
                                 {
                                     Path = "profile",
-                                    Message = "Can only validate against known HSDS schema profiles. The data feed did not identify a recognised HSDS schema version.",
+                                    Message = hasDetectedVersion 
+                                        ? "Could not validate against a known HSDS schema profile. Using the detected version instead."
+                                        : "Can only validate against known HSDS schema profiles. The data feed did not identify a recognised HSDS schema version.",
                                     ErrorCode = "HSDS_PROFILE_UNKNOWN",
-                                    Severity = "Error"
+                                    Severity = severity
                                 }
                             }));
-                        specValidation.IsValid = false;
+                        
+                        // Only fail validation if we couldn't detect any version at all
+                        if (!hasDetectedVersion)
+                        {
+                            specValidation.IsValid = false;
+                        }
                     }
                 }
             }
