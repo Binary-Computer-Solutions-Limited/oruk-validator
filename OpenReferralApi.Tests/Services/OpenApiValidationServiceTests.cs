@@ -943,10 +943,29 @@ public class OpenApiValidationServiceTests
                 It.IsAny<CancellationToken>()))
             .Callback<List<EndpointTestResult>, Newtonsoft.Json.Linq.JObject, OpenApiValidationOptions, CancellationToken>((tests, _, _, _) =>
             {
-                if (tests.Count > 0)
+                if (tests.Count == 0)
                 {
-                    tests[0].Status = EndpointTestStatus.FailedValidation;
+                    return;
                 }
+
+                tests[0].Status = EndpointTestStatus.FailedValidation;
+                tests[0].TestResults[0].ValidationResult = new ValidationResult
+                {
+                    IsValid = false,
+                    Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>
+                    {
+                        new()
+                        {
+                            Path = "[0].name",
+                            Message = "HSDS runtime validation: Required property 'name' not found",
+                            ErrorCode = "HSDS_RUNTIME_VALIDATION_ERROR",
+                            Severity = "Error"
+                        }
+                    },
+                    SchemaVersion = "test",
+                    Duration = TimeSpan.Zero
+                };
+                tests[0].RefreshFlattenedFields();
             })
             .Returns(Task.CompletedTask);
 
@@ -986,40 +1005,6 @@ public class OpenApiValidationServiceTests
                 }
             });
 
-        _jsonValidatorServiceMock.Invocations.Clear();
-        _jsonValidatorServiceMock
-            .SetupSequence(service => service.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ValidationResult
-            {
-                IsValid = true,
-                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>(),
-                SchemaVersion = "test",
-                Duration = TimeSpan.Zero
-            })
-            .ReturnsAsync(new ValidationResult
-            {
-                IsValid = true,
-                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>(),
-                SchemaVersion = "test",
-                Duration = TimeSpan.Zero
-            })
-            .ReturnsAsync(new ValidationResult
-            {
-                IsValid = false,
-                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>
-                {
-                    new()
-                    {
-                        Path = "[].name",
-                        Message = "Required property 'name' not found",
-                        ErrorCode = "VALIDATION_ERROR",
-                        Severity = "Error"
-                    }
-                },
-                SchemaVersion = "test",
-                Duration = TimeSpan.Zero
-            });
-
         var request = new OpenApiValidationRequest
         {
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
@@ -1037,29 +1022,7 @@ public class OpenApiValidationServiceTests
             HsdsValidationMode = HsdsValidationMode.FullHsdsRuntime
         });
 
-        var serviceWithFullMode = new OpenApiValidationService(
-            _loggerMock.Object,
-            CreateFactory(_httpClient),
-            _jsonValidatorServiceMock.Object,
-            _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
-            hsdsComplianceService: hsdsComplianceServiceMock.Object,
-            endpointTestingService: endpointTestingServiceMock.Object,
-            authenticationValidationService: null,
-            openApiBootstrapService: null,
-            cacheOptions: null,
-            specificationOptions: Options.Create(new SpecificationOptions
-            {
-                Urls = new Dictionary<string, string>
-                {
-                    ["HSDS-UK-1.0"] = "https://openreferraluk.org/specifications/1.0/openapi.json",
-                    ["HSDS-UK-3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json"
-                }
-            }),
-            openApiValidationServerOptions: fullModeServerOptions);
-
-        SetupHttpMock((httpRequest, ct) =>
+        var fullModeHttpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>
         {
             var requestUrl = httpRequest.RequestUri?.ToString() ?? string.Empty;
             if (string.Equals(requestUrl, feedSpecUrl, StringComparison.OrdinalIgnoreCase))
@@ -1082,14 +1045,53 @@ public class OpenApiValidationServiceTests
             {
                 Content = new StringContent("[{\"id\":\"1\"}]")
             };
-        });
+        }));
+
+        using var _ = fullModeHttpClient;
+
+        var serviceWithFullMode = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(fullModeHttpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            hsdsComplianceService: hsdsComplianceServiceMock.Object,
+            endpointTestingService: endpointTestingServiceMock.Object,
+            authenticationValidationService: null,
+            openApiBootstrapService: null,
+            cacheOptions: null,
+            specificationOptions: Options.Create(new SpecificationOptions
+            {
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-1.0"] = "https://openreferraluk.org/specifications/1.0/openapi.json",
+                    ["HSDS-UK-3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json"
+                }
+            }),
+            openApiValidationServerOptions: fullModeServerOptions);
 
         // Act
         var result = await serviceWithFullMode.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
         Assert.That(result.IsValid, Is.False);
-        hsdsComplianceServiceMock.Verify(s => s.TryGetKnownHsdsSchemaUrl("3.0", out hsdsSpecUrl), Times.AtLeastOnce);
+        Assert.That(result.Summary, Is.Not.Null);
+        Assert.That(result.Summary!.FailedTests, Is.EqualTo(1));
+        Assert.That(result.Summary.SuccessfulTests, Is.EqualTo(0));
+        Assert.That(result.Summary.TotalEndpoints, Is.EqualTo(1));
+        Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
+        Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.FailedValidation));
+        Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult, Is.Not.Null);
+        Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult!.Errors.Any(e =>
+            string.Equals(e.ErrorCode, "HSDS_RUNTIME_VALIDATION_ERROR", StringComparison.OrdinalIgnoreCase)), Is.True);
+        Assert.That(result.EndpointTests[0].ValidationErrors.Any(e =>
+            string.Equals(e.ErrorCode, "HSDS_RUNTIME_VALIDATION_ERROR", StringComparison.OrdinalIgnoreCase)), Is.True);
+        hsdsComplianceServiceMock.Verify(s => s.ValidateEndpointResponsesAgainstHsdsProfileAsync(
+            It.IsAny<List<EndpointTestResult>>(),
+            It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+            It.IsAny<OpenApiValidationOptions>(),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]

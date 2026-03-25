@@ -299,9 +299,11 @@ public class OpenApiValidationService : IOpenApiValidationService
                 }
             }
 
-            // Build summary
+            // Build summary after all validation stages have had a chance to update endpoint results.
             result.Summary = BuildTestSummary(specValidation, endpointTests, request.Options);
-            result.IsValid = result.Summary.FailedTests == 0;
+            var hasFailedEndpoints = endpointTests.Any(e =>
+                e.Status == EndpointTestStatus.FailedValidation || e.Status == EndpointTestStatus.Error);
+            result.IsValid = result.Summary.FailedTests == 0 && !hasFailedEndpoints;
 
             // Set metadata
             result.Metadata = new CommonValidationMetadata
