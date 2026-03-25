@@ -85,3 +85,22 @@ jobs:
       run: |
         echo "--- API LOGS ---"
         cat api.log
+
+    - name: Upload API log artifact
+      uses: actions/upload-artifact@v7.0.0
+      if: always()
+      with:
+        name: api-log
+        path: |
+          OpenReferralApi/logs/service.json
+          OpenReferralApi/logs/schema.json
+          OpenReferralApi/logs/*.log
+        if-no-files-found: warn 
+
+    - name: Upload API response artifact
+      uses: actions/upload-artifact@v7.0.0
+      if: always()
+      with:
+        name: api-response
+        path: artifacts/api-response.json
+        if-no-files-found: warn
