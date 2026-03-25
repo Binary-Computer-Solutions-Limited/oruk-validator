@@ -1,7 +1,9 @@
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Schema;
+using OpenReferralApi.Core.Models.Schema;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
 
 namespace OpenReferralApi.Core.Services;
@@ -17,13 +19,16 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
 
     private readonly ILogger<OpenApiSpecificationService> _logger;
     private readonly IJsonValidatorService _jsonValidatorService;
+    private readonly IOptions<SchemaResolutionOptions> _schemaResolutionOptions;
 
     public OpenApiSpecificationService(
         ILogger<OpenApiSpecificationService> logger,
-        IJsonValidatorService jsonValidatorService)
+        IJsonValidatorService jsonValidatorService,
+        IOptions<SchemaResolutionOptions>? schemaResolutionOptions = null)
     {
         _logger = logger;
         _jsonValidatorService = jsonValidatorService;
+        _schemaResolutionOptions = schemaResolutionOptions ?? Options.Create(new OpenReferralApi.Core.Models.Schema.SchemaResolutionOptions());
     }
 
     public async Task<OpenApiSpecificationValidation> ValidateAsync(JObject openApiSpec, CancellationToken cancellationToken = default)
@@ -158,7 +163,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
 
         try
         {
-            var schemaUri = GetOpenApiSchemaUri(specObject, validation.OpenApiVersion);
+            var schemaUri = this.GetOpenApiSchemaUri(specObject, validation.OpenApiVersion);
             if (!string.IsNullOrEmpty(schemaUri))
             {
                 object dataForValidation = originalSchema != null ? originalSchema : specObject;
@@ -213,14 +218,14 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
             validation.IsValid, validation.Errors.Count);
     }
 
-    private static string? GetOpenApiSchemaUri(JObject specObject, string? version)
+    private string? GetOpenApiSchemaUri(JObject specObject, string? version)
     {
         if (specObject.ContainsKey("jsonSchemaDialect"))
         {
             var dialect = specObject["jsonSchemaDialect"]?.ToString();
             if (!string.IsNullOrEmpty(dialect))
             {
-                if (IsKnownJsonSchemaDialect(dialect))
+                if (this.IsKnownJsonSchemaDialect(dialect))
                 {
                     return dialect;
                 }
@@ -233,17 +238,17 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         {
             if (version.StartsWith("3.1", StringComparison.OrdinalIgnoreCase))
             {
-                return "https://spec.openapis.org/oas/3.1/schema/2022-10-07";
+                return "https://spec.openapis.org/oas/3.1/schema/latest.json";
             }
 
             if (version.StartsWith("3.0", StringComparison.OrdinalIgnoreCase))
             {
-                return "https://spec.openapis.org/oas/3.0/schema/2019-04-02";
+                return "https://spec.openapis.org/oas/3.0/schema/latest.json";
             }
 
             if (version.StartsWith("2.0", StringComparison.OrdinalIgnoreCase))
             {
-                return "http://swagger.io/v2/schema.json";
+                return "https://raw.githubusercontent.com/swagger-api/swagger-spec/master/versions/2.0.json";
             }
 
             return null;
@@ -252,8 +257,15 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         return null;
     }
 
-    private static bool IsKnownJsonSchemaDialect(string dialect)
+    private bool IsKnownJsonSchemaDialect(string dialect)
     {
+        var knownUrls = _schemaResolutionOptions.Value.KnownJsonSchemaUrls;
+        if (knownUrls?.Contains(dialect, StringComparer.OrdinalIgnoreCase) == true)
+        {
+            return true;
+        }
+
+        // Fallback to known common schema dialects if not configured
         return dialect switch
         {
             "https://json-schema.org/draft/2020-12/schema" => true,

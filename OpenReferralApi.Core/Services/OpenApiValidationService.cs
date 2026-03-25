@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
+using OpenReferralApi.Core.Models.Schema;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
 
 namespace OpenReferralApi.Core.Services;
@@ -70,13 +71,14 @@ public class OpenApiValidationService : IOpenApiValidationService
         IOpenApiBootstrapService? openApiBootstrapService = null,
         IOptions<CacheOptions>? cacheOptions = null,
         IOptions<SpecificationOptions>? specificationOptions = null,
-        IOptions<OpenApiValidationServerOptions>? openApiValidationServerOptions = null)
+        IOptions<OpenApiValidationServerOptions>? openApiValidationServerOptions = null,
+        IOptions<SchemaResolutionOptions>? schemaResolutionOptions = null)
     {
         _logger = logger;
         _schemaResolverService = schemaResolverService;
         _profileDiscoveryService = discoveryService;
         _openApiDiscoveryService = feedSpecDiscoveryService;
-        _openApiSpecificationService = openApiSpecificationService ?? new OpenApiSpecificationService(NullLogger<OpenApiSpecificationService>.Instance, jsonValidatorService);
+        _openApiSpecificationService = openApiSpecificationService ?? new OpenApiSpecificationService(NullLogger<OpenApiSpecificationService>.Instance, jsonValidatorService, schemaResolutionOptions);
         _hsdsComplianceService = hsdsComplianceService ?? new HsdsComplianceService(jsonValidatorService, specificationOptions, openApiValidationServerOptions);
         _endpointTestingService = endpointTestingService ?? new EndpointTestingService(NullLogger<EndpointTestingService>.Instance, httpClientFactory, jsonValidatorService, _hsdsComplianceService, openApiValidationServerOptions);
         _authenticationValidationService = authenticationValidationService ?? new AuthenticationValidationService(NullLogger<AuthenticationValidationService>.Instance, openApiValidationServerOptions ?? Options.Create(new OpenApiValidationServerOptions()));

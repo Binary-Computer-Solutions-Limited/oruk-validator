@@ -352,7 +352,7 @@ public class OpenApiDiscoveryServiceTests
 
         // Assert
         Assert.That(result, Is.EqualTo("https://api.example.com/openapi.json"));
-        Assert.That(requestUris, Has.Count.EqualTo(13));
+        Assert.That(requestUris, Has.Count.EqualTo(16));
         Assert.That(requestUris, Has.None.EqualTo("https://api.example.com/"));
         Assert.That(requestUris, Has.None.EqualTo("https://api.example.com"));
     }

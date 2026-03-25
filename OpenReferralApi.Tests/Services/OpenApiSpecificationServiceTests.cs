@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Newtonsoft.Json.Linq;
+using OpenReferralApi.Core.Models.Schema;
 using OpenReferralApi.Core.Services;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
 
@@ -27,7 +29,22 @@ public class OpenApiSpecificationServiceTests
                 Errors = new List<ValidationError>()
             });
 
-        _service = new OpenApiSpecificationService(_loggerMock.Object, _jsonValidatorServiceMock.Object);
+        var schemaResolutionOptions = Options.Create(new SchemaResolutionOptions
+        {
+            KnownJsonSchemaUrls = new List<string>
+            {
+                "https://json-schema.org/draft/2020-12/schema",
+                "https://json-schema.org/draft/2020-12/meta/core",
+                "https://json-schema.org/draft/2020-12/meta/applicator",
+                "https://json-schema.org/draft/2020-12/meta/unevaluated",
+                "https://json-schema.org/draft/2020-12/meta/validation",
+                "https://json-schema.org/draft/2020-12/meta/meta-data",
+                "https://json-schema.org/draft/2020-12/meta/format-annotation",
+                "https://json-schema.org/draft/2020-12/meta/content"
+            }
+        });
+
+        _service = new OpenApiSpecificationService(_loggerMock.Object, _jsonValidatorServiceMock.Object, schemaResolutionOptions);
     }
 
     [Test]
@@ -105,7 +122,7 @@ public class OpenApiSpecificationServiceTests
 
         Assert.That(result.IsValid, Is.True);
         Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.SchemaUri, Is.EqualTo("https://spec.openapis.org/oas/3.0/schema/2019-04-02"));
+        Assert.That(capturedRequest!.SchemaUri, Is.EqualTo("https://spec.openapis.org/oas/3.0/schema/latest.json"));
     }
 
     [Test]
