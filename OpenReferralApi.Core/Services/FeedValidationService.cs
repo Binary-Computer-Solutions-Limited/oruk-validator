@@ -154,9 +154,6 @@ public class FeedValidationService : IFeedValidationService
         BaseUrl = feed.Url,
         Options = new OpenApiValidationOptions
         {
-          TestEndpoints = true,
-          TestOptionalEndpoints = true,
-          TreatOptionalEndpointsAsWarnings = true,
           TimeoutSeconds = 60,
           MaxConcurrentRequests = 10,
           ReportAdditionalFields = false
