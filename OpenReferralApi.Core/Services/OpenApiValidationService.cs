@@ -197,6 +197,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             }
 
             // If discovery could not infer an HSDS profile version, try extracting it from the OpenAPI document itself.
+            string? misplacedHsdsVersionWarning = null;
             if (!HasExplicitProfileVersionContext(request.ProfileReason, request.OpenApiSchema?.Url))
             {
                 var (versionFromSpec, fromOpenapiField) = TryExtractProfileVersionFromOpenApiSpec(openApiSpec);
@@ -211,10 +212,10 @@ public class OpenApiValidationService : IOpenApiValidationService
                             "Detected HSDS version {HsdsVersion} — please add an 'x-hsds-version' or 'version' field to the spec.",
                             SchemaResolverService.SanitizeStringForLogging(openApiSpec.SelectToken("openapi")?.ToString() ?? string.Empty),
                             versionFromSpec);
-                        result.Notifications.Add(
+                        misplacedHsdsVersionWarning =
                             $"Warning: The HSDS schema version was incorrectly defined in the 'openapi' field. " +
                             $"Detected HSDS version {versionFromSpec} from this field as a fallback. " +
-                            $"Please use an 'x-hsds-version' field in your OpenAPI spec to declare the HSDS version.");
+                            $"Please use an 'x-hsds-version' field in your OpenAPI spec to declare the HSDS version.";
                     }
                 }
                 else if (usedBaseUrlDiscovery)
@@ -225,9 +226,25 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             // Validate the OpenAPI specification
             OpenApiSpecificationValidation? specValidation = null;
-            if (request.Options.ValidateSpecification)
+            if (_validateSpecification)
             {
                 specValidation = await _openApiSpecificationService.ValidateAsync(openApiSpec, cancellationToken);
+
+                if (!string.IsNullOrWhiteSpace(misplacedHsdsVersionWarning))
+                {
+                    specValidation.Errors = NormalizeAndDeduplicateValidationErrors(
+                        specValidation.Errors.Concat(new[]
+                        {
+                            new ValidationError
+                            {
+                                Path = "openapi",
+                                Message = misplacedHsdsVersionWarning,
+                                ErrorCode = "HSDS_SCHEMA_VERSION_MISPLACED",
+                                Severity = "Warning"
+                            }
+                        }));
+                }
+
                 result.SpecificationValidation = specValidation;
             }
 
@@ -242,7 +259,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             }
 
             // Compare feed specification against the known HSDS baseline profile before endpoint testing.
-            if (request.Options.ValidateSpecification && specValidation != null)
+            if (_validateSpecification && specValidation != null)
             {
                 if (resolvedHsdsProfileSpec != null)
                 {
@@ -285,7 +302,24 @@ public class OpenApiValidationService : IOpenApiValidationService
                 var pathDeduplicationWarning = RemoveDuplicatedBasePathFromOpenApiPaths(openApiSpec, request.BaseUrl);
                 if (!string.IsNullOrWhiteSpace(pathDeduplicationWarning))
                 {
-                    result.Notifications.Add(pathDeduplicationWarning);
+                    if (_validateSpecification && specValidation != null)
+                    {
+                        specValidation.Errors = NormalizeAndDeduplicateValidationErrors(
+                            specValidation.Errors.Concat(new[]
+                            {
+                                new ValidationError
+                                {
+                                    Path = "paths",
+                                    Message = pathDeduplicationWarning,
+                                    ErrorCode = "OPENAPI_BASE_PATH_DEDUPLICATED",
+                                    Severity = "Warning"
+                                }
+                            }));
+                    }
+                    else
+                    {
+                        result.Notifications.Add(pathDeduplicationWarning);
+                    }
                 }
 
                 endpointTests = await _endpointTestingService.TestEndpointsAsync(openApiSpec, request.BaseUrl, request.Options, dataSourceRequestAuth, request.OpenApiSchema?.Url, cancellationToken);
