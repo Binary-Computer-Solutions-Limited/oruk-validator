@@ -44,7 +44,7 @@ This solution is built as a modern, cloud-native application with the following 
 - **Language**: C# 13+ with nullable reference types enabled
 - **API Documentation**: Swagger/OpenAPI with XML documentation comments
 - **Database**: MongoDB (optional) for storing service registrations and validation history
-- **Validation Engine**: 
+- **Validation Engine**:
   - JSON Schema validation using Newtonsoft.Json.Schema (v4.0.1) and JsonSchema.Net (v8.0.5)
   - OpenAPI specification parsing and validation
   - Automated endpoint discovery and testing
@@ -91,23 +91,27 @@ For detailed information about specific components, see:
 ### API Documentation
 
 When running locally in development mode, interactive API documentation is available at:
+
 - **Swagger UI**: `http://localhost:6969/` (or your configured port)
 - **OpenAPI Spec**: `http://localhost:6969/swagger/v1/swagger.json`
 
 ### Quick Start
 
 1. **Clone the repository**:
+
    ```bash
    git clone https://github.com/openReferralUK/oruk-validator.git
    cd OpenReferralApi
    ```
 
 2. **Run with Docker**:
+
    ```bash
    docker-compose up
    ```
 
 3. **Or run with .NET CLI**:
+
    ```bash
    dotnet restore
    dotnet run --project OpenReferralApi/OpenReferralApi.csproj
@@ -221,7 +225,12 @@ Validation behavior:
 - If the data service provides its own OpenAPI spec, the validator validates the data service against that spec, validates the spec structure against the official OpenAPI schema, and compares the data-service spec against the mapped profile OpenAPI.
 - Missing required endpoints/properties are failures; additional endpoints/properties are informational findings.
 
-#### Basic Authentication
+Server-side OpenAPI validation controls:
+
+- `ValidateSpecification` is configured on `OpenApiValidation` server settings and is not overridable by client request payloads.
+- Use `OpenApiValidation:ValidateSpecification` (or `ORUK_API_OPENAPIVALIDATION__VALIDATESPECIFICATION`) to enable/disable OpenAPI specification structure validation globally.
+
+### Basic Authentication
 
 Use HTTP Basic Authentication with username and password:
 
@@ -324,10 +333,12 @@ See [legacy documentation and design decisions](docs/legacy-documentation-and-de
 The Human Services Data Specification UK (HSDS-UK) schema, standard documentation, and associated materials are licensed under the **Creative Commons Attribution-ShareAlike 4.0 International License (CC BY-SA 4.0)**.
 
 This allows you to:
+
 - **Share**: Copy and redistribute the material in any medium or format
 - **Adapt**: Remix, transform, and build upon the material for any purpose, even commercially
 
 Under the following terms:
+
 - **Attribution**: You must give appropriate credit, provide a link to the license, and indicate if changes were made
 - **ShareAlike**: If you remix, transform, or build upon the material, you must distribute your contributions under the same license
 
