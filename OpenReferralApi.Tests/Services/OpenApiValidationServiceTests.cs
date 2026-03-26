@@ -93,6 +93,27 @@ public class OpenApiValidationServiceTests
         _httpClient?.Dispose();
     }
 
+    private void ReinitializeServiceWithServerOptions(OpenApiValidationServerOptions serverOptions)
+    {
+        _openApiValidationServerOptions = Options.Create(serverOptions);
+        _service = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(_httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            specificationOptions: Options.Create(new SpecificationOptions
+            {
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-1.0"] = "https://openreferraluk.org/specifications/1.0/openapi.json",
+                    ["HSDS-UK-3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json"
+                }
+            }),
+            openApiValidationServerOptions: _openApiValidationServerOptions);
+    }
+
     #region Basic Response Handling
 
     [Test]
@@ -239,6 +260,13 @@ public class OpenApiValidationServiceTests
     public async Task ValidateOpenApiSpecificationAsync_SkipsValidationWhenDisabled()
     {
         // Arrange
+        ReinitializeServiceWithServerOptions(new OpenApiValidationServerOptions
+        {
+            ValidateSpecification = false,
+            HsdsValidationMode = HsdsValidationMode.SpecAndFeedRuntimeFast,
+            AllowUserSuppliedAuth = true
+        });
+
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
