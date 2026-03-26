@@ -298,7 +298,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             // Test endpoints after specification and HSDS profile checks.
             List<EndpointTestResult> endpointTests = new();
-            if (request.Options.TestEndpoints && !string.IsNullOrEmpty(request.BaseUrl))
+            if (_openApiValidationOptions.TestEndpoints && !string.IsNullOrEmpty(request.BaseUrl))
             {
                 var pathDeduplicationWarning = RemoveDuplicatedBasePathFromOpenApiPaths(openApiSpec, request.BaseUrl);
                 if (!string.IsNullOrWhiteSpace(pathDeduplicationWarning))
@@ -850,7 +850,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
     private OpenApiValidationSummary BuildTestSummary(OpenApiSpecificationValidation? specValidation, List<EndpointTestResult> endpointTests, OpenApiValidationOptions options)
     {
-        var shouldIgnoreOptionalFailures = options.TestOptionalEndpoints && options.TreatOptionalEndpointsAsWarnings;
+        var shouldIgnoreOptionalFailures = _openApiValidationOptions.TestOptionalEndpoints && _openApiValidationOptions.TreatOptionalEndpointsAsWarnings;
         var failedTests = endpointTests.Count(e =>
             (e.Status == EndpointTestStatus.FailedValidation || e.Status == EndpointTestStatus.Error) &&
             !(shouldIgnoreOptionalFailures && e.IsOptional));

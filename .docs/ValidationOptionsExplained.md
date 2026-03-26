@@ -28,10 +28,6 @@ Each authentication object (`openApiSchema.authentication` and `dataSourceAuth`)
     "apiKeyHeader": "X-API-Key"
   },
   "options": {
-    "testEndpoints": true,
-    "validateSpecification": true,
-    "testOptionalEndpoints": true,
-    "treatOptionalEndpointsAsWarnings": true,
     "includeResponseBody": true,
     "includeTestResults": true,
     "timeoutSeconds": 30,
@@ -85,31 +81,15 @@ Feature and runtime controls for validation behavior.
 
 If omitted, no authentication is applied to the HTTP Request.
 
+**Note on testEndpoints, testOptionalEndpoints, treatOptionalEndpointsAsWarnings, validateSpecification:** These settings are controlled by server configuration (`OpenApiValidation.*` in appsettings.json) and are not overridable per-request. User requests only control output formatting, not validation behaviour.
+
 ## options Field Reference
-
-### testEndpoints (default: true)
-Runs HTTP tests against endpoints defined in your OpenAPI spec.
-
-Use when:
-- You want real availability/response/schema checks against your live feed.
 
 ### validateSpecification (default: true)
 Validates OpenAPI structure and quality analysis.
 
 Use when:
 - You want standards and structure checks in addition to runtime endpoint checks.
-
-### testOptionalEndpoints (default: true)
-Controls whether optional endpoints are tested.
-
-- true: tests optional endpoints
-- false: skips optional endpoints
-
-### treatOptionalEndpointsAsWarnings (default: true)
-How optional endpoint failures are classified when optional tests run.
-
-- true: optional endpoint non-implementation (for example 404/501) is treated as warning/informational
-- false: optional endpoint failures count like normal failures
 
 ### includeResponseBody (default: true)
 Controls whether responseBody is returned per HTTP test in results.
@@ -185,10 +165,6 @@ Additional rule:
     "url": "https://api.example.org/openapi.json"
   },
   "options": {
-    "validateSpecification": true,
-    "testEndpoints": true,
-    "testOptionalEndpoints": true,
-    "treatOptionalEndpointsAsWarnings": true,
     "timeoutSeconds": 30,
     "maxConcurrentRequests": 5
   }
@@ -204,8 +180,6 @@ Additional rule:
     "url": "https://api.example.org/openapi.json"
   },
   "options": {
-    "validateSpecification": false,
-    "testEndpoints": true,
     "includeResponseBody": false,
     "includeTestResults": false,
     "timeoutSeconds": 20,
@@ -223,11 +197,7 @@ Additional rule:
     "url": "https://api.example.org/openapi.json"
   },
   "options": {
-    "validateSpecification": true,
-    "testEndpoints": true,
     "reportAdditionalFields": true,
-    "testOptionalEndpoints": true,
-    "treatOptionalEndpointsAsWarnings": false,
     "timeoutSeconds": 45,
     "maxConcurrentRequests": 5
   }
@@ -248,10 +218,6 @@ curl -X POST http://localhost:5000/openreferraluk/validate \
       "bearerToken": "YOUR_TOKEN"
     },
     "options": {
-      "validateSpecification": true,
-      "testEndpoints": true,
-      "testOptionalEndpoints": true,
-      "treatOptionalEndpointsAsWarnings": true,
       "includeResponseBody": false,
       "includeTestResults": true,
       "timeoutSeconds": 30,

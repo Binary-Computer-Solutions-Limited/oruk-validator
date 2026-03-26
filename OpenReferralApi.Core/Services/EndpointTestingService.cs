@@ -139,7 +139,7 @@ public class EndpointTestingService : IEndpointTestingService
         try
         {
             bool isOptional = operation.IsOptionalEndpoint();
-            bool skipOptional = options.TestOptionalEndpoints == false && isOptional;
+            bool skipOptional = !(_openApiValidationOptions?.TestOptionalEndpoints ?? true) && isOptional;
             if (skipOptional)
             {
                 result.Status = EndpointTestStatus.Skipped;
@@ -248,7 +248,7 @@ public class EndpointTestingService : IEndpointTestingService
                 // Optional endpoint warning logic (only apply if status wasn't already set by non-success handling)
                 if (result.Status == EndpointTestStatus.NotTested || result.Status == EndpointTestStatus.PassedValidation || result.Status == EndpointTestStatus.FailedValidation)
                 {
-                    if (isOptional && options.TestOptionalEndpoints && options.TreatOptionalEndpointsAsWarnings)
+                    if (isOptional && (_openApiValidationOptions?.TestOptionalEndpoints ?? true) && (_openApiValidationOptions?.TreatOptionalEndpointsAsWarnings ?? true))
                     {
                         // If there are validation errors, report as warnings
                         if (testResult.ValidationResult != null && !testResult.ValidationResult.IsValid)

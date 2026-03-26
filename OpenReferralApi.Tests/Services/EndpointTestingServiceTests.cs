@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Newtonsoft.Json.Linq;
 using OpenReferralApi.Core.Services;
@@ -259,15 +260,19 @@ public class EndpointTestingServiceTests
           };
         });
 
-        var options = new OpenApiValidationOptions
-        {
-          TestOptionalEndpoints = false
-        };
+        // TestOptionalEndpoints is now server-configurable; create a service with it disabled
+        var serverOptions = Options.Create(new OpenApiValidationServerOptions { TestOptionalEndpoints = false });
+        var serviceWithOptionalDisabled = new EndpointTestingService(
+            _loggerMock.Object,
+            CreateFactory(_httpClient),
+            _jsonValidatorServiceMock.Object,
+            _hsdsComplianceServiceMock.Object,
+            serverOptions);
 
-        var results = await _service.TestEndpointsAsync(
+        var results = await serviceWithOptionalDisabled.TestEndpointsAsync(
           CreateCollectionAndOptionalParameterizedSpec(),
           "https://api.example.com",
-          options,
+          new OpenApiValidationOptions(),
           null,
           null,
           CancellationToken.None);
