@@ -52,6 +52,7 @@ public class OpenApiValidationService : IOpenApiValidationService
     private readonly IAuthenticationValidationService _authenticationValidationService;
     private readonly OpenApiSpecFetcher _specFetcher;
     private readonly bool _allowUserSuppliedAuth;
+    private readonly bool _validateSpecification;
     private readonly HsdsValidationMode _hsdsValidationMode;
     private readonly bool _profileSchemaCacheEnabled;
     private readonly TimeSpan _profileSchemaCacheTtl;
@@ -83,6 +84,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         _endpointTestingService = endpointTestingService ?? new EndpointTestingService(NullLogger<EndpointTestingService>.Instance, httpClientFactory, jsonValidatorService, _hsdsComplianceService, openApiValidationServerOptions);
         _authenticationValidationService = authenticationValidationService ?? new AuthenticationValidationService(NullLogger<AuthenticationValidationService>.Instance, openApiValidationServerOptions ?? Options.Create(new OpenApiValidationServerOptions()));
         _allowUserSuppliedAuth = openApiValidationServerOptions?.Value?.AllowUserSuppliedAuth ?? false;
+        _validateSpecification = openApiValidationServerOptions?.Value?.ValidateSpecification ?? true;
         _hsdsValidationMode = openApiValidationServerOptions?.Value?.HsdsValidationMode ?? HsdsValidationMode.SpecAndFeedRuntimeFast;
         var effectiveCacheOptions = cacheOptions?.Value;
         _profileSchemaCacheEnabled = effectiveCacheOptions?.Enabled == true;
@@ -197,6 +199,8 @@ public class OpenApiValidationService : IOpenApiValidationService
             }
 
             // If discovery could not infer an HSDS profile version, try extracting it from the OpenAPI document itself.
+            // Store any HSDS schema version warning to add to specValidation later
+            string? hsdsVersionWarningMessage = null;
             if (!HasExplicitProfileVersionContext(request.ProfileReason, request.OpenApiSchema?.Url))
             {
                 var (versionFromSpec, fromOpenapiField) = TryExtractProfileVersionFromOpenApiSpec(openApiSpec);
@@ -211,10 +215,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                             "Detected HSDS version {HsdsVersion} — please add an 'x-hsds-version' or 'version' field to the spec.",
                             SchemaResolverService.SanitizeStringForLogging(openApiSpec.SelectToken("openapi")?.ToString() ?? string.Empty),
                             versionFromSpec);
-                        result.Notifications.Add(
-                            $"Warning: The HSDS schema version was incorrectly defined in the 'openapi' field. " +
-                            $"Detected HSDS version {versionFromSpec} from this field as a fallback. " +
-                            $"Please use an 'x-hsds-version' field in your OpenAPI spec to declare the HSDS version.");
+                        hsdsVersionWarningMessage = versionFromSpec;
                     }
                 }
                 else if (usedBaseUrlDiscovery)
@@ -225,10 +226,24 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             // Validate the OpenAPI specification
             OpenApiSpecificationValidation? specValidation = null;
-            if (request.Options.ValidateSpecification)
+            if (_validateSpecification)
             {
                 specValidation = await _openApiSpecificationService.ValidateAsync(openApiSpec, cancellationToken);
                 result.SpecificationValidation = specValidation;
+                
+                // Add HSDS schema version warning to validation errors if detected
+                if (!string.IsNullOrWhiteSpace(hsdsVersionWarningMessage))
+                {
+                    specValidation.Errors.Add(new ValidationError
+                    {
+                        Path = "openapi",
+                        Message = $"Warning: The HSDS schema version was incorrectly defined in the 'openapi' field. " +
+                                  $"Detected HSDS version {hsdsVersionWarningMessage} from this field as a fallback. " +
+                                  $"Please use an 'x-hsds-version' field in your OpenAPI spec to declare the HSDS version.",
+                        ErrorCode = "HSDS_SCHEMA_VERSION_MISPLACED",
+                        Severity = "Warning"
+                    });
+                }
             }
 
             claimedProfileVersion = _hsdsComplianceService.ExtractClaimedProfileVersion(request.ProfileReason, request.OpenApiSchema?.Url);
@@ -242,7 +257,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             }
 
             // Compare feed specification against the known HSDS baseline profile before endpoint testing.
-            if (request.Options.ValidateSpecification && specValidation != null)
+            if (_validateSpecification && specValidation != null)
             {
                 if (resolvedHsdsProfileSpec != null)
                 {

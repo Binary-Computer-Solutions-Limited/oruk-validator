@@ -196,7 +196,7 @@ public class OpenApiValidationServiceTests
             {
                 Url = "https://example.com/openapi.json"
             },
-            Options = new OpenApiValidationOptions { }
+            Options = new OpenApiValidationOptions { ValidateSpecification = true }
         };
         SetupHttpMock(json);
 
@@ -219,7 +219,7 @@ public class OpenApiValidationServiceTests
             {
                 Url = "https://example.com/swagger.json"
             },
-            Options = new OpenApiValidationOptions { }
+            Options = new OpenApiValidationOptions { ValidateSpecification = true }
         };
         SetupHttpMock(json);
 
@@ -268,7 +268,7 @@ public class OpenApiValidationServiceTests
             {
                 Url = "https://example.com/openapi.json"
             },
-            Options = new OpenApiValidationOptions { }
+            Options = new OpenApiValidationOptions { ValidateSpecification = true }
         };
         SetupHttpMock(json);
 
@@ -290,7 +290,7 @@ public class OpenApiValidationServiceTests
             {
                 Url = "https://example.com/openapi.json"
             },
-            Options = new OpenApiValidationOptions {   TestEndpoints = false }
+            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false }
         };
 
         _jsonValidatorServiceMock
@@ -354,7 +354,7 @@ public class OpenApiValidationServiceTests
             {
                 Url = "https://example.com/openapi.json"
             },
-            Options = new OpenApiValidationOptions {   TestEndpoints = false }
+            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false }
         };
 
         _jsonValidatorServiceMock
@@ -428,7 +428,8 @@ public class OpenApiValidationServiceTests
             },
             Options = new OpenApiValidationOptions
             {
-                                  TestEndpoints = false
+                ValidateSpecification = true,
+                TestEndpoints = false
             }
         };
 
@@ -471,7 +472,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
-            Options = new OpenApiValidationOptions {   TestEndpoints = false },
+            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
@@ -516,7 +517,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
-            Options = new OpenApiValidationOptions {   TestEndpoints = false },
+            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
@@ -563,7 +564,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
-            Options = new OpenApiValidationOptions {   TestEndpoints = false },
+            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
@@ -607,7 +608,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
-            Options = new OpenApiValidationOptions {   TestEndpoints = false },
+            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
@@ -648,7 +649,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
-            Options = new OpenApiValidationOptions {   TestEndpoints = false },
+            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false },
             ProfileReason = "Standard version [user: 9.9] read from '/' endpoint"
         };
 
@@ -673,7 +674,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
-            Options = new OpenApiValidationOptions {   TestEndpoints = false }
+            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false }
         };
 
         SetupHttpMock((httpRequest, ct) =>
@@ -717,7 +718,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
-            Options = new OpenApiValidationOptions {   TestEndpoints = false }
+            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false }
         };
 
         SetupHttpMock((httpRequest, ct) =>
@@ -760,7 +761,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
-            Options = new OpenApiValidationOptions {   TestEndpoints = false },
+            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
@@ -807,7 +808,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
-            Options = new OpenApiValidationOptions {   TestEndpoints = false },
+            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
@@ -876,7 +877,8 @@ public class OpenApiValidationServiceTests
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions
             {
-                                  TestEndpoints = true
+                ValidateSpecification = true,
+                TestEndpoints = true
             }
         };
 
@@ -1010,7 +1012,8 @@ public class OpenApiValidationServiceTests
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions
             {
-                                  TestEndpoints = true
+                ValidateSpecification = true,
+                TestEndpoints = true
             }
         };
 
@@ -1154,7 +1157,8 @@ public class OpenApiValidationServiceTests
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions
             {
-                                  TestEndpoints = true
+                ValidateSpecification = true,
+                TestEndpoints = true
             }
         };
 
@@ -1257,7 +1261,8 @@ public class OpenApiValidationServiceTests
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions
             {
-                                  TestEndpoints = true
+                ValidateSpecification = false,
+                TestEndpoints = true
             }
         };
 
@@ -1300,7 +1305,8 @@ public class OpenApiValidationServiceTests
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions
             {
-                                  TestEndpoints = true
+                ValidateSpecification = false,
+                TestEndpoints = true
             }
         };
 
@@ -1464,7 +1470,8 @@ public class OpenApiValidationServiceTests
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions
             {
-                                  TestEndpoints = false
+                ValidateSpecification = true,
+                TestEndpoints = false
             }
         };
 
@@ -1563,7 +1570,8 @@ public class OpenApiValidationServiceTests
             },
             Options = new OpenApiValidationOptions
             {
-                                  TestEndpoints = false
+                ValidateSpecification = false,
+                TestEndpoints = false
             }
         };
 
@@ -1691,7 +1699,7 @@ public class OpenApiValidationServiceTests
                 Url = "https://example.com/openapi.json"
             },
             BaseUrl = "https://api.example.com",
-            Options = new OpenApiValidationOptions { IncludeTestResults = false, TestEndpoints = true   }
+            Options = new OpenApiValidationOptions { IncludeTestResults = false, TestEndpoints = true, ValidateSpecification = false }
         };
 
         _jsonValidatorServiceMock
@@ -1895,7 +1903,8 @@ public class OpenApiValidationServiceTests
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions
             {
-                                  TestEndpoints = true
+                ValidateSpecification = true,
+                TestEndpoints = true
             }
         };
 
@@ -2051,7 +2060,8 @@ public class OpenApiValidationServiceTests
             BaseUrl = baseUrl,
             Options = new OpenApiValidationOptions
             {
-                                  TestEndpoints = true
+                ValidateSpecification = false,
+                TestEndpoints = true
             }
         };
 
@@ -2128,7 +2138,8 @@ public class OpenApiValidationServiceTests
             BaseUrl = baseUrl,
             Options = new OpenApiValidationOptions
             {
-                                  TestEndpoints = true
+                ValidateSpecification = false,
+                TestEndpoints = true
             }
         };
 
@@ -2165,7 +2176,8 @@ public class OpenApiValidationServiceTests
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions
             {
-                                  TestEndpoints = true
+                ValidateSpecification = false,
+                TestEndpoints = true
             }
         };
 
@@ -2233,7 +2245,8 @@ public class OpenApiValidationServiceTests
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions
             {
-                                  TestEndpoints = true
+                ValidateSpecification = false,
+                TestEndpoints = true
             }
         };
 
@@ -2287,7 +2300,8 @@ public class OpenApiValidationServiceTests
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions
             {
-                                  TestEndpoints = true
+                ValidateSpecification = false,
+                TestEndpoints = true
             }
         };
 
@@ -2383,7 +2397,8 @@ public class OpenApiValidationServiceTests
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions
             {
-                                  TestEndpoints = true,
+                ValidateSpecification = false,
+                TestEndpoints = true,
                 TestOptionalEndpoints = true,
                 TreatOptionalEndpointsAsWarnings = true
             }
