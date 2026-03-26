@@ -60,6 +60,8 @@ public class OpenApiValidationOptions : ValidationOptionsBase
     /// </summary>
     [JsonProperty("includeTestResults")]
     public bool IncludeTestResults { get; set; } = true;
+
+    /// <summary>
 }
 
 /// <summary>
