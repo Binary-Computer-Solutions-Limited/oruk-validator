@@ -324,7 +324,10 @@ public class HsdsComplianceServiceTests
             }
         };
 
-        var options = new OpenApiValidationOptions();
+        var options = new OpenApiValidationOptions
+        {
+          ReportAdditionalFields = true
+        };
 
         await _service.ValidateEndpointResponsesAgainstHsdsProfileAsync(endpointTests, hsdsSpec, options, CancellationToken.None);
 
@@ -402,7 +405,10 @@ public class HsdsComplianceServiceTests
             }
         };
 
-        var options = new OpenApiValidationOptions();
+        var options = new OpenApiValidationOptions
+        {
+          ReportAdditionalFields = true
+        };
         var serviceWithLenientPolicy = new HsdsComplianceService(
             _jsonValidatorServiceMock.Object,
           specificationOptions: Options.Create(new SpecificationOptions()),
@@ -414,6 +420,89 @@ public class HsdsComplianceServiceTests
         Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
         Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
             Has.Some.Matches<ValidationError>(e => e.Severity == "Warning"));
+    }
+
+    [Test]
+    public async Task ValidateEndpointResponsesAgainstHsdsProfileAsync_WhenReportAdditionalFieldsFalse_OmitsAdditionalFieldWarnings()
+    {
+        _jsonValidatorServiceMock
+            .Setup(x => x.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult
+            {
+                IsValid = false,
+                Errors = new List<ValidationError>
+                {
+                    new() { Path = "data.extra", Message = "extra", ErrorCode = "ADDITIONAL_FIELD", Severity = "Error" }
+                }
+            });
+
+        var hsdsSpec = JObject.Parse("""
+        {
+          "openapi": "3.0.0",
+          "paths": {
+            "/services": {
+              "get": {
+                "responses": {
+                  "200": {
+                    "description": "ok",
+                    "content": {
+                      "application/json": {
+                        "schema": {
+                          "type": "object",
+                          "properties": {
+                            "id": { "type": "string" }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """);
+
+        var endpointTests = new List<EndpointTestResult>
+        {
+            new()
+            {
+                Method = "GET",
+                Path = "/services",
+                Status = EndpointTestStatus.PassedValidation,
+                IsTested = true,
+                TestResults = new List<HttpTestResult>
+                {
+                    new()
+                    {
+                        IsSuccessStatusCode = true,
+                        ResponseBody = "{\"id\":\"1\",\"extra\":\"x\"}",
+                        ValidationResult = new ValidationResult
+                        {
+                            IsValid = true,
+                            Errors = new List<ValidationError>()
+                        }
+                    }
+                }
+            }
+        };
+
+        var options = new OpenApiValidationOptions
+        {
+            ReportAdditionalFields = false
+        };
+
+        var serviceWithLenientPolicy = new HsdsComplianceService(
+            _jsonValidatorServiceMock.Object,
+          specificationOptions: Options.Create(new SpecificationOptions()),
+          openApiValidationOptions: Options.Create(new OpenApiValidationServerOptions { StrictOwnSchemaValidation = false }));
+
+        await serviceWithLenientPolicy.ValidateEndpointResponsesAgainstHsdsProfileAsync(endpointTests, hsdsSpec, options, CancellationToken.None);
+
+        var endpoint = endpointTests[0];
+        Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.PassedValidation));
+        Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
+            Has.None.Matches<ValidationError>(e => e.ErrorCode == "HSDS_RUNTIME_ADDITIONAL_FIELD"));
     }
 
     [Test]
@@ -433,9 +522,32 @@ public class HsdsComplianceServiceTests
             _jsonValidatorServiceMock.Object,
           specificationOptions: Options.Create(new SpecificationOptions()),
           openApiValidationOptions: Options.Create(new OpenApiValidationServerOptions { StrictOwnSchemaValidation = false }));
-        serviceWithLenientPolicy.ApplyAdditionalFieldPolicy(result);
+    serviceWithLenientPolicy.ApplyAdditionalFieldPolicy(result, reportAdditionalFields: true);
 
         Assert.That(result.Errors.Single(e => e.ErrorCode == "ADDITIONAL_FIELD").Severity, Is.EqualTo("Warning"));
         Assert.That(result.IsValid, Is.True);
     }
+
+  [Test]
+  public void ApplyAdditionalFieldPolicy_WhenReportAdditionalFieldsFalse_RemovesWarningEntries()
+  {
+    var result = new ValidationResult
+    {
+      IsValid = false,
+      Errors = new List<ValidationError>
+      {
+        new() { ErrorCode = "ADDITIONAL_FIELD", Severity = "Error" },
+        new() { ErrorCode = "SOME_OTHER", Severity = "Warning" }
+      }
+    };
+
+    var serviceWithLenientPolicy = new HsdsComplianceService(
+      _jsonValidatorServiceMock.Object,
+      specificationOptions: Options.Create(new SpecificationOptions()),
+      openApiValidationOptions: Options.Create(new OpenApiValidationServerOptions { StrictOwnSchemaValidation = false }));
+    serviceWithLenientPolicy.ApplyAdditionalFieldPolicy(result, reportAdditionalFields: false);
+
+    Assert.That(result.Errors, Has.None.Matches<ValidationError>(e => e.ErrorCode == "ADDITIONAL_FIELD"));
+    Assert.That(result.IsValid, Is.True);
+  }
 }

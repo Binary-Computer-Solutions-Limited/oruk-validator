@@ -17,7 +17,7 @@ public interface IHsdsComplianceService
         JObject hsdsSpec,
         OpenApiValidationOptions options,
         CancellationToken cancellationToken);
-    void ApplyAdditionalFieldPolicy(ValidationResult? validationResult);
+    void ApplyAdditionalFieldPolicy(ValidationResult? validationResult, bool reportAdditionalFields);
 }
 
 public class HsdsComplianceService : IHsdsComplianceService
@@ -201,7 +201,7 @@ public class HsdsComplianceService : IHsdsComplianceService
                 };
 
                 var hsdsValidationResult = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
-                ApplyAdditionalFieldPolicy(hsdsValidationResult);
+                ApplyAdditionalFieldPolicy(hsdsValidationResult, options.ReportAdditionalFields);
 
                 if (hsdsValidationResult.Errors.Count == 0)
                 {
@@ -249,7 +249,7 @@ public class HsdsComplianceService : IHsdsComplianceService
         }
     }
 
-    public void ApplyAdditionalFieldPolicy(ValidationResult? validationResult)
+    public void ApplyAdditionalFieldPolicy(ValidationResult? validationResult, bool reportAdditionalFields)
     {
         if (validationResult?.Errors == null || validationResult.Errors.Count == 0)
         {
@@ -270,6 +270,15 @@ public class HsdsComplianceService : IHsdsComplianceService
         foreach (var error in additionalFieldErrors)
         {
             error.Severity = additionalFieldSeverity;
+        }
+
+        if (!reportAdditionalFields)
+        {
+            validationResult.Errors = validationResult.Errors
+                .Where(error =>
+                    !string.Equals(error.ErrorCode, "ADDITIONAL_FIELD", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(error.Severity, "Error", StringComparison.OrdinalIgnoreCase))
+                .ToList();
         }
 
         validationResult.IsValid = !validationResult.Errors.Any(e =>

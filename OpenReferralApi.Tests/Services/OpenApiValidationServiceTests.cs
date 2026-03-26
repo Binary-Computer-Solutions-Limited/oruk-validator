@@ -533,7 +533,8 @@ public class OpenApiValidationServiceTests
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
             Options = new OpenApiValidationOptions { 
                 // ValidateSpecification = true, 
-                TestEndpoints = false 
+                TestEndpoints = false,
+                ReportAdditionalFields = true
             },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
@@ -581,7 +582,8 @@ public class OpenApiValidationServiceTests
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
             Options = new OpenApiValidationOptions { 
                 // ValidateSpecification = true, 
-                TestEndpoints = false 
+                TestEndpoints = false,
+                ReportAdditionalFields = true
             },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
@@ -631,7 +633,8 @@ public class OpenApiValidationServiceTests
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
             Options = new OpenApiValidationOptions { 
                 // ValidateSpecification = true, 
-                TestEndpoints = false 
+                TestEndpoints = false,
+                ReportAdditionalFields = true
             },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
@@ -668,6 +671,51 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WhenReportAdditionalFieldsFalse_OmitsHsdsAdditionalInfoFindings()
+    {
+        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            Options = new OpenApiValidationOptions
+            {
+                TestEndpoints = false,
+                ReportAdditionalFields = false
+            },
+            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
+        };
+
+        SetupHttpMock((httpRequest, ct) =>
+        {
+            var requestUrl = httpRequest.RequestUri?.ToString();
+            if (string.Equals(requestUrl, feedSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateFeedSpecWithAdditionalEndpoint())
+                };
+            }
+
+            if (string.Equals(requestUrl, hsdsSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateHsdsProfileSpec())
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+        });
+
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.SpecificationValidation, Is.Not.Null);
+        Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_ADDITIONAL_ENDPOINT"), Is.False);
+    }
+
+    [Test]
     public async Task ValidateOpenApiSpecificationAsync_FallsBackToHsdsProfileSpecWhenFeedSpecFetchFails()
     {
         // Arrange
@@ -678,7 +726,8 @@ public class OpenApiValidationServiceTests
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
             Options = new OpenApiValidationOptions { 
                 // ValidateSpecification = true, 
-                TestEndpoints = false 
+                TestEndpoints = false,
+                ReportAdditionalFields = true
             },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
@@ -843,7 +892,8 @@ public class OpenApiValidationServiceTests
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
             Options = new OpenApiValidationOptions { 
                 // ValidateSpecification = true, 
-                TestEndpoints = false 
+                TestEndpoints = false,
+                ReportAdditionalFields = true
             },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
@@ -1348,7 +1398,8 @@ public class OpenApiValidationServiceTests
             Options = new OpenApiValidationOptions
             {
                 // ValidateSpecification = false,
-                TestEndpoints = true
+                TestEndpoints = true,
+                ReportAdditionalFields = true
             }
         };
 
@@ -1392,7 +1443,8 @@ public class OpenApiValidationServiceTests
             Options = new OpenApiValidationOptions
             {
                 // ValidateSpecification = false,
-                TestEndpoints = true
+                TestEndpoints = true,
+                ReportAdditionalFields = true
             }
         };
 

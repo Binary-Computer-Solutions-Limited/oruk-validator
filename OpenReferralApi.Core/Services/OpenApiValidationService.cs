@@ -267,6 +267,13 @@ public class OpenApiValidationService : IOpenApiValidationService
                 if (resolvedHsdsProfileSpec != null)
                 {
                     var profileComplianceFindings = _hsdsComplianceService.CompareFeedSpecAgainstHsdsProfile(openApiSpec, resolvedHsdsProfileSpec);
+                    if (!request.Options.ReportAdditionalFields)
+                    {
+                        profileComplianceFindings = profileComplianceFindings
+                            .Where(ShouldIncludeProfileComplianceFinding)
+                            .ToList();
+                    }
+
                     if (profileComplianceFindings.Count > 0)
                     {
                         specValidation.Errors = NormalizeAndDeduplicateValidationErrors(
@@ -453,6 +460,11 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
 
         return deduplicatedErrors;
+    }
+
+    private static bool ShouldIncludeProfileComplianceFinding(ValidationError error)
+    {
+        return !error.ErrorCode.StartsWith("HSDS_ADDITIONAL_", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? RemoveDuplicatedBasePathFromOpenApiPaths(JObject openApiSpec, string? baseUrl)

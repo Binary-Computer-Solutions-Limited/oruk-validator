@@ -749,7 +749,7 @@ public class EndpointTestingService : IEndpointTestingService
                                         }
                                     };
                                     var validationResult = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
-                                    _hsdsComplianceService.ApplyAdditionalFieldPolicy(validationResult);
+                                    _hsdsComplianceService.ApplyAdditionalFieldPolicy(validationResult, options?.ReportAdditionalFields ?? false);
                                     testResult.ValidationResult = validationResult;
                                     NormalizeValidationResultErrors(testResult.ValidationResult);
                                 }
