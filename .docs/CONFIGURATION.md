@@ -21,13 +21,13 @@ This document describes all available configuration settings for the OpenReferra
 
 Configuration for OpenReferral specification URLs.
 
-### Specification Properties
+### Properties
 
 | Property | Type | Default | Description |
-| --- | --- | --- | --- |
+|----------|------|---------|-------------|
 | `BaseUrl` | string | `""` | Base URL for OpenReferral specification documents |
 
-### Specification Example
+### Example
 
 ```json
 {
@@ -37,7 +37,7 @@ Configuration for OpenReferral specification URLs.
 }
 ```
 
-### Specification Notes
+### Notes
 
 - Used to construct full URLs for schema validation
 - Should include trailing slash
@@ -49,15 +49,15 @@ Configuration for OpenReferral specification URLs.
 
 MongoDB database connection settings.
 
-### Database Properties
+### Properties
 
 | Property | Type | Default | Description |
-| --- | --- | --- | --- |
+|----------|------|---------|-------------|
 | `ConnectionString` | string | `""` | MongoDB connection string (e.g., `mongodb://localhost:27017` or Atlas connection string) |
 | `DatabaseName` | string | `"oruk-v3"` | Name of the MongoDB database |
 | `ServicesCollection` | string | `"services"` | Name of the collection storing service feed data |
 
-### Database Example
+### Example
 
 ```json
 {
@@ -69,7 +69,7 @@ MongoDB database connection settings.
 }
 ```
 
-### Database Notes
+### Notes
 
 - Connection string should be stored securely (use environment variables or secrets management)
 - Supports MongoDB Atlas connection strings for cloud deployments
@@ -81,13 +81,13 @@ MongoDB database connection settings.
 
 Controls authentication behavior for external API requests.
 
-### Authentication Properties
+### Properties
 
 | Property | Type | Default | Description |
-| --- | --- | --- | --- |
+|----------|------|---------|-------------|
 | `AllowUserSuppliedAuth` | bool | `false` | Whether to allow user-supplied authentication credentials for OpenAPI schema and data source requests |
 
-### Authentication Example
+### Example
 
 ```json
 {
@@ -97,7 +97,7 @@ Controls authentication behavior for external API requests.
 }
 ```
 
-### Authentication Notes
+### Notes
 
 - **Security Consideration**: When enabled, authentication details provided in API validation requests will be used for both schema fetching and data source requests
 - When disabled, all external requests are made without authentication
@@ -109,17 +109,17 @@ Controls authentication behavior for external API requests.
 
 In-memory caching configuration for OpenAPI schemas to reduce external HTTP traffic.
 
-### Cache Properties
+### Properties
 
 | Property | Type | Default | Description |
-| --- | --- | --- | --- |
+|----------|------|---------|-------------|
 | `Enabled` | bool | `true` | Whether schema caching is enabled |
 | `ExpirationMinutes` | int | `60` | Duration in minutes for absolute cache expiration (0 = cache until memory pressure) |
 | `MaxSizeMB` | int | `100` | Maximum cache size in megabytes |
 | `UseSlidingExpiration` | bool | `false` | Enable sliding expiration to extend cache lifetime on access |
 | `SlidingExpirationMinutes` | int | `30` | Duration in minutes for sliding expiration (only used when `UseSlidingExpiration` is true) |
 
-### Cache Example
+### Example
 
 ```json
 {
@@ -133,7 +133,7 @@ In-memory caching configuration for OpenAPI schemas to reduce external HTTP traf
 }
 ```
 
-### Cache Notes
+### Notes
 
 - Reduces load on external specification servers
 - Improves validation response times for repeated requests
@@ -146,15 +146,15 @@ In-memory caching configuration for OpenAPI schemas to reduce external HTTP traf
 
 Background service configuration for automated feed validation.
 
-### FeedValidation Properties
+### Properties
 
 | Property | Type | Default | Description |
-| --- | --- | --- | --- |
+|----------|------|---------|-------------|
 | `Enabled` | bool | `false` | Whether background feed validation is enabled |
 | `IntervalHours` | double | `24` | Time interval in hours between validation runs |
 | `RunAtMidnight` | bool | `true` | Whether to schedule validation runs at midnight (when true, first run waits until midnight) |
 
-### FeedValidation Example
+### Example
 
 ```json
 {
@@ -166,7 +166,7 @@ Background service configuration for automated feed validation.
 }
 ```
 
-### FeedValidation Notes
+### Notes
 
 - Requires database configuration to be set
 - Validates all registered service feeds in the database
@@ -179,14 +179,14 @@ Background service configuration for automated feed validation.
 
 Security-related configuration settings.
 
-### Security Properties
+### Properties
 
 | Property | Type | Default | Description |
-| --- | --- | --- | --- |
+|----------|------|---------|-------------|
 | `ValidateSslCertificates` | bool | `true` | Whether to validate SSL certificates for HTTPS requests |
 | `AllowedCorsOrigins` | string[] | `["*"]` | Array of allowed CORS origins (use `"*"` to allow all) |
 
-### Security Example
+### Example
 
 ```json
 {
@@ -200,10 +200,10 @@ Security-related configuration settings.
 }
 ```
 
-### Security Notes
+### Notes
 
 - **`ValidateSslCertificates`**: Set to `false` only in development/testing with self-signed certificates
-- **`AllowedCorsOrigins`**:
+- **`AllowedCorsOrigins`**: 
   - Use `["*"]` for development or public APIs
   - Specify exact origins for production environments
   - Multiple origins can be specified as an array
@@ -214,15 +214,15 @@ Security-related configuration settings.
 
 Rate limiting configuration for API endpoints.
 
-### RateLimiting Properties
+### Properties
 
 | Property | Type | Default | Description |
-| --- | --- | --- | --- |
+|----------|------|---------|-------------|
 | `PermitLimit` | int | `100` | Maximum number of requests allowed within the time window |
 | `Window` | int | `60` | Time window in seconds for rate limiting |
 | `QueueLimit` | int | `0` | Maximum number of requests that can be queued (0 = no queueing) |
 
-### RateLimiting Example
+### Example
 
 ```json
 {
@@ -234,7 +234,7 @@ Rate limiting configuration for API endpoints.
 }
 ```
 
-### RateLimiting Notes
+### Notes
 
 - Applied per client IP address
 - `PermitLimit` of 100 with `Window` of 60 = 100 requests per minute
@@ -243,55 +243,18 @@ Rate limiting configuration for API endpoints.
 
 ---
 
-## OpenApiValidation
-
-Server-side OpenAPI validation settings that are not overridable by client requests.
-
-### OpenApiValidation Properties
-
-| Property | Type | Default | Description |
-| --- | --- | --- | --- |
-| `ValidateSpecification` | bool | `true` | Whether to validate OpenAPI specification structure and quality analysis (server-side setting, not overridable per-request) |
-| `StrictOwnSchemaValidation` | bool | `true` | Whether live feed responses are validated strictly against the feed's own schema vs. downgrading to warnings |
-| `HsdsValidationMode` | string | `"SpecAndFeedRuntimeFast"` | HSDS conformance depth: `"SpecAndFeedRuntimeFast"` or `"FullHsdsRuntime"` |
-| `AllowUserSuppliedAuth` | bool | `false` | Whether to allow user-supplied authentication credentials for OpenAPI schema and data source requests |
-
-### OpenApiValidation Example
-
-```json
-{
-  "OpenApiValidation": {
-    "ValidateSpecification": true,
-    "StrictOwnSchemaValidation": false,
-    "HsdsValidationMode": "SpecAndFeedRuntimeFast",
-    "AllowUserSuppliedAuth": true
-  }
-}
-```
-
-### OpenApiValidation Notes
-
-- **`ValidateSpecification`**: This is a server-side setting that applies to all validation requests. Client requests cannot override this setting. When `true`, the response includes comprehensive specification validation results. When `false`, specification validation is skipped entirely.
-- **`StrictOwnSchemaValidation`**: When `true`, validation failures from the feed's own schema are raised as errors. When `false`, they are downgraded to warnings.
-- **`HsdsValidationMode`**:
-  - `"SpecAndFeedRuntimeFast"` (default): Performs strict feed-vs-own-spec runtime validation and feed-spec-vs-HSDS-spec comparison
-  - `"FullHsdsRuntime"`: Additionally validates live feed responses against HSDS response schemas
-- **`AllowUserSuppliedAuth`**: Security consideration - only enable if you trust the source of validation requests
-
----
-
 ## OpenTelemetry
 
 Observability and distributed tracing configuration.
 
-### OpenTelemetry Properties
+### Properties
 
 | Property | Type | Default | Description |
-| --- | --- | --- | --- |
+|----------|------|---------|-------------|
 | `Enabled` | bool | `false` | Whether OpenTelemetry is enabled |
 | `OtlpEndpoint` | string | `null` | OTLP exporter endpoint URL for traces and metrics |
 
-### OpenTelemetry Example
+### Example
 
 ```json
 {
@@ -302,7 +265,7 @@ Observability and distributed tracing configuration.
 }
 ```
 
-### OpenTelemetry Notes
+### Notes
 
 - Provides distributed tracing and metrics collection
 - Supports any OTLP-compatible backend (Jaeger, Zipkin, Grafana Tempo, etc.)
@@ -315,18 +278,18 @@ Observability and distributed tracing configuration.
 
 Structured logging configuration using Serilog.
 
-### Serilog Properties
+### Properties
 
 Serilog configuration is extensive. See [Serilog documentation](https://github.com/serilog/serilog-settings-configuration) for full details.
 
-### Serilog Common Settings
+### Common Settings
 
 | Property | Type | Description |
-| --- | --- | --- |
+|----------|------|-------------|
 | `MinimumLevel.Default` | string | Minimum log level (`Verbose`, `Debug`, `Information`, `Warning`, `Error`, `Fatal`) |
 | `WriteTo` | array | Array of log sinks (Console, File, etc.) |
 
-### Serilog Example
+### Example
 
 ```json
 {
@@ -360,7 +323,7 @@ Serilog configuration is extensive. See [Serilog documentation](https://github.c
 }
 ```
 
-### Serilog Notes
+### Notes
 
 - Console sink is useful for containerized deployments
 - File sink stores logs with rolling interval support
@@ -396,12 +359,6 @@ Security__ValidateSslCertificates=true
 RateLimiting__PermitLimit=200
 RateLimiting__Window=60
 
-# OpenApiValidation
-OpenApiValidation__ValidateSpecification=true
-OpenApiValidation__StrictOwnSchemaValidation=false
-OpenApiValidation__HsdsValidationMode="SpecAndFeedRuntimeFast"
-OpenApiValidation__AllowUserSuppliedAuth=true
-
 # OpenTelemetry
 OpenTelemetry__Enabled=true
 OpenTelemetry__OtlpEndpoint="http://otel-collector:4317"
@@ -430,10 +387,9 @@ The API uses a layered configuration approach:
 2. **`appsettings.{Environment}.json`** - Environment-specific overrides
 3. **Environment Variables** - Runtime overrides (highest priority)
 
-### Configuration Environment Detection
+### Environment Detection
 
 The environment is determined by the `ASPNETCORE_ENVIRONMENT` variable:
-
 - `Development` → loads `appsettings.Development.json`
 - `Staging` → loads `appsettings.Staging.json`
 - `Production` → loads `appsettings.Production.json`
@@ -442,29 +398,25 @@ The environment is determined by the `ASPNETCORE_ENVIRONMENT` variable:
 
 ## Best Practices
 
-### Best Practices Security
-
+### Security
 - ✅ Store connection strings in environment variables or secrets management
 - ✅ Keep `ValidateSslCertificates` enabled in production
 - ✅ Use specific CORS origins instead of `"*"` in production
 - ✅ Keep `AllowUserSuppliedAuth` disabled unless explicitly needed
 
-### Best Practices Performance
-
+### Performance
 - ✅ Enable caching to reduce external HTTP requests
 - ✅ Tune cache size based on available memory
 - ✅ Use sliding expiration for frequently accessed schemas
 - ✅ Adjust rate limiting based on expected traffic
 
-### Best Practices Monitoring
-
+### Monitoring
 - ✅ Enable OpenTelemetry in production for observability
 - ✅ Configure appropriate log levels (avoid `Debug` in production)
 - ✅ Use structured logging for better analytics
 - ✅ Monitor feed validation results if background service is enabled
 
-### Best Practices Development
-
+### Development
 - ✅ Use local specification URLs for faster development
 - ✅ Disable SSL validation when using self-signed certificates
 - ✅ Enable more verbose logging for troubleshooting
@@ -474,25 +426,21 @@ The environment is determined by the `ASPNETCORE_ENVIRONMENT` variable:
 
 ## Troubleshooting
 
-### Troubleshooting Database Connection Issues
-
+### Database Connection Issues
 - Verify `ConnectionString` format
 - Check network connectivity to MongoDB
 - Ensure database user has appropriate permissions
 
-### Troubleshooting Caching Not Working
-
+### Caching Not Working
 - Check `Cache.Enabled` is `true`
 - Verify sufficient memory is available
 - Review `ExpirationMinutes` settings
 
-### Troubleshooting Rate Limiting Too Restrictive
-
+### Rate Limiting Too Restrictive
 - Increase `PermitLimit` or extend `Window`
 - Consider enabling `QueueLimit` for burst handling
 
-### Troubleshooting Feed Validation Not Running
-
+### Feed Validation Not Running
 - Ensure `FeedValidation.Enabled` is `true`
 - Verify database configuration is correct
 - Check logs for background service errors

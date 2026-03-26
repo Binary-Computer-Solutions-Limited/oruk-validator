@@ -24,6 +24,14 @@ public class OpenApiValidationOptions : ValidationOptionsBase
     public bool TestEndpoints { get; set; } = true;
 
     /// <summary>
+    /// Whether to validate the OpenAPI specification structure and compliance
+    /// Includes schema validation, security analysis, and quality metrics
+    /// Recommended to keep enabled for comprehensive validation
+    /// </summary>
+    [JsonProperty("validateSpecification")]
+    public bool ValidateSpecification { get; set; } = true;
+
+    /// <summary>
     /// Whether to test optional endpoints that are marked as optional in the OpenAPI specification
     /// When true, tests optional endpoints and accepts 404/501 responses as valid for unimplemented features
     /// When false, skips endpoints tagged with "Optional"
@@ -70,13 +78,6 @@ public class OpenApiValidationOptions : ValidationOptionsBase
 public class OpenApiValidationServerOptions
 {
     public const string SectionName = "OpenApiValidation";
-
-    /// <summary>
-    /// Whether to validate the OpenAPI specification structure and compliance.
-    /// Includes schema validation, security analysis, and quality metrics.
-    /// This is a server-side setting and cannot be overridden by client requests.
-    /// </summary>
-    public bool ValidateSpecification { get; set; } = true;
 
     /// <summary>
     /// Controls whether live feed responses are validated strictly against the feed's own schema.
