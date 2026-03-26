@@ -54,6 +54,7 @@ public class OpenApiValidationService : IOpenApiValidationService
     private readonly bool _allowUserSuppliedAuth;
     private readonly HsdsValidationMode _hsdsValidationMode;
     private readonly bool _profileSchemaCacheEnabled;
+    private readonly bool _validateSpecification;  
     private readonly TimeSpan _profileSchemaCacheTtl;
     private readonly IReadOnlyDictionary<string, string> _specificationUrls;
 
@@ -84,6 +85,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         _authenticationValidationService = authenticationValidationService ?? new AuthenticationValidationService(NullLogger<AuthenticationValidationService>.Instance, openApiValidationServerOptions ?? Options.Create(new OpenApiValidationServerOptions()));
         _allowUserSuppliedAuth = openApiValidationServerOptions?.Value?.AllowUserSuppliedAuth ?? false;
         _hsdsValidationMode = openApiValidationServerOptions?.Value?.HsdsValidationMode ?? HsdsValidationMode.SpecAndFeedRuntimeFast;
+        _validateSpecification = openApiValidationServerOptions?.Value?.ValidateSpecification ?? true;
         var effectiveCacheOptions = cacheOptions?.Value;
         _profileSchemaCacheEnabled = effectiveCacheOptions?.Enabled == true;
         _profileSchemaCacheTtl = effectiveCacheOptions != null && effectiveCacheOptions.ExpirationMinutes > 0
@@ -243,6 +245,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                                 Severity = "Warning"
                             }
                         }));
+                    result.Notifications.Add(misplacedHsdsVersionWarning);
                 }
 
                 result.SpecificationValidation = specValidation;

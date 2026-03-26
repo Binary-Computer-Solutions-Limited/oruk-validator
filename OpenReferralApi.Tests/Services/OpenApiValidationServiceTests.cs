@@ -66,7 +66,8 @@ public class OpenApiValidationServiceTests
         _openApiValidationServerOptions = Options.Create(new OpenApiValidationServerOptions
         {
             HsdsValidationMode = HsdsValidationMode.SpecAndFeedRuntimeFast,
-            AllowUserSuppliedAuth = true
+            AllowUserSuppliedAuth = true,
+            ValidateSpecification = true
         });
 
         _service = new OpenApiValidationService(
@@ -196,7 +197,10 @@ public class OpenApiValidationServiceTests
             {
                 Url = "https://example.com/openapi.json"
             },
-            Options = new OpenApiValidationOptions { ValidateSpecification = true }
+            Options = new OpenApiValidationOptions
+            {
+                //ValidateSpecification = true 
+            }
         };
         SetupHttpMock(json);
 
@@ -219,7 +223,10 @@ public class OpenApiValidationServiceTests
             {
                 Url = "https://example.com/swagger.json"
             },
-            Options = new OpenApiValidationOptions { ValidateSpecification = true }
+            Options = new OpenApiValidationOptions
+            {
+                //ValidateSpecification = true 
+            }
         };
         SetupHttpMock(json);
 
@@ -246,12 +253,37 @@ public class OpenApiValidationServiceTests
             {
                 Url = "https://example.com/openapi.json"
             },
-            Options = new OpenApiValidationOptions { ValidateSpecification = false }
+            Options = new OpenApiValidationOptions()
         };
         SetupHttpMock(json);
 
+        // Create service with ValidateSpecification disabled
+        var serviceOptions = Options.Create(new OpenApiValidationServerOptions
+        {
+            HsdsValidationMode = HsdsValidationMode.SpecAndFeedRuntimeFast,
+            AllowUserSuppliedAuth = true,
+            ValidateSpecification = false
+        });
+        
+        var serviceWithDisabledValidation = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(_httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            specificationOptions: Options.Create(new SpecificationOptions
+            {
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-1.0"] = "https://openreferraluk.org/specifications/1.0/openapi.json",
+                    ["HSDS-UK-3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json"
+                }
+            }),
+            openApiValidationServerOptions: serviceOptions);
+
         // Act
-        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+        var result = await serviceWithDisabledValidation.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
         Assert.That(result.SpecificationValidation, Is.Null);
@@ -268,29 +300,11 @@ public class OpenApiValidationServiceTests
             {
                 Url = "https://example.com/openapi.json"
             },
-            Options = new OpenApiValidationOptions { ValidateSpecification = true }
-        };
-        SetupHttpMock(json);
-
-        // Act
-        var result = await _service.ValidateOpenApiSpecificationAsync(request);
-
-        // Assert
-        Assert.That(result.SpecificationValidation, Is.Not.Null);
-    }
-
-    [Test]
-    public async Task ValidateOpenApiSpecificationAsync_NormalizesAndDeduplicatesSpecificationValidationErrorsAndWarnings()
-    {
-        // Arrange
-        var json = CreateOpenApi30Spec();
-        var request = new OpenApiValidationRequest
-        {
-            OpenApiSchema = new OpenApiSchema
+            Options = new OpenApiValidationOptions
             {
-                Url = "https://example.com/openapi.json"
-            },
-            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false }
+                // ValidateSpecification = true, (now server-side)
+                TestEndpoints = false
+            }
         };
 
         _jsonValidatorServiceMock
@@ -333,6 +347,27 @@ public class OpenApiValidationServiceTests
 
         SetupHttpMock(json);
 
+        // Rebuild service with a mock HsdsComplianceService to isolate deduplication logic from HSDS profile detection
+        var hsdsComplianceMock = new Mock<IHsdsComplianceService>();
+        hsdsComplianceMock.Setup(s => s.ExtractClaimedProfileVersion(It.IsAny<string>(), It.IsAny<string>())).Returns((string?)"HSDS-30");
+        string? unused;
+        hsdsComplianceMock.Setup(s => s.TryGetKnownHsdsSchemaUrl(It.IsAny<string>(), out unused)).Returns(false);
+        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>())).Returns(new List<OpenReferralApi.Core.Models.Validation.ValidationError>());
+        _service = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(_httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            hsdsComplianceService: hsdsComplianceMock.Object,
+            openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
+            {
+                HsdsValidationMode = _openApiValidationServerOptions.Value.HsdsValidationMode,
+                AllowUserSuppliedAuth = _openApiValidationServerOptions.Value.AllowUserSuppliedAuth,
+                ValidateSpecification = true
+            }));
+
         // Act
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
         var errors = result.SpecificationValidation!.Errors;
@@ -354,7 +389,10 @@ public class OpenApiValidationServiceTests
             {
                 Url = "https://example.com/openapi.json"
             },
-            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false }
+            Options = new OpenApiValidationOptions {
+                //ValidateSpecification = true,
+                TestEndpoints = false
+            }
         };
 
         _jsonValidatorServiceMock
@@ -382,6 +420,27 @@ public class OpenApiValidationServiceTests
             });
 
         SetupHttpMock(json);
+
+        // Rebuild service with a mock HsdsComplianceService to isolate deduplication logic from HSDS profile detection
+        var hsdsComplianceMock = new Mock<IHsdsComplianceService>();
+        hsdsComplianceMock.Setup(s => s.ExtractClaimedProfileVersion(It.IsAny<string>(), It.IsAny<string>())).Returns((string?)"HSDS-30");
+        string? unused;
+        hsdsComplianceMock.Setup(s => s.TryGetKnownHsdsSchemaUrl(It.IsAny<string>(), out unused)).Returns(true);
+        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>())).Returns(new List<OpenReferralApi.Core.Models.Validation.ValidationError>());
+        _service = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(_httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            hsdsComplianceService: hsdsComplianceMock.Object,
+            openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
+            {
+                HsdsValidationMode = _openApiValidationServerOptions.Value.HsdsValidationMode,
+                AllowUserSuppliedAuth = _openApiValidationServerOptions.Value.AllowUserSuppliedAuth,
+                ValidateSpecification = true
+            }));
 
         // Act
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
@@ -428,7 +487,7 @@ public class OpenApiValidationServiceTests
             },
             Options = new OpenApiValidationOptions
             {
-                ValidateSpecification = true,
+                // ValidateSpecification = true,
                 TestEndpoints = false
             }
         };
@@ -472,7 +531,10 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
-            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false },
+            Options = new OpenApiValidationOptions { 
+                // ValidateSpecification = true, 
+                TestEndpoints = false 
+            },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
@@ -517,7 +579,10 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
-            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false },
+            Options = new OpenApiValidationOptions { 
+                // ValidateSpecification = true, 
+                TestEndpoints = false 
+            },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
@@ -564,7 +629,10 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
-            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false },
+            Options = new OpenApiValidationOptions { 
+                // ValidateSpecification = true, 
+                TestEndpoints = false 
+            },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
@@ -608,7 +676,10 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
-            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false },
+            Options = new OpenApiValidationOptions { 
+                // ValidateSpecification = true, 
+                TestEndpoints = false 
+            },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
@@ -649,7 +720,10 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
-            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false },
+            Options = new OpenApiValidationOptions { 
+                // ValidateSpecification = true, 
+                TestEndpoints = false 
+            },
             ProfileReason = "Standard version [user: 9.9] read from '/' endpoint"
         };
 
@@ -674,7 +748,10 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
-            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false }
+            Options = new OpenApiValidationOptions { 
+                // ValidateSpecification = true, 
+                TestEndpoints = false 
+            }
         };
 
         SetupHttpMock((httpRequest, ct) =>
@@ -718,7 +795,10 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
-            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false }
+            Options = new OpenApiValidationOptions { 
+                // ValidateSpecification = true, 
+                TestEndpoints = false 
+            }
         };
 
         SetupHttpMock((httpRequest, ct) =>
@@ -761,7 +841,10 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
-            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false },
+            Options = new OpenApiValidationOptions { 
+                // ValidateSpecification = true, 
+                TestEndpoints = false 
+            },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
@@ -808,7 +891,10 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
-            Options = new OpenApiValidationOptions { ValidateSpecification = true, TestEndpoints = false },
+            Options = new OpenApiValidationOptions { 
+                // ValidateSpecification = true, 
+                TestEndpoints = false 
+            },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
@@ -877,7 +963,7 @@ public class OpenApiValidationServiceTests
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions
             {
-                ValidateSpecification = true,
+                // ValidateSpecification = true,
                 TestEndpoints = true
             }
         };
@@ -1012,7 +1098,7 @@ public class OpenApiValidationServiceTests
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions
             {
-                ValidateSpecification = true,
+                // ValidateSpecification = true,
                 TestEndpoints = true
             }
         };
@@ -1157,7 +1243,7 @@ public class OpenApiValidationServiceTests
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions
             {
-                ValidateSpecification = true,
+                // ValidateSpecification = true,
                 TestEndpoints = true
             }
         };
@@ -1261,7 +1347,7 @@ public class OpenApiValidationServiceTests
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions
             {
-                ValidateSpecification = false,
+                // ValidateSpecification = false,
                 TestEndpoints = true
             }
         };
@@ -1305,14 +1391,14 @@ public class OpenApiValidationServiceTests
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions
             {
-                ValidateSpecification = false,
+                // ValidateSpecification = false,
                 TestEndpoints = true
             }
         };
 
         SetupHttpMock(CreateOpenApi30SpecWithResponseSchema(), endpointResponseBody: "[{\"name\":\"ok\",\"extra\":\"x\"}]");
 
-        var lenientValidationOptions = Options.Create(new OpenApiValidationServerOptions { StrictOwnSchemaValidation = false });
+        var lenientValidationOptions = Options.Create(new OpenApiValidationServerOptions { StrictOwnSchemaValidation = false, ValidateSpecification = false });
         var serviceWithLenientPolicy = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
@@ -1345,10 +1431,10 @@ public class OpenApiValidationServiceTests
                 Url = "https://example.com/notfound.json"
             }
         };
-        
+
         var mockHandler = new MockHttpMessageHandler((req, ct) =>
             new HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
-        
+
         var httpClient = TestHttpClientFactory.CreateClient(mockHandler);
         var service = new OpenApiValidationService(
             _loggerMock.Object, CreateFactory(httpClient), _jsonValidatorServiceMock.Object,
@@ -1384,10 +1470,10 @@ public class OpenApiValidationServiceTests
                 Url = "https://invalid.example.com/openapi.json"
             }
         };
-        
+
         var mockHandler = new MockHttpMessageHandler((req, ct) =>
             throw new HttpRequestException("Network failed"));
-        
+
         var httpClient = TestHttpClientFactory.CreateClient(mockHandler);
         var service = new OpenApiValidationService(
             _loggerMock.Object, CreateFactory(httpClient), _jsonValidatorServiceMock.Object,
@@ -1423,13 +1509,13 @@ public class OpenApiValidationServiceTests
                 Url = "https://example.com/invalid.json"
             }
         };
-        
+
         var mockHandler = new MockHttpMessageHandler((req, ct) =>
             new HttpResponseMessage(System.Net.HttpStatusCode.OK)
             {
                 Content = new StringContent("Not valid JSON at all {{{")
             });
-        
+
         var httpClient = TestHttpClientFactory.CreateClient(mockHandler);
         var service = new OpenApiValidationService(
             _loggerMock.Object, CreateFactory(httpClient), _jsonValidatorServiceMock.Object,
@@ -1470,7 +1556,7 @@ public class OpenApiValidationServiceTests
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions
             {
-                ValidateSpecification = true,
+                // ValidateSpecification = true,
                 TestEndpoints = false
             }
         };
@@ -1560,7 +1646,8 @@ public class OpenApiValidationServiceTests
             {
                 Enabled = true,
                 ExpirationMinutes = 30
-            }));
+            }),
+            openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions { ValidateSpecification = false }));
 
         var request = new OpenApiValidationRequest
         {
@@ -1570,7 +1657,7 @@ public class OpenApiValidationServiceTests
             },
             Options = new OpenApiValidationOptions
             {
-                ValidateSpecification = false,
+                // ValidateSpecification = false,
                 TestEndpoints = false
             }
         };
@@ -1699,7 +1786,11 @@ public class OpenApiValidationServiceTests
                 Url = "https://example.com/openapi.json"
             },
             BaseUrl = "https://api.example.com",
-            Options = new OpenApiValidationOptions { IncludeTestResults = false, TestEndpoints = true, ValidateSpecification = false }
+            Options = new OpenApiValidationOptions {
+                IncludeTestResults = false,
+                TestEndpoints = true,
+                // ValidateSpecification = false
+            }
         };
 
         _jsonValidatorServiceMock
@@ -1903,7 +1994,7 @@ public class OpenApiValidationServiceTests
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions
             {
-                ValidateSpecification = true,
+                // ValidateSpecification = true,
                 TestEndpoints = true
             }
         };
@@ -2052,7 +2143,12 @@ public class OpenApiValidationServiceTests
             _profileDiscoveryServiceMock.Object,
             _feedSpecDiscoveryMock.Object,
             endpointTestingService: endpointTestingServiceMock.Object,
-            openApiValidationServerOptions: _openApiValidationServerOptions);
+            openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
+            {
+                HsdsValidationMode = _openApiValidationServerOptions.Value.HsdsValidationMode,
+                AllowUserSuppliedAuth = _openApiValidationServerOptions.Value.AllowUserSuppliedAuth,
+                ValidateSpecification = false
+            }));
 
         var request = new OpenApiValidationRequest
         {
@@ -2060,7 +2156,7 @@ public class OpenApiValidationServiceTests
             BaseUrl = baseUrl,
             Options = new OpenApiValidationOptions
             {
-                ValidateSpecification = false,
+                // ValidateSpecification = false, (now server-side)
                 TestEndpoints = true
             }
         };
@@ -2130,7 +2226,12 @@ public class OpenApiValidationServiceTests
             _profileDiscoveryServiceMock.Object,
             _feedSpecDiscoveryMock.Object,
             endpointTestingService: endpointTestingServiceMock.Object,
-            openApiValidationServerOptions: _openApiValidationServerOptions);
+            openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
+            {
+                HsdsValidationMode = _openApiValidationServerOptions.Value.HsdsValidationMode,
+                AllowUserSuppliedAuth = _openApiValidationServerOptions.Value.AllowUserSuppliedAuth,
+                ValidateSpecification = false
+            }));
 
         var request = new OpenApiValidationRequest
         {
@@ -2138,7 +2239,7 @@ public class OpenApiValidationServiceTests
             BaseUrl = baseUrl,
             Options = new OpenApiValidationOptions
             {
-                ValidateSpecification = false,
+                // ValidateSpecification = false, (now server-side)
                 TestEndpoints = true
             }
         };
@@ -2176,7 +2277,7 @@ public class OpenApiValidationServiceTests
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions
             {
-                ValidateSpecification = false,
+                //ValidateSpecification = false,
                 TestEndpoints = true
             }
         };
@@ -2245,7 +2346,7 @@ public class OpenApiValidationServiceTests
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions
             {
-                ValidateSpecification = false,
+                //ValidateSpecification = false,
                 TestEndpoints = true
             }
         };
@@ -2300,7 +2401,7 @@ public class OpenApiValidationServiceTests
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions
             {
-                ValidateSpecification = false,
+                //ValidateSpecification = false,
                 TestEndpoints = true
             }
         };
@@ -2397,7 +2498,7 @@ public class OpenApiValidationServiceTests
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions
             {
-                ValidateSpecification = false,
+                //ValidateSpecification = false,
                 TestEndpoints = true,
                 TestOptionalEndpoints = true,
                 TreatOptionalEndpointsAsWarnings = true
@@ -2420,6 +2521,27 @@ public class OpenApiValidationServiceTests
                 Content = new StringContent("{}")
             };
         });
+
+        // Rebuild service with a mock HsdsComplianceService so spec validation does not add unexpected HSDS errors
+        var hsdsComplianceMock = new Mock<IHsdsComplianceService>();
+        hsdsComplianceMock.Setup(s => s.ExtractClaimedProfileVersion(It.IsAny<string>(), It.IsAny<string>())).Returns((string?)"HSDS-30");
+        string? unused;
+        hsdsComplianceMock.Setup(s => s.TryGetKnownHsdsSchemaUrl(It.IsAny<string>(), out unused)).Returns(true);
+        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>())).Returns(new List<OpenReferralApi.Core.Models.Validation.ValidationError>());
+        _service = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(_httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            hsdsComplianceService: hsdsComplianceMock.Object,
+            openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
+            {
+                HsdsValidationMode = _openApiValidationServerOptions.Value.HsdsValidationMode,
+                AllowUserSuppliedAuth = _openApiValidationServerOptions.Value.AllowUserSuppliedAuth,
+                ValidateSpecification = false
+            }));
 
         // Act
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
@@ -2739,7 +2861,7 @@ public class OpenApiValidationServiceTests
         Assert.That(capturedRequest, Is.Not.Null);
         Assert.That(capturedRequest!.Headers.Authorization, Is.Not.Null);
         Assert.That(capturedRequest.Headers.Authorization!.Scheme, Is.EqualTo("Basic"));
-        
+
         // Decode and verify credentials
         var credentials = System.Text.Encoding.ASCII.GetString(
             Convert.FromBase64String(capturedRequest.Headers.Authorization.Parameter!));

@@ -24,14 +24,6 @@ public class OpenApiValidationOptions : ValidationOptionsBase
     public bool TestEndpoints { get; set; } = true;
 
     /// <summary>
-    /// Whether to validate the OpenAPI specification structure and compliance
-    /// Includes schema validation, security analysis, and quality metrics
-    /// Recommended to keep enabled for comprehensive validation
-    /// </summary>
-    [JsonProperty("validateSpecification")]
-    public bool ValidateSpecification { get; set; } = true;
-
-    /// <summary>
     /// Whether to test optional endpoints that are marked as optional in the OpenAPI specification
     /// When true, tests optional endpoints and accepts 404/501 responses as valid for unimplemented features
     /// When false, skips endpoints tagged with "Optional"
@@ -101,4 +93,12 @@ public class OpenApiValidationServerOptions
     /// Default: false (for security)
     /// </summary>
     public bool AllowUserSuppliedAuth { get; set; } = false;
+
+    /// <summary>
+    /// Whether to validate the OpenAPI specification structure and compliance
+    /// Includes schema validation, security analysis, and quality metrics
+    /// Recommended to keep enabled for comprehensive validation
+    /// </summary>
+    [JsonProperty("validateSpecification")]
+    public bool ValidateSpecification { get; set; } = true;
 }
