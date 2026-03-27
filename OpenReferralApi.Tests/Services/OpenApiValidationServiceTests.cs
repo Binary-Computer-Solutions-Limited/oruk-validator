@@ -144,6 +144,64 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
+    public async Task ValidateOpenApiSpecificationAsync_MetadataProfile_UsesConfiguredNonHsdsUkProfileKey()
+    {
+        // Arrange
+        var customProfileSpecUrl = "https://raw.githubusercontent.com/openreferral/specification/refs/heads/3.2/schema/openapi.json";
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema
+            {
+                Url = customProfileSpecUrl
+            },
+            ProfileReason = "Standard version [user: 3.2] read from '/' endpoint",
+            Options = new OpenApiValidationOptions()
+        };
+
+        SetupHttpMock((httpRequest, ct) =>
+        {
+            var requestUrl = httpRequest.RequestUri?.ToString();
+            if (string.Equals(requestUrl, customProfileSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateOpenApi30Spec())
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+        });
+
+        var serviceWithCustomProfile = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(_httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            specificationOptions: Options.Create(new SpecificationOptions
+            {
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-3.2"] = customProfileSpecUrl,
+                    ["HSDS-UK-3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json"
+                }
+            }),
+            openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
+            {
+                ValidateSpecification = false,
+                TestEndpoints = false
+            }));
+
+        // Act
+        var result = await serviceWithCustomProfile.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.Metadata?.Profile, Is.EqualTo("HSDS-3.2"));
+    }
+
+    [Test]
     public async Task ValidateOpenApiSpecificationAsync_MeasuresDuration()
     {
         // Arrange
@@ -561,7 +619,7 @@ public class OpenApiValidationServiceTests
         Assert.That(result.IsValid, Is.False);
         Assert.That(result.SpecificationValidation, Is.Not.Null);
         Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_MISSING_ENDPOINT"), Is.True);
-        Assert.That(result.Metadata?.Profile, Is.EqualTo("3.0"));
+        Assert.That(result.Metadata?.Profile, Is.EqualTo("HSDS-UK-3.0"));
     }
 
     [Test]
@@ -866,7 +924,7 @@ public class OpenApiValidationServiceTests
         Assert.That(result.IsValid, Is.True);
         Assert.That(request.OpenApiSchema!.Url, Is.EqualTo(defaultProfileSpecUrl));
         Assert.That(result.Notifications.Any(n => n.Contains("Falling back to the HSDS profile OpenAPI specification", StringComparison.OrdinalIgnoreCase)), Is.True);
-        Assert.That(result.Metadata?.Profile, Is.EqualTo("1.0"));
+        Assert.That(result.Metadata?.Profile, Is.EqualTo("HSDS-UK-1.0"));
     }
 
     [Test]
@@ -971,7 +1029,7 @@ public class OpenApiValidationServiceTests
 
         // Assert
         Assert.That(result.IsValid, Is.True);
-        Assert.That(result.Metadata?.Profile, Is.EqualTo("3.0"));
+        Assert.That(result.Metadata?.Profile, Is.EqualTo("HSDS-UK-3.0"));
         Assert.That(result.Metadata?.ProfileReason, Does.Contain("3.0"));
         Assert.That(result.Notifications, Is.Empty);
     }
@@ -1017,7 +1075,7 @@ public class OpenApiValidationServiceTests
 
         // Assert
         Assert.That(result.IsValid, Is.True);
-        Assert.That(result.Metadata?.Profile, Is.EqualTo("3.0"));
+        Assert.That(result.Metadata?.Profile, Is.EqualTo("HSDS-UK-3.0"));
         Assert.That(result.SpecificationValidation, Is.Not.Null);
         Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_SCHEMA_VERSION_MISPLACED"), Is.True);
         Assert.That(result.SpecificationValidation.Errors.Any(e =>

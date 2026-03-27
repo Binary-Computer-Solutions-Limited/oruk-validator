@@ -437,7 +437,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 TestTimestamp = DateTime.UtcNow,
                 TestDuration = stopwatch.Elapsed,
                 UserAgent = "OpenReferral-Validator/1.0",
-                Profile = claimedProfileVersion,
+                Profile = ResolveMetadataProfileIdentifier(request.ProfileReason, claimedProfileVersion, request.OpenApiSchema?.Url),
                 ProfileReason = request.ProfileReason
             };
 
@@ -833,6 +833,113 @@ public class OpenApiValidationService : IOpenApiValidationService
     private bool HasExplicitProfileVersionContext(string? profileReason, string? schemaUrl)
     {
         return !string.IsNullOrWhiteSpace(_hsdsComplianceService.ExtractClaimedProfileVersion(profileReason, schemaUrl));
+    }
+
+    private string? ResolveMetadataProfileIdentifier(string? profileReason, string? claimedProfileVersion, string? schemaUrl)
+    {
+        var explicitProfileFromReason = TryExtractProfileIdentifierFromProfileReason(profileReason);
+        var normalizedReasonVersion = ProfileVersionNormalizer.NormalizeVersionNumber(explicitProfileFromReason);
+        var reasonIsNumericVersionOnly = !string.IsNullOrWhiteSpace(explicitProfileFromReason)
+            && string.Equals(explicitProfileFromReason, normalizedReasonVersion, StringComparison.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(explicitProfileFromReason) && !reasonIsNumericVersionOnly)
+        {
+            return explicitProfileFromReason;
+        }
+
+        var configuredProfileFromSchemaUrl = TryResolveConfiguredProfileKeyFromSchemaUrl(schemaUrl);
+        if (!string.IsNullOrWhiteSpace(configuredProfileFromSchemaUrl))
+        {
+            return configuredProfileFromSchemaUrl;
+        }
+
+        var versionToMap = normalizedReasonVersion
+            ?? ProfileVersionNormalizer.NormalizeVersionNumber(claimedProfileVersion);
+        if (!string.IsNullOrWhiteSpace(versionToMap))
+        {
+            var configuredProfileFromVersion = TryResolveConfiguredProfileKeyFromVersion(versionToMap);
+            if (!string.IsNullOrWhiteSpace(configuredProfileFromVersion))
+            {
+                return configuredProfileFromVersion;
+            }
+
+            return versionToMap;
+        }
+
+        return explicitProfileFromReason ?? claimedProfileVersion;
+    }
+
+    private static string? TryExtractProfileIdentifierFromProfileReason(string? profileReason)
+    {
+        if (string.IsNullOrWhiteSpace(profileReason))
+        {
+            return null;
+        }
+
+        var match = Regex.Match(
+            profileReason,
+            @"Standard version \[user:\s*(?<profile>[^\]]+)\]",
+            RegexOptions.IgnoreCase);
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        var extracted = match.Groups["profile"].Value.Trim();
+        return string.IsNullOrWhiteSpace(extracted) ? null : extracted;
+    }
+
+    private string? TryResolveConfiguredProfileKeyFromSchemaUrl(string? schemaUrl)
+    {
+        if (string.IsNullOrWhiteSpace(schemaUrl) || _specificationOptions.Urls.Count == 0)
+        {
+            return null;
+        }
+
+        if (!Uri.TryCreate(schemaUrl, UriKind.Absolute, out var requestedUri))
+        {
+            return null;
+        }
+
+        var requestedAbsoluteUrl = requestedUri.AbsoluteUri.TrimEnd('/');
+
+        foreach (var configuredEntry in _specificationOptions.Urls)
+        {
+            if (string.IsNullOrWhiteSpace(configuredEntry.Value)
+                || !Uri.TryCreate(configuredEntry.Value, UriKind.Absolute, out var configuredUri))
+            {
+                continue;
+            }
+
+            if (string.Equals(configuredUri.AbsoluteUri.TrimEnd('/'), requestedAbsoluteUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return configuredEntry.Key;
+            }
+        }
+
+        return null;
+    }
+
+    private string? TryResolveConfiguredProfileKeyFromVersion(string versionNumber)
+    {
+        if (string.IsNullOrWhiteSpace(versionNumber) || _specificationOptions.Urls.Count == 0)
+        {
+            return null;
+        }
+
+        var matchingKeys = _specificationOptions.Urls.Keys
+            .Where(key => string.Equals(
+                ProfileVersionNormalizer.NormalizeVersionNumber(key),
+                versionNumber,
+                StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (matchingKeys.Count == 1)
+        {
+            return matchingKeys[0];
+        }
+
+        return null;
     }
 
     private static (string? version, bool fromOpenapiField) TryExtractProfileVersionFromOpenApiSpec(JObject openApiSpec)
