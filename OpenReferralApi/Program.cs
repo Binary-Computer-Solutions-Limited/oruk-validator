@@ -349,7 +349,18 @@ app.MapHealthChecks("/health-check/live", new HealthCheckOptions
 app.UseRouting();
 app.UseSerilogRequestLogging();
 app.UseCors();
-app.UseHttpsRedirection();
+var configuredUrls = app.Configuration["ASPNETCORE_URLS"] ?? app.Configuration["urls"] ?? string.Empty;
+var hasHttpsInUrls = configuredUrls
+    .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    .Any(url => url.StartsWith("https://", StringComparison.OrdinalIgnoreCase));
+var hasExplicitHttpsPort = !string.IsNullOrWhiteSpace(app.Configuration["ASPNETCORE_HTTPS_PORT"]) ||
+                           !string.IsNullOrWhiteSpace(app.Configuration["HTTPS_PORT"]);
+var hasKestrelHttpsEndpoint = !string.IsNullOrWhiteSpace(app.Configuration["Kestrel:Endpoints:Https:Url"]);
+
+if (hasHttpsInUrls || hasExplicitHttpsPort || hasKestrelHttpsEndpoint)
+{
+    app.UseHttpsRedirection();
+}
 app.UseResponseCaching();
 app.UseOutputCache();
 app.UseRateLimiter();
