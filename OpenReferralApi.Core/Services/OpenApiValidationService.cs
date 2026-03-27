@@ -853,6 +853,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             var message = current.Message ?? string.Empty;
             if (message.Contains("Failed to fetch OpenAPI specification", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("Failed to discover OpenAPI schema URL", StringComparison.OrdinalIgnoreCase) ||
                 message.Contains("resolve", StringComparison.OrdinalIgnoreCase) &&
                 message.Contains("reference", StringComparison.OrdinalIgnoreCase))
             {

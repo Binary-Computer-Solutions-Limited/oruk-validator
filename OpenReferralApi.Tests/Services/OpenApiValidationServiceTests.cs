@@ -1855,6 +1855,42 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
+    public void ValidateOpenApiSpecificationAsync_AddsNotificationWhenBaseUrlDiscoveryFails()
+    {
+        // Arrange
+        var request = new OpenApiValidationRequest
+        {
+            BaseUrl = "https://directory.southampton.gov.uk/api"
+        };
+
+        var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((req, ct) =>
+            new HttpResponseMessage(System.Net.HttpStatusCode.NotFound)));
+        var service = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object);
+
+        try
+        {
+            // Act
+            var result = service.ValidateOpenApiSpecificationAsync(request).GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.Notifications, Has.Count.EqualTo(1));
+            Assert.That(result.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
+            Assert.That(result.Notifications[0], Does.Contain("Failed to discover OpenAPI schema URL from base URL"));
+        }
+        finally
+        {
+            httpClient?.Dispose();
+        }
+    }
+
+    [Test]
     public void ValidateOpenApiSpecificationAsync_ThrowsOnInvalidJson()
     {
         // Arrange
