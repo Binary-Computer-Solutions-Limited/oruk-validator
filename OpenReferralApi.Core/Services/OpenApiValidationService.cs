@@ -236,7 +236,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                                 Severity = "Warning"
                             }
                         }));
-                    result.Notifications.Add(misplacedHsdsVersionWarning);
+                    // result.Notifications.Add(misplacedHsdsVersionWarning);
                 }
 
                 result.SpecificationValidation = specValidation;
