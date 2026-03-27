@@ -864,7 +864,10 @@ public class OpenApiValidationServiceTests
         // Assert
         Assert.That(result.IsValid, Is.True);
         Assert.That(result.Metadata?.Profile, Is.EqualTo("3.0"));
-        Assert.That(result.Notifications.Any(notification => notification.Contains("incorrectly defined in the 'openapi' field", StringComparison.OrdinalIgnoreCase)), Is.True);
+        Assert.That(result.SpecificationValidation, Is.Not.Null);
+        Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_SCHEMA_VERSION_MISPLACED"), Is.True);
+        Assert.That(result.SpecificationValidation.Errors.Any(e =>
+            e.Message.Contains("incorrectly defined in the 'openapi' field", StringComparison.OrdinalIgnoreCase)), Is.True);
     }
 
     [Test]

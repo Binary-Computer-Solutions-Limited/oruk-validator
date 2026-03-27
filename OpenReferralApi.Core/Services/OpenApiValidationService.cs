@@ -219,27 +219,22 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             // Validate the OpenAPI specification
             OpenApiSpecificationValidation? specValidation = null;
+            List<ValidationError>? specValidationErrors = null;
             if (_openApiValidationOptions.ValidateSpecification)
             {
                 specValidation = await _openApiSpecificationService.ValidateAsync(openApiSpec, cancellationToken);
+                specValidationErrors = new List<ValidationError>(specValidation.Errors);
 
                 if (!string.IsNullOrWhiteSpace(misplacedHsdsVersionWarning))
                 {
-                    specValidation.Errors = NormalizeAndDeduplicateValidationErrors(
-                        specValidation.Errors.Concat(new[]
-                        {
-                            new ValidationError
-                            {
-                                Path = "openapi",
-                                Message = misplacedHsdsVersionWarning,
-                                ErrorCode = "HSDS_SCHEMA_VERSION_MISPLACED",
-                                Severity = "Warning"
-                            }
-                        }));
-                    // result.Notifications.Add(misplacedHsdsVersionWarning);
+                    specValidationErrors.Add(new ValidationError
+                    {
+                        Path = "openapi",
+                        Message = misplacedHsdsVersionWarning,
+                        ErrorCode = "HSDS_SCHEMA_VERSION_MISPLACED",
+                        Severity = "Warning"
+                    });
                 }
-
-                result.SpecificationValidation = specValidation;
             }
 
             claimedProfileVersion = _hsdsComplianceService.ExtractClaimedProfileVersion(request.ProfileReason, request.OpenApiSchema?.Url);
@@ -267,10 +262,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
                     if (profileComplianceFindings.Count > 0)
                     {
-                        specValidation.Errors = NormalizeAndDeduplicateValidationErrors(
-                            specValidation.Errors.Concat(profileComplianceFindings));
-                        specValidation.IsValid = !specValidation.Errors.Any(e =>
-                            string.Equals(e.Severity, "Error", StringComparison.OrdinalIgnoreCase));
+                        specValidationErrors!.AddRange(profileComplianceFindings);
                     }
                 }
                 else
@@ -280,18 +272,13 @@ public class OpenApiValidationService : IOpenApiValidationService
 
                     if (hasProfileContext)
                     {
-                        specValidation.Errors = NormalizeAndDeduplicateValidationErrors(
-                            specValidation.Errors.Concat(new[]
-                            {
-                                new ValidationError
-                                {
-                                    Path = "profile",
-                                    Message = "Can only validate against known HSDS schema profiles. The data feed did not identify a recognised HSDS schema version.",
-                                    ErrorCode = "HSDS_PROFILE_UNKNOWN",
-                                    Severity = "Error"
-                                }
-                            }));
-                        specValidation.IsValid = false;
+                        specValidationErrors!.Add(new ValidationError
+                        {
+                            Path = "profile",
+                            Message = "Can only validate against known HSDS schema profiles. The data feed did not identify a recognised HSDS schema version.",
+                            ErrorCode = "HSDS_PROFILE_UNKNOWN",
+                            Severity = "Error"
+                        });
                     }
                 }
             }
@@ -305,17 +292,13 @@ public class OpenApiValidationService : IOpenApiValidationService
                 {
                     if (_openApiValidationOptions.ValidateSpecification && specValidation != null)
                     {
-                        specValidation.Errors = NormalizeAndDeduplicateValidationErrors(
-                            specValidation.Errors.Concat(new[]
-                            {
-                                new ValidationError
-                                {
-                                    Path = "paths",
-                                    Message = pathDeduplicationWarning,
-                                    ErrorCode = "OPENAPI_BASE_PATH_DEDUPLICATED",
-                                    Severity = "Warning"
-                                }
-                            }));
+                        specValidationErrors!.Add(new ValidationError
+                        {
+                            Path = "paths",
+                            Message = pathDeduplicationWarning,
+                            ErrorCode = "OPENAPI_BASE_PATH_DEDUPLICATED",
+                            Severity = "Warning"
+                        });
                     }
                     else
                     {
@@ -325,6 +308,14 @@ public class OpenApiValidationService : IOpenApiValidationService
 
                 endpointTests = await _endpointTestingService.TestEndpointsAsync(openApiSpec, request.BaseUrl, request.Options, dataSourceRequestAuth, request.OpenApiSchema?.Url, cancellationToken);
                 result.EndpointTests = endpointTests;
+            }
+
+            if (_openApiValidationOptions.ValidateSpecification && specValidation != null)
+            {
+                specValidation.Errors = NormalizeAndDeduplicateValidationErrors(specValidationErrors!);
+                specValidation.IsValid = !specValidation.Errors.Any(e =>
+                    string.Equals(e.Severity, "Error", StringComparison.OrdinalIgnoreCase));
+                result.SpecificationValidation = specValidation;
             }
 
             if (_openApiValidationOptions.HsdsValidationMode == HsdsValidationMode.FullHsdsRuntime)
