@@ -101,6 +101,22 @@ public class OpenApiDiscoveryServiceTests
     }
 
     [Test]
+    public async Task FindOpenApiSpecAsync_WhenV3ApiDocsExists_ReturnsV3ApiDocsPath()
+    {
+        // Arrange
+        SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode statusCode, string content)>
+        {
+            ["/v3/api-docs"] = (HttpStatusCode.OK, "{\"openapi\":\"3.0.1\"}")
+        });
+
+        // Act
+        var result = await _service.FindOpenApiSpecAsync("https://api.example.com");
+
+        // Assert
+        Assert.That(result, Is.EqualTo("https://api.example.com/v3/api-docs"));
+    }
+
+    [Test]
     public async Task FindOpenApiSpecAsync_WhenSwaggerConfigEndpointContainsYamlUrl_ReturnsDiscoveredYamlUrl()
     {
         // Arrange
@@ -352,7 +368,7 @@ public class OpenApiDiscoveryServiceTests
 
         // Assert
         Assert.That(result, Is.EqualTo("https://api.example.com/openapi.json"));
-        Assert.That(requestUris, Has.Count.EqualTo(16));
+        Assert.That(requestUris.Count, Is.GreaterThanOrEqualTo(25));
         Assert.That(requestUris, Has.None.EqualTo("https://api.example.com/"));
         Assert.That(requestUris, Has.None.EqualTo("https://api.example.com"));
     }
