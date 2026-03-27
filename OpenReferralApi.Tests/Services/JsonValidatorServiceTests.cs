@@ -126,7 +126,7 @@ public class JsonValidatorServiceTests
         // Assert
         Assert.That(result.IsValid, Is.False);
         Assert.That(result.Errors, Is.Not.Empty);
-        Assert.That(result.Errors, Has.Some.Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(e => e.ErrorCode == "VALIDATION_ERROR"));
+        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(e => e.ErrorCode == "VALIDATION_ERROR"));
     }
 
     [Test]
@@ -239,7 +239,7 @@ public class JsonValidatorServiceTests
 
         // Assert
         Assert.That(result.IsValid, Is.False);
-        Assert.That(result.Errors, Has.Exactly(1).Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(error => error.ErrorCode == "MISSING_TYPE"));
+        Assert.That(result.Errors, Has.Exactly(1).Matches<Core.Models.Validation.ValidationError>(error => error.ErrorCode == "MISSING_TYPE"));
     }
 
     [Test]
@@ -321,7 +321,7 @@ public class JsonValidatorServiceTests
 
         // Assert
         Assert.That(result.IsValid, Is.False);
-        Assert.That(result.Errors, Has.Exactly(1).Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(error => error.ErrorCode == "SCHEMA_VALIDATION_ERROR"));
+        Assert.That(result.Errors, Has.Exactly(1).Matches<Core.Models.Validation.ValidationError>(error => error.ErrorCode == "SCHEMA_VALIDATION_ERROR"));
     }
 
     [Test]
@@ -365,10 +365,10 @@ public class JsonValidatorServiceTests
 
         // Assert
         Assert.That(result.IsValid, Is.True, "Data should be valid even with additional fields");
-        Assert.That(result.Errors, Has.Some.Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(
+        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
             e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "email"),
             "Should report 'email' as an additional field");
-        Assert.That(result.Errors, Has.Some.Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(
+        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
             e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "address"),
             "Should report 'address' as an additional field");
         Assert.That(result.Errors.Where(e => e.ErrorCode == "ADDITIONAL_FIELD").All(e => e.Severity == "Info"),
@@ -406,10 +406,10 @@ public class JsonValidatorServiceTests
 
         // Assert — extra field should be ADDITIONAL_FIELD (not VALIDATION_ERROR) so that
         // StrictOwnSchemaValidation policy can control its severity
-        Assert.That(result.Errors, Has.Some.Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(
+        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
             e => e.ErrorCode == "ADDITIONAL_FIELD"),
             "Extra field from additionalProperties:false schema should be tagged ADDITIONAL_FIELD");
-        Assert.That(result.Errors, Has.None.Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(
+        Assert.That(result.Errors, Has.None.Matches<Core.Models.Validation.ValidationError>(
             e => e.ErrorCode == "VALIDATION_ERROR" && e.Path.Contains("email")),
             "Extra field should not be reported as a generic VALIDATION_ERROR");
     }
@@ -448,7 +448,7 @@ public class JsonValidatorServiceTests
 
         // Assert
         Assert.That(result.IsValid, Is.True);
-        Assert.That(result.Errors, Has.None.Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(
+        Assert.That(result.Errors, Has.None.Matches<Core.Models.Validation.ValidationError>(
             e => e.ErrorCode == "ADDITIONAL_FIELD"),
             "Should not report additional fields when option is disabled");
     }
@@ -499,7 +499,7 @@ public class JsonValidatorServiceTests
 
         // Assert
         Assert.That(result.IsValid, Is.True);
-        Assert.That(result.Errors, Has.Some.Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(
+        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
             e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "address.postcode"),
             "Should report nested additional fields");
     }
@@ -552,16 +552,16 @@ public class JsonValidatorServiceTests
 
         // Assert
         Assert.That(result.IsValid, Is.True);
-        Assert.That(result.Errors, Has.Some.Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(
+        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
             e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users.age"),
             "Should report additional fields in array items");
-        Assert.That(result.Errors, Has.Some.Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(
+        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
             e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users.role"),
             "Should report additional fields in array items");
-        Assert.That(result.Errors, Has.Some.Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(
+        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
             e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Message == "Field 'users.age' is not defined in the schema"),
             "Should normalize array indices in additional-field message for users.age");
-        Assert.That(result.Errors, Has.Some.Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(
+        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
             e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Message == "Field 'users.role' is not defined in the schema"),
             "Should normalize array indices in additional-field message for users.role");
     }

@@ -198,7 +198,7 @@ public class SchemaWarmupBackgroundServiceTests
     private static ServiceProvider BuildServiceProvider(ISchemaResolverService resolver)
     {
         var services = new ServiceCollection();
-        services.AddScoped<ISchemaResolverService>(_ => resolver);
+        services.AddScoped(_ => resolver);
         return services.BuildServiceProvider();
     }
 

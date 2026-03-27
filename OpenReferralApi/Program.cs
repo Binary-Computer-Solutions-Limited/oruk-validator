@@ -168,13 +168,13 @@ if (!string.IsNullOrEmpty(databaseOptions.ConnectionString))
         tags: new[] { "ready", "db" });
 
     // Feed validation services - only register if MongoDB is configured
-    builder.Services.AddScoped<OpenReferralApi.Core.Services.IFeedValidationService, OpenReferralApi.Core.Services.FeedValidationService>();
-    builder.Services.AddHostedService<OpenReferralApi.Services.FeedValidationBackgroundService>();
+    builder.Services.AddScoped<IFeedValidationService, FeedValidationService>();
+    builder.Services.AddHostedService<FeedValidationBackgroundService>();
 }
 else
 {
     // Register null implementation when MongoDB is not configured
-    builder.Services.AddScoped<OpenReferralApi.Core.Services.IFeedValidationService, OpenReferralApi.Core.Services.NullFeedValidationService>();
+    builder.Services.AddScoped<IFeedValidationService, NullFeedValidationService>();
 }
 
 healthChecksBuilder.AddCheck<FeedValidationHealthCheck>(
@@ -189,7 +189,7 @@ builder.Services.AddSingleton<ISchemaWarmupStatusProvider>(sp => sp.GetRequiredS
 
 // Schema Resolver Service - resolves $ref in remote schema files and creates JSchema objects
 builder.Services.AddScoped<ISchemaResolverService, SchemaResolverService>();
-builder.Services.AddHostedService<OpenReferralApi.Services.SchemaWarmupBackgroundService>();
+builder.Services.AddHostedService<SchemaWarmupBackgroundService>();
 
 builder.Services.AddScoped<IJsonValidatorService, JsonValidatorService>();
 builder.Services.AddScoped<IAuthenticationValidationService, AuthenticationValidationService>();
@@ -280,6 +280,14 @@ if (otelOptions.Enabled)
 }
 
 var app = builder.Build();
+
+var openApiValidationSettings = app.Configuration
+    .GetSection(OpenApiValidationServerOptions.SectionName)
+    .Get<OpenApiValidationServerOptions>() ?? new OpenApiValidationServerOptions();
+
+app.Logger.LogInformation(
+    "OpenApiValidation settings at startup: {@OpenApiValidationSettings}",
+    openApiValidationSettings);
 
 // Configure the HTTP request pipeline
 app.UseExceptionHandler();

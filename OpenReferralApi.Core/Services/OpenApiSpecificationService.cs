@@ -28,7 +28,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
     {
         _logger = logger;
         _jsonValidatorService = jsonValidatorService;
-        _schemaResolutionOptions = schemaResolutionOptions ?? Options.Create(new OpenReferralApi.Core.Models.Schema.SchemaResolutionOptions());
+        _schemaResolutionOptions = schemaResolutionOptions ?? Options.Create(new SchemaResolutionOptions());
     }
 
     public async Task<OpenApiSpecificationValidation> ValidateAsync(JObject openApiSpec, CancellationToken cancellationToken = default)

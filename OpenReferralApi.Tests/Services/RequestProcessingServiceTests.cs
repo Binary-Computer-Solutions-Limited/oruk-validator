@@ -32,7 +32,7 @@ public class RequestProcessingServiceTests
         var expectedResult = 42;
 
         // Act
-        var result = await _service.ExecuteWithConcurrencyControlAsync<int>(
+        var result = await _service.ExecuteWithConcurrencyControlAsync(
             async ct => expectedResult,
             new ValidationOptions { MaxConcurrentRequests = 5 });
 
@@ -57,7 +57,7 @@ public class RequestProcessingServiceTests
     public async Task ExecuteWithConcurrencyControlAsync_WithNullOptions_UsesDefaultConcurrency()
     {
         // Arrange & Act
-        var result = await _service.ExecuteWithConcurrencyControlAsync<string>(
+        var result = await _service.ExecuteWithConcurrencyControlAsync(
             async ct => "success",
             options: null);
 
@@ -74,7 +74,7 @@ public class RequestProcessingServiceTests
 
         // Act
         var tasks = Enumerable.Range(0, 5)
-            .Select(_ => _service.ExecuteWithConcurrencyControlAsync<bool>(
+            .Select(_ => _service.ExecuteWithConcurrencyControlAsync(
                 async ct =>
                 {
                     concurrencyTracker.IncrementCurrent();
@@ -99,7 +99,7 @@ public class RequestProcessingServiceTests
         var options = new ValidationOptions { MaxConcurrentRequests = 1, UseThrottling = false };
         using var gate = new SemaphoreSlim(0, 1);
 
-        var firstTask = _service.ExecuteWithConcurrencyControlAsync<int>(
+        var firstTask = _service.ExecuteWithConcurrencyControlAsync(
             async ct =>
             {
                 await gate.WaitAsync(ct);
@@ -109,7 +109,7 @@ public class RequestProcessingServiceTests
 
         // Act & Assert
         Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await _service.ExecuteWithConcurrencyControlAsync<int>(async ct => 2, options));
+            await _service.ExecuteWithConcurrencyControlAsync(async ct => 2, options));
 
         gate.Release();
         await firstTask;
@@ -125,7 +125,7 @@ public class RequestProcessingServiceTests
         // Act & Assert - should either complete quickly or throw
         try
         {
-            var result = await _service.ExecuteWithConcurrencyControlAsync<int>(
+            var result = await _service.ExecuteWithConcurrencyControlAsync(
                 async ct =>
                 {
                     await Task.Delay(1000, ct);
@@ -219,7 +219,7 @@ public class RequestProcessingServiceTests
         var options = new ValidationOptions { RetryAttempts = 2, RetryDelaySeconds = 0 };
 
         // Act
-        var result = await _service.ExecuteWithRetryAsync<string>(async ct =>
+        var result = await _service.ExecuteWithRetryAsync(async ct =>
         {
             attemptCount++;
             if (attemptCount == 1)
@@ -374,11 +374,11 @@ public class RequestProcessingServiceTests
         var options = new ValidationOptions { MaxConcurrentRequests = 5 };
 
         // Execute a few operations
-        await _service.ExecuteWithConcurrencyControlAsync<int>(
+        await _service.ExecuteWithConcurrencyControlAsync(
             async ct => { await Task.Delay(10); return 1; },
             options);
 
-        await _service.ExecuteWithConcurrencyControlAsync<int>(
+        await _service.ExecuteWithConcurrencyControlAsync(
             async ct => { await Task.Delay(10); return 1; },
             options);
 
@@ -400,7 +400,7 @@ public class RequestProcessingServiceTests
         var options = new ValidationOptions { MaxConcurrentRequests = 5 };
 
         // Execute a successful operation
-        await _service.ExecuteWithConcurrencyControlAsync<string>(
+        await _service.ExecuteWithConcurrencyControlAsync(
             async ct => "success",
             options);
 

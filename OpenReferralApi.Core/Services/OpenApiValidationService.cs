@@ -28,15 +28,15 @@ public class OpenApiValidationService : IOpenApiValidationService
     private static readonly Counter<long> ResolvedOpenApiCacheMissesCounter = CacheMetricsMeter.CreateCounter<long>(
         "openreferral.openapi.cache.misses",
         description: "Number of resolved OpenAPI cache misses by scope (feed/profile)");
-    private static readonly ObservableGauge<int> FeedResolvedOpenApiCacheEntriesGauge = CacheMetricsMeter.CreateObservableGauge<int>(
+    private static readonly ObservableGauge<int> FeedResolvedOpenApiCacheEntriesGauge = CacheMetricsMeter.CreateObservableGauge(
         "openreferral.openapi.cache.entries.feed",
         () => FeedResolvedSpecCache.Count,
         description: "Number of cached resolved feed OpenAPI specifications");
-    private static readonly ObservableGauge<int> ProfileResolvedOpenApiCacheEntriesGauge = CacheMetricsMeter.CreateObservableGauge<int>(
+    private static readonly ObservableGauge<int> ProfileResolvedOpenApiCacheEntriesGauge = CacheMetricsMeter.CreateObservableGauge(
         "openreferral.openapi.cache.entries.profile",
         () => ProfileResolvedSpecCache.Count,
         description: "Number of cached resolved profile OpenAPI specifications");
-    private static readonly ObservableGauge<int> ResolvedOpenApiExpiredEntriesGauge = CacheMetricsMeter.CreateObservableGauge<int>(
+    private static readonly ObservableGauge<int> ResolvedOpenApiExpiredEntriesGauge = CacheMetricsMeter.CreateObservableGauge(
         "openreferral.openapi.cache.entries.expired",
         CountExpiredCacheEntries,
         description: "Number of expired cached resolved OpenAPI specifications (feed + profile)");

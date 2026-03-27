@@ -48,7 +48,7 @@ public static class Instrumentation
 
     // ObservableGauges can be added as needed
     public static ObservableGauge<int> ActiveValidations { get; } = 
-        Meter.CreateObservableGauge<int>(
+        Meter.CreateObservableGauge(
             "openreferral.validations.active",
             () => GetActiveValidationsCount(),
             description: "Number of validations currently in progress");

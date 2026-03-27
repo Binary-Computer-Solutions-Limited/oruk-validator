@@ -42,7 +42,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = true,
-                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>(),
+                Errors = new List<Core.Models.Validation.ValidationError>(),
                 SchemaVersion = "test",
                 Duration = TimeSpan.Zero
             });
@@ -311,7 +311,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>
+                Errors = new List<Core.Models.Validation.ValidationError>
                 {
                     new()
                     {
@@ -351,7 +351,7 @@ public class OpenApiValidationServiceTests
         hsdsComplianceMock.Setup(s => s.ExtractClaimedProfileVersion(It.IsAny<string>(), It.IsAny<string>())).Returns((string?)"HSDS-30");
         string? unused;
         hsdsComplianceMock.Setup(s => s.TryGetKnownHsdsSchemaUrl(It.IsAny<string>(), out unused)).Returns(false);
-        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>())).Returns(new List<OpenReferralApi.Core.Models.Validation.ValidationError>());
+        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>())).Returns(new List<Core.Models.Validation.ValidationError>());
         _service = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
@@ -398,7 +398,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>
+                Errors = new List<Core.Models.Validation.ValidationError>
                 {
                     new()
                     {
@@ -424,7 +424,7 @@ public class OpenApiValidationServiceTests
         hsdsComplianceMock.Setup(s => s.ExtractClaimedProfileVersion(It.IsAny<string>(), It.IsAny<string>())).Returns((string?)"HSDS-30");
         string? unused;
         hsdsComplianceMock.Setup(s => s.TryGetKnownHsdsSchemaUrl(It.IsAny<string>(), out unused)).Returns(true);
-        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>())).Returns(new List<OpenReferralApi.Core.Models.Validation.ValidationError>());
+        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>())).Returns(new List<Core.Models.Validation.ValidationError>());
         _service = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
@@ -988,7 +988,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = true,
-                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>(),
+                Errors = new List<Core.Models.Validation.ValidationError>(),
                 SchemaVersion = "test",
                 Duration = TimeSpan.Zero
             });
@@ -1052,7 +1052,7 @@ public class OpenApiValidationServiceTests
 
         hsdsComplianceServiceMock
             .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>()))
-            .Returns(new List<OpenReferralApi.Core.Models.Validation.ValidationError>());
+            .Returns(new List<Core.Models.Validation.ValidationError>());
 
         hsdsComplianceServiceMock
             .Setup(s => s.ValidateEndpointResponsesAgainstHsdsProfileAsync(
@@ -1071,7 +1071,7 @@ public class OpenApiValidationServiceTests
                 tests[0].TestResults[0].ValidationResult = new ValidationResult
                 {
                     IsValid = false,
-                    Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>
+                    Errors = new List<Core.Models.Validation.ValidationError>
                     {
                         new()
                         {
@@ -1115,7 +1115,7 @@ public class OpenApiValidationServiceTests
                             ValidationResult = new ValidationResult
                             {
                                 IsValid = true,
-                                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>(),
+                                Errors = new List<Core.Models.Validation.ValidationError>(),
                                 SchemaVersion = "test",
                                 Duration = TimeSpan.Zero
                             }
@@ -1227,7 +1227,7 @@ public class OpenApiValidationServiceTests
 
         hsdsComplianceServiceMock
             .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>()))
-            .Returns(new List<OpenReferralApi.Core.Models.Validation.ValidationError>());
+            .Returns(new List<Core.Models.Validation.ValidationError>());
 
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
@@ -1256,7 +1256,7 @@ public class OpenApiValidationServiceTests
                             ValidationResult = new ValidationResult
                             {
                                 IsValid = true,
-                                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>(),
+                                Errors = new List<Core.Models.Validation.ValidationError>(),
                                 SchemaVersion = "test",
                                 Duration = TimeSpan.Zero
                             }
@@ -1352,7 +1352,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>
+                Errors = new List<Core.Models.Validation.ValidationError>
                 {
                     new()
                     {
@@ -1396,7 +1396,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>
+                Errors = new List<Core.Models.Validation.ValidationError>
                 {
                     new()
                     {
@@ -1814,7 +1814,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>
+                Errors = new List<Core.Models.Validation.ValidationError>
                 {
                     new()
                     {
@@ -1905,7 +1905,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new OpenApiSpecificationValidation
             {
                 IsValid = false,
-                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>
+                Errors = new List<Core.Models.Validation.ValidationError>
                 {
                     new()
                     {
@@ -1929,7 +1929,7 @@ public class OpenApiValidationServiceTests
         hsdsServiceMock
             .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>()))
             .Callback(() => callOrder.Add("hsds"))
-            .Returns(new List<OpenReferralApi.Core.Models.Validation.ValidationError>
+            .Returns(new List<Core.Models.Validation.ValidationError>
             {
                 new()
                 {
@@ -2067,7 +2067,7 @@ public class OpenApiValidationServiceTests
         Assert.That(result.EndpointTests[0].TestResults, Has.Count.EqualTo(1));
         Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult, Is.Not.Null);
         Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult!.Errors,
-            Has.Some.Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(e => e.ErrorCode == "EMPTY_FEED_WARNING"));
+            Has.Some.Matches<Core.Models.Validation.ValidationError>(e => e.ErrorCode == "EMPTY_FEED_WARNING"));
     }
 
     [Test]
@@ -2290,7 +2290,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>
+                Errors = new List<Core.Models.Validation.ValidationError>
                 {
                     new()
                     {
@@ -2358,7 +2358,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>
+                Errors = new List<Core.Models.Validation.ValidationError>
                 {
                     new()
                     {
@@ -2458,7 +2458,7 @@ public class OpenApiValidationServiceTests
         Assert.That(result.EndpointTests[0].TestResults, Has.Count.EqualTo(1));
         Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult, Is.Not.Null);
         Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult!.Errors,
-            Has.Some.Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(e => e.ErrorCode == "OPTIONAL_ENDPOINT_NON_SUCCESS" && e.Severity == "Warning"));
+            Has.Some.Matches<Core.Models.Validation.ValidationError>(e => e.ErrorCode == "OPTIONAL_ENDPOINT_NON_SUCCESS" && e.Severity == "Warning"));
     }
 
     [Test]
@@ -2471,7 +2471,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<OpenReferralApi.Core.Models.Validation.ValidationError>
+                Errors = new List<Core.Models.Validation.ValidationError>
                 {
                     new()
                     {
@@ -2520,7 +2520,7 @@ public class OpenApiValidationServiceTests
         hsdsComplianceMock.Setup(s => s.ExtractClaimedProfileVersion(It.IsAny<string>(), It.IsAny<string>())).Returns((string?)"HSDS-30");
         string? unused;
         hsdsComplianceMock.Setup(s => s.TryGetKnownHsdsSchemaUrl(It.IsAny<string>(), out unused)).Returns(true);
-        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>())).Returns(new List<OpenReferralApi.Core.Models.Validation.ValidationError>());
+        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>())).Returns(new List<Core.Models.Validation.ValidationError>());
         _service = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
