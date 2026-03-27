@@ -316,12 +316,12 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             try
             {
                 var specUrl = BuildAbsoluteUrl(normalizedBaseUrl, path);
-                _logger.LogInformation("Probing fallback path: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(specUrl));
+                _logger.LogDebug("Probing fallback path: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(specUrl));
                 using var request = new HttpRequestMessage(HttpMethod.Get, specUrl);
                 var response = await client.SendAsync(request, cancellationToken);
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogInformation("Fallback path {Path} returned {StatusCode}", path, (int)response.StatusCode);
+                    _logger.LogDebug("Fallback path {Path} returned {StatusCode}", path, (int)response.StatusCode);
                     continue;
                 }
 
@@ -345,7 +345,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                     _logger.LogInformation("Discovered OpenAPI spec via fallback probing at {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(specUrl));
                     return (specUrl, $"OpenAPI URL discovered by probing '{path}'", null);
                 }
-                _logger.LogInformation("Fallback path {Path} returned 200 but content does not look like an OpenAPI document", path);
+                _logger.LogDebug("Fallback path {Path} returned 200 but content does not look like an OpenAPI document", path);
             }
             catch (OperationCanceledException)
             {
@@ -353,7 +353,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             }
             catch (Exception ex)
             {
-                _logger.LogInformation(ex, "Fallback probe failed for path {Path}", path);
+                _logger.LogDebug(ex, "Fallback probe failed for path {Path}", path);
             }
         }
 
@@ -382,7 +382,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             var resolved = ResolveUrl(baseUrl, candidate);
             if (!string.IsNullOrWhiteSpace(resolved))
             {
-                _logger.LogInformation("Discovered OpenAPI candidate from Swagger UI definition: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(resolved));
+                _logger.LogDebug("Discovered OpenAPI candidate from Swagger UI definition: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(resolved));
                 _logger.LogInformation("Discovered OpenAPI URL from Swagger UI definition: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(resolved));
                 return resolved;
             }
@@ -404,12 +404,12 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
 
             try
             {
-                _logger.LogInformation("Requesting swagger-config endpoint discovered from Swagger UI HTML: {ConfigUrl}", SchemaResolverService.SanitizeUrlForLogging(configUrl));
+                _logger.LogDebug("Requesting swagger-config endpoint discovered from Swagger UI HTML: {ConfigUrl}", SchemaResolverService.SanitizeUrlForLogging(configUrl));
                 using var configRequest = new HttpRequestMessage(HttpMethod.Get, configUrl);
                 var configResp = await client.SendAsync(configRequest, cancellationToken);
                 if (!configResp.IsSuccessStatusCode)
                 {
-                    _logger.LogInformation("Swagger-config endpoint {ConfigUrl} returned {StatusCode}", SchemaResolverService.SanitizeUrlForLogging(configUrl), (int)configResp.StatusCode);
+                    _logger.LogDebug("Swagger-config endpoint {ConfigUrl} returned {StatusCode}", SchemaResolverService.SanitizeUrlForLogging(configUrl), (int)configResp.StatusCode);
                     continue;
                 }
 
@@ -421,7 +421,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                     var resolved = ResolveUrl(baseUrl, discovered);
                     if (!string.IsNullOrWhiteSpace(resolved))
                     {
-                        _logger.LogInformation("Discovered OpenAPI candidate from swagger-config endpoint {ConfigUrl}: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(configUrl), SchemaResolverService.SanitizeUrlForLogging(resolved));
+                        _logger.LogDebug("Discovered OpenAPI candidate from swagger-config endpoint {ConfigUrl}: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(configUrl), SchemaResolverService.SanitizeUrlForLogging(resolved));
                         _logger.LogInformation("Discovered OpenAPI URL from Swagger config: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(resolved));
                         return resolved;
                     }
@@ -433,7 +433,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             }
             catch (Exception ex)
             {
-                _logger.LogInformation(ex, "Failed to read swagger config at {ConfigUrl}", SchemaResolverService.SanitizeUrlForLogging(configUrl));
+                _logger.LogDebug(ex, "Failed to read swagger config at {ConfigUrl}", SchemaResolverService.SanitizeUrlForLogging(configUrl));
             }
         }
 

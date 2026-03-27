@@ -102,7 +102,7 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
             try
             {
                 var specUrl = BuildAbsoluteUrl(baseUrl, path);
-                _logger.LogInformation("Probing standard path: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(specUrl));
+                _logger.LogDebug("Probing standard path: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(specUrl));
                 var response = await client.GetAsync(specUrl, cancellationToken);
                 if (response.IsSuccessStatusCode)
                 {
@@ -112,11 +112,11 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
                         _logger.LogInformation("Discovered feed OpenAPI spec via probing at {Path}", path);
                         return specUrl;
                     }
-                    _logger.LogInformation("Path {Path} returned 200 but content does not look like an OpenAPI spec", path);
+                    _logger.LogDebug("Path {Path} returned 200 but content does not look like an OpenAPI spec", path);
                 }
                 else
                 {
-                    _logger.LogInformation("Path {Path} returned {StatusCode}", path, (int)response.StatusCode);
+                    _logger.LogDebug("Path {Path} returned {StatusCode}", path, (int)response.StatusCode);
                 }
             }
             catch (OperationCanceledException)
@@ -125,7 +125,7 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
             }
             catch (Exception ex)
             {
-                _logger.LogInformation(ex, "Probe failed for {BaseUrl}{Path}", SchemaResolverService.SanitizeUrlForLogging(baseUrl), path);
+                _logger.LogDebug(ex, "Probe failed for {BaseUrl}{Path}", SchemaResolverService.SanitizeUrlForLogging(baseUrl), path);
             }
         }
 
@@ -135,7 +135,7 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
             try
             {
                 var configUrl = BuildAbsoluteUrl(baseUrl, configPath);
-                _logger.LogInformation("Probing swagger-config path: {ConfigUrl}", SchemaResolverService.SanitizeUrlForLogging(configUrl));
+                _logger.LogDebug("Probing swagger-config path: {ConfigUrl}", SchemaResolverService.SanitizeUrlForLogging(configUrl));
                 var discoveredFromConfig = await DiscoverFromSwaggerConfigEndpointAsync(client, baseUrl, configUrl, cancellationToken);
                 if (discoveredFromConfig.Count > 0)
                 {
@@ -143,7 +143,7 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
                     _logger.LogInformation("Discovered feed OpenAPI spec via config endpoint: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(specUrl));
                     return specUrl;
                 }
-                _logger.LogInformation("No definitions found at config path {ConfigPath}", configPath);
+                _logger.LogDebug("No definitions found at config path {ConfigPath}", configPath);
             }
             catch (OperationCanceledException)
             {
@@ -151,7 +151,7 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
             }
             catch (Exception ex)
             {
-                _logger.LogInformation(ex, "Config probe failed for {ConfigPath}", configPath);
+                _logger.LogDebug(ex, "Config probe failed for {ConfigPath}", configPath);
             }
         }
 
@@ -191,11 +191,11 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
             try
             {
                 var uiUrl = BuildAbsoluteUrl(baseUrl, uiPath);
-                _logger.LogInformation("Probing UI route: {UiUrl}", SchemaResolverService.SanitizeUrlForLogging(uiUrl));
+                _logger.LogDebug("Probing UI route: {UiUrl}", SchemaResolverService.SanitizeUrlForLogging(uiUrl));
                 var response = await client.GetAsync(uiUrl, cancellationToken);
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogInformation("UI route {UiPath} returned {StatusCode}", uiPath, (int)response.StatusCode);
+                    _logger.LogDebug("UI route {UiPath} returned {StatusCode}", uiPath, (int)response.StatusCode);
                     continue;
                 }
 
@@ -207,7 +207,7 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
                     _logger.LogInformation("Discovered feed OpenAPI spec via UI route scraping: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(specUrl));
                     return specUrl;
                 }
-                _logger.LogInformation("UI route {UiPath} returned 200 but no OpenAPI spec URL found in HTML", uiPath);
+                _logger.LogDebug("UI route {UiPath} returned 200 but no OpenAPI spec URL found in HTML", uiPath);
             }
             catch (OperationCanceledException)
             {
@@ -215,7 +215,7 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
             }
             catch (Exception ex)
             {
-                _logger.LogInformation(ex, "UI probe failed for {UiUrl}", SchemaResolverService.SanitizeUrlForLogging(BuildAbsoluteUrl(baseUrl, uiPath)));
+                _logger.LogDebug(ex, "UI probe failed for {UiUrl}", SchemaResolverService.SanitizeUrlForLogging(BuildAbsoluteUrl(baseUrl, uiPath)));
             }
         }
 
@@ -270,7 +270,7 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
         {
             foreach (var discoveredUrl in discoveredUrls)
             {
-                _logger.LogInformation("Discovered OpenAPI candidate from UI HTML definition: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(discoveredUrl));
+                _logger.LogDebug("Discovered OpenAPI candidate from UI HTML definition: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(discoveredUrl));
             }
 
             return discoveredUrls[0];
@@ -279,7 +279,7 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
         var configUrls = DiscoverConfigUrls(htmlContent, baseUrl);
         foreach (var configUrl in configUrls)
         {
-            _logger.LogInformation("Discovered Swagger config candidate from UI HTML: {ConfigUrl}", SchemaResolverService.SanitizeUrlForLogging(configUrl));
+            _logger.LogDebug("Discovered Swagger config candidate from UI HTML: {ConfigUrl}", SchemaResolverService.SanitizeUrlForLogging(configUrl));
             var discoveredFromConfig = await DiscoverFromSwaggerConfigEndpointAsync(client, baseUrl, configUrl, cancellationToken);
             if (discoveredFromConfig.Count > 0)
             {
@@ -292,11 +292,11 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
 
     private async Task<List<string>> DiscoverFromSwaggerConfigEndpointAsync(HttpClient client, string baseUrl, string configUrl, CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Requesting swagger-config endpoint: {ConfigUrl}", SchemaResolverService.SanitizeUrlForLogging(configUrl));
+        _logger.LogDebug("Requesting swagger-config endpoint: {ConfigUrl}", SchemaResolverService.SanitizeUrlForLogging(configUrl));
         var response = await client.GetAsync(configUrl, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogInformation("Swagger-config endpoint {ConfigUrl} returned {StatusCode}", SchemaResolverService.SanitizeUrlForLogging(configUrl), (int)response.StatusCode);
+            _logger.LogDebug("Swagger-config endpoint {ConfigUrl} returned {StatusCode}", SchemaResolverService.SanitizeUrlForLogging(configUrl), (int)response.StatusCode);
             return new List<string>();
         }
 
@@ -304,7 +304,7 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
         var discovered = DiscoverFromSwaggerConfigContent(content, baseUrl);
         foreach (var discoveredUrl in discovered)
         {
-            _logger.LogInformation("Discovered OpenAPI candidate from swagger-config endpoint {ConfigUrl}: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(configUrl), SchemaResolverService.SanitizeUrlForLogging(discoveredUrl));
+            _logger.LogDebug("Discovered OpenAPI candidate from swagger-config endpoint {ConfigUrl}: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(configUrl), SchemaResolverService.SanitizeUrlForLogging(discoveredUrl));
         }
 
         return discovered;
