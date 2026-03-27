@@ -44,6 +44,13 @@ public class OpenApiValidationServerOptions
     public const string SectionName = "OpenApiValidation";
 
     /// <summary>
+    /// Whether to validate the feed against its own discovered OpenAPI schema.
+    /// When true (default), endpoint responses are validated against the feed's own openApi.json.
+    /// When false, endpoint responses are validated against the HSDS profile openApi.json only.
+    /// </summary>
+    public bool OwnSchemaValidation { get; set; } = true;
+
+    /// <summary>
     /// Controls whether live feed responses are validated strictly against the feed's own schema.
     /// When true, any validation errors (including additional fields) are raised as errors.
     /// When false, validation failures are downgraded to warnings.

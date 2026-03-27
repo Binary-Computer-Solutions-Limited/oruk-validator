@@ -1441,6 +1441,337 @@ public class OpenApiValidationServiceTests
         Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
     }
 
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WhenOwnSchemaValidationTrue_UsesOwnFeedSpec()
+    {
+        // Arrange
+        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
+        Newtonsoft.Json.Linq.JObject? capturedSpec = null;
+
+        var hsdsComplianceServiceMock = new Mock<IHsdsComplianceService>();
+        hsdsComplianceServiceMock
+            .Setup(s => s.ExtractClaimedProfileVersion(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns("3.0");
+        hsdsComplianceServiceMock
+            .Setup(s => s.TryGetKnownHsdsSchemaUrl("3.0", out hsdsSpecUrl))
+            .Returns(true);
+        hsdsComplianceServiceMock
+            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>()))
+            .Returns(new List<Core.Models.Validation.ValidationError>());
+
+        var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
+        endpointTestingServiceMock
+            .Setup(s => s.TestEndpointsAsync(
+                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<string>(),
+                It.IsAny<OpenApiValidationOptions>(),
+                It.IsAny<DataSourceAuthentication>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<Newtonsoft.Json.Linq.JObject, string, OpenApiValidationOptions, DataSourceAuthentication, string, CancellationToken>(
+                (spec, _, _, _, _, _) => capturedSpec = spec)
+            .ReturnsAsync(new List<EndpointTestResult>());
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            BaseUrl = "https://feed.example.com",
+            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
+            Options = new OpenApiValidationOptions()
+        };
+
+        var serverOptions = Options.Create(new OpenApiValidationServerOptions
+        {
+            OwnSchemaValidation = true,
+            ValidateSpecification = false
+        });
+
+        var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>
+        {
+            var requestUrl = httpRequest.RequestUri?.ToString() ?? string.Empty;
+            var body = requestUrl.Equals(feedSpecUrl, StringComparison.OrdinalIgnoreCase)
+                ? CreateFeedSpecPermissiveOrganisationResponse()
+                : CreateHsdsProfileSpec();
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(body)
+            };
+        }));
+        using var _ = httpClient;
+
+        var service = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            hsdsComplianceService: hsdsComplianceServiceMock.Object,
+            endpointTestingService: endpointTestingServiceMock.Object,
+            specificationOptions: Options.Create(new SpecificationOptions
+            {
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json"
+                }
+            }),
+            openApiValidationServerOptions: serverOptions);
+
+        // Act
+        var result = await service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert – endpoint testing should have used the feed's own spec (title "Feed API")
+        Assert.That(capturedSpec, Is.Not.Null);
+        Assert.That(capturedSpec!["info"]?["title"]?.ToString(), Is.EqualTo("Feed API"));
+        Assert.That(result.Notifications, Has.None.Contains("OwnSchemaValidation is disabled"));
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WhenOwnSchemaValidationFalse_UsesHsdsProfileSpec()
+    {
+        // Arrange
+        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
+        Newtonsoft.Json.Linq.JObject? capturedSpec = null;
+
+        var hsdsComplianceServiceMock = new Mock<IHsdsComplianceService>();
+        hsdsComplianceServiceMock
+            .Setup(s => s.ExtractClaimedProfileVersion(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns("3.0");
+        hsdsComplianceServiceMock
+            .Setup(s => s.TryGetKnownHsdsSchemaUrl("3.0", out hsdsSpecUrl))
+            .Returns(true);
+        hsdsComplianceServiceMock
+            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>()))
+            .Returns(new List<Core.Models.Validation.ValidationError>());
+
+        var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
+        endpointTestingServiceMock
+            .Setup(s => s.TestEndpointsAsync(
+                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<string>(),
+                It.IsAny<OpenApiValidationOptions>(),
+                It.IsAny<DataSourceAuthentication>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<Newtonsoft.Json.Linq.JObject, string, OpenApiValidationOptions, DataSourceAuthentication, string, CancellationToken>(
+                (spec, _, _, _, _, _) => capturedSpec = spec)
+            .ReturnsAsync(new List<EndpointTestResult>());
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            BaseUrl = "https://feed.example.com",
+            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
+            Options = new OpenApiValidationOptions()
+        };
+
+        var serverOptions = Options.Create(new OpenApiValidationServerOptions
+        {
+            OwnSchemaValidation = false,
+            ValidateSpecification = false
+        });
+
+        var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>
+        {
+            var requestUrl = httpRequest.RequestUri?.ToString() ?? string.Empty;
+            var body = requestUrl.Equals(feedSpecUrl, StringComparison.OrdinalIgnoreCase)
+                ? CreateFeedSpecPermissiveOrganisationResponse()
+                : CreateHsdsProfileSpec();
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(body)
+            };
+        }));
+        using var _1 = httpClient;
+
+        var service = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            hsdsComplianceService: hsdsComplianceServiceMock.Object,
+            endpointTestingService: endpointTestingServiceMock.Object,
+            specificationOptions: Options.Create(new SpecificationOptions
+            {
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json"
+                }
+            }),
+            openApiValidationServerOptions: serverOptions);
+
+        // Act
+        var result = await service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert – endpoint testing should have used the HSDS profile spec (title "HSDS Profile")
+        Assert.That(capturedSpec, Is.Not.Null);
+        Assert.That(capturedSpec!["info"]?["title"]?.ToString(), Is.EqualTo("HSDS Profile"));
+        Assert.That(result.Notifications, Has.Some.Contains("OwnSchemaValidation is disabled"));
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WhenOwnSchemaValidationFalse_AndNoHsdsProfileAvailable_FallsBackToFeedSpec()
+    {
+        // Arrange
+        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        Newtonsoft.Json.Linq.JObject? capturedSpec = null;
+
+        var hsdsComplianceServiceMock = new Mock<IHsdsComplianceService>();
+        hsdsComplianceServiceMock
+            .Setup(s => s.ExtractClaimedProfileVersion(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns(string.Empty);
+        string? nullUrl = null;
+        hsdsComplianceServiceMock
+            .Setup(s => s.TryGetKnownHsdsSchemaUrl(It.IsAny<string>(), out nullUrl))
+            .Returns(false);
+
+        var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
+        endpointTestingServiceMock
+            .Setup(s => s.TestEndpointsAsync(
+                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<string>(),
+                It.IsAny<OpenApiValidationOptions>(),
+                It.IsAny<DataSourceAuthentication>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<Newtonsoft.Json.Linq.JObject, string, OpenApiValidationOptions, DataSourceAuthentication, string, CancellationToken>(
+                (spec, _, _, _, _, _) => capturedSpec = spec)
+            .ReturnsAsync(new List<EndpointTestResult>());
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            BaseUrl = "https://feed.example.com",
+            Options = new OpenApiValidationOptions()
+        };
+
+        var serverOptions = Options.Create(new OpenApiValidationServerOptions
+        {
+            OwnSchemaValidation = false,
+            ValidateSpecification = false
+        });
+
+        var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>
+        {
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(CreateFeedSpecPermissiveOrganisationResponse())
+            };
+        }));
+        using var _ = httpClient;
+
+        var service = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            hsdsComplianceService: hsdsComplianceServiceMock.Object,
+            endpointTestingService: endpointTestingServiceMock.Object,
+            specificationOptions: Options.Create(new SpecificationOptions()),
+            openApiValidationServerOptions: serverOptions);
+
+        // Act
+        var result = await service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert – no HSDS profile available, so must fall back to the feed's own spec
+        Assert.That(capturedSpec, Is.Not.Null);
+        Assert.That(capturedSpec!["info"]?["title"]?.ToString(), Is.EqualTo("Feed API"));
+        Assert.That(result.Notifications, Has.Some.Contains("falling back to the feed's own schema"));
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WhenOwnSchemaValidationFalse_WithFullHsdsRuntime_SkipsSecondPass()
+    {
+        // Arrange
+        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
+
+        var hsdsComplianceServiceMock = new Mock<IHsdsComplianceService>();
+        hsdsComplianceServiceMock
+            .Setup(s => s.ExtractClaimedProfileVersion(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns("3.0");
+        hsdsComplianceServiceMock
+            .Setup(s => s.TryGetKnownHsdsSchemaUrl("3.0", out hsdsSpecUrl))
+            .Returns(true);
+        hsdsComplianceServiceMock
+            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>()))
+            .Returns(new List<Core.Models.Validation.ValidationError>());
+
+        var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
+        endpointTestingServiceMock
+            .Setup(s => s.TestEndpointsAsync(
+                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<string>(),
+                It.IsAny<OpenApiValidationOptions>(),
+                It.IsAny<DataSourceAuthentication>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<EndpointTestResult>());
+
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            BaseUrl = "https://feed.example.com",
+            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
+            Options = new OpenApiValidationOptions()
+        };
+
+        var serverOptions = Options.Create(new OpenApiValidationServerOptions
+        {
+            OwnSchemaValidation = false,
+            HsdsValidationMode = HsdsValidationMode.FullHsdsRuntime,
+            ValidateSpecification = false
+        });
+
+        var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>
+        {
+            var requestUrl = httpRequest.RequestUri?.ToString() ?? string.Empty;
+            var body = requestUrl.Equals(feedSpecUrl, StringComparison.OrdinalIgnoreCase)
+                ? CreateFeedSpecPermissiveOrganisationResponse()
+                : CreateHsdsProfileSpec();
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(body)
+            };
+        }));
+        using var _ = httpClient;
+
+        var service = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            hsdsComplianceService: hsdsComplianceServiceMock.Object,
+            endpointTestingService: endpointTestingServiceMock.Object,
+            specificationOptions: Options.Create(new SpecificationOptions
+            {
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json"
+                }
+            }),
+            openApiValidationServerOptions: serverOptions);
+
+        // Act
+        var result = await service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert – second pass must not be invoked when OwnSchemaValidation is disabled
+        hsdsComplianceServiceMock.Verify(s => s.ValidateEndpointResponsesAgainstHsdsProfileAsync(
+            It.IsAny<List<EndpointTestResult>>(),
+            It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+            It.IsAny<OpenApiValidationOptions>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        Assert.That(result.Notifications, Has.Some.Contains("Full HSDS runtime validation was skipped"));
+    }
+
     #endregion
 
     #region HTTP Response Handling

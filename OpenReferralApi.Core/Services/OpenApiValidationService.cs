@@ -284,10 +284,33 @@ public class OpenApiValidationService : IOpenApiValidationService
             }
 
             // Test endpoints after specification and HSDS profile checks.
+            // When OwnSchemaValidation is false, validate responses against the HSDS profile schema
+            // instead of the feed's own schema.
             List<EndpointTestResult> endpointTests = new();
             if (_openApiValidationOptions.TestEndpoints && !string.IsNullOrEmpty(request.BaseUrl))
             {
-                var pathDeduplicationWarning = RemoveDuplicatedBasePathFromOpenApiPaths(openApiSpec, request.BaseUrl);
+                JObject endpointValidationSpec;
+                if (!_openApiValidationOptions.OwnSchemaValidation)
+                {
+                    if (resolvedHsdsProfileSpec != null)
+                    {
+                        endpointValidationSpec = resolvedHsdsProfileSpec;
+                        result.Notifications.Add(
+                            "OwnSchemaValidation is disabled: endpoint responses are validated against the HSDS profile schema instead of the feed's own schema.");
+                    }
+                    else
+                    {
+                        endpointValidationSpec = openApiSpec;
+                        result.Notifications.Add(
+                            "OwnSchemaValidation is disabled but no HSDS profile schema could be resolved; falling back to the feed's own schema for endpoint validation.");
+                    }
+                }
+                else
+                {
+                    endpointValidationSpec = openApiSpec;
+                }
+
+                var pathDeduplicationWarning = RemoveDuplicatedBasePathFromOpenApiPaths(endpointValidationSpec, request.BaseUrl);
                 if (!string.IsNullOrWhiteSpace(pathDeduplicationWarning))
                 {
                     if (_openApiValidationOptions.ValidateSpecification && specValidation != null)
@@ -306,7 +329,10 @@ public class OpenApiValidationService : IOpenApiValidationService
                     }
                 }
 
-                endpointTests = await _endpointTestingService.TestEndpointsAsync(openApiSpec, request.BaseUrl, request.Options, dataSourceRequestAuth, request.OpenApiSchema?.Url, cancellationToken);
+                var endpointValidationSpecUrl = _openApiValidationOptions.OwnSchemaValidation
+                    ? request.OpenApiSchema?.Url
+                    : knownHsdsSchemaUrl ?? request.OpenApiSchema?.Url;
+                endpointTests = await _endpointTestingService.TestEndpointsAsync(endpointValidationSpec, request.BaseUrl, request.Options, dataSourceRequestAuth, endpointValidationSpecUrl, cancellationToken);
                 result.EndpointTests = endpointTests;
             }
 
@@ -320,15 +346,15 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             if (_openApiValidationOptions.HsdsValidationMode == HsdsValidationMode.FullHsdsRuntime)
             {
-                if (feedSpecFellBackToHsdsProfile)
+                if (feedSpecFellBackToHsdsProfile || !_openApiValidationOptions.OwnSchemaValidation)
                 {
-                    // The feed's own OpenAPI spec could not be fetched, so endpoint responses were
-                    // already validated against the HSDS profile schema by TestEndpointsAsync above.
+                    // Endpoint responses were already validated against the HSDS profile schema above.
                     // A second pass against the same schema would produce duplicate errors, so skip it.
+                    var skipReason = !_openApiValidationOptions.OwnSchemaValidation
+                        ? "OwnSchemaValidation is disabled, so endpoint responses were already validated against the HSDS profile schema during endpoint testing."
+                        : "the feed's OpenAPI specification could not be fetched, so endpoint responses were already validated against the HSDS profile specification during endpoint testing.";
                     result.Notifications.Add(
-                        "Full HSDS runtime validation was skipped: the feed's OpenAPI specification " +
-                        "could not be fetched, so endpoint responses were already validated against " +
-                        "the HSDS profile specification during endpoint testing. No second pass is needed.");
+                        $"Full HSDS runtime validation was skipped: {skipReason} No second pass is needed.");
                 }
                 else if (resolvedHsdsProfileSpec != null)
                 {
