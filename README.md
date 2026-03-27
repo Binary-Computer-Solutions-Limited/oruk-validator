@@ -227,6 +227,9 @@ Validation behavior:
 
 Server-side OpenAPI validation controls:
 
+- `OwnSchemaValidation` is configured on `OpenApiValidation` server settings and is not overridable by client request payloads.
+- `OpenApiValidation:OwnSchemaValidation` accepts `None`, `AllowAdditionalProperties`, or `StrictOwnSchemaValidation`.
+- `None` validates endpoint responses against the resolved HSDS profile schema when available; `AllowAdditionalProperties` keeps feed-schema validation but downgrades own-schema `ADDITIONAL_FIELD` findings to warnings; `StrictOwnSchemaValidation` keeps those findings as errors.
 - `ValidateSpecification` is configured on `OpenApiValidation` server settings and is not overridable by client request payloads.
 - Use `OpenApiValidation:ValidateSpecification` (or `ORUK_API_OPENAPIVALIDATION__VALIDATESPECIFICATION`) to enable/disable OpenAPI specification structure validation globally.
 

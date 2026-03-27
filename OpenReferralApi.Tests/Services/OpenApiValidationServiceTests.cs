@@ -1556,7 +1556,7 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
-    public async Task ValidateOpenApiSpecificationAsync_WhenStrictOwnSchemaValidationTrue_FailsEndpointValidation()
+    public async Task ValidateOpenApiSpecificationAsync_WhenOwnSchemaValidationStrict_FailsEndpointValidation()
     {
         // Arrange
         _jsonValidatorServiceMock
@@ -1591,7 +1591,7 @@ public class OpenApiValidationServiceTests
 
         SetupHttpMock(CreateOpenApi30SpecWithResponseSchema(), endpointResponseBody: "[{\"name\":\"ok\",\"extra\":\"x\"}]");
 
-        // Act — default server setting StrictOwnSchemaValidation = true causes errors
+        // Act — default server setting OwnSchemaValidation = StrictOwnSchemaValidation causes errors
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
@@ -1600,7 +1600,7 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
-    public async Task ValidateOpenApiSpecificationAsync_WhenStrictOwnSchemaValidationFalse_ReportsWarningsWithoutFailure()
+    public async Task ValidateOpenApiSpecificationAsync_WhenOwnSchemaValidationAllowAdditionalProperties_ReportsWarningsWithoutFailure()
     {
         // Arrange
         _jsonValidatorServiceMock
@@ -1635,7 +1635,7 @@ public class OpenApiValidationServiceTests
 
         SetupHttpMock(CreateOpenApi30SpecWithResponseSchema(), endpointResponseBody: "[{\"name\":\"ok\",\"extra\":\"x\"}]");
 
-        var lenientValidationOptions = Options.Create(new OpenApiValidationServerOptions { StrictOwnSchemaValidation = false, ValidateSpecification = false });
+        var lenientValidationOptions = Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.AllowAdditionalProperties, ValidateSpecification = false });
         var serviceWithLenientPolicy = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
@@ -1645,7 +1645,7 @@ public class OpenApiValidationServiceTests
             _feedSpecDiscoveryMock.Object,
             openApiValidationServerOptions: lenientValidationOptions);
 
-        // Act — server setting StrictOwnSchemaValidation = false downgrades errors to warnings
+        // Act — server setting OwnSchemaValidation = AllowAdditionalProperties downgrades additional-field errors to warnings
         var result = await serviceWithLenientPolicy.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
@@ -1695,7 +1695,7 @@ public class OpenApiValidationServiceTests
 
         var serverOptions = Options.Create(new OpenApiValidationServerOptions
         {
-            OwnSchemaValidation = true,
+            OwnSchemaValidation = OwnSchemaValidationMode.StrictOwnSchemaValidation,
             ValidateSpecification = false
         });
 
@@ -1736,11 +1736,11 @@ public class OpenApiValidationServiceTests
         // Assert – endpoint testing should have used the feed's own spec (title "Feed API")
         Assert.That(capturedSpec, Is.Not.Null);
         Assert.That(capturedSpec!["info"]?["title"]?.ToString(), Is.EqualTo("Feed API"));
-        Assert.That(result.Notifications, Has.None.Contains("OwnSchemaValidation is disabled"));
+        Assert.That(result.Notifications, Has.None.Contains("OwnSchemaValidation is set to None"));
     }
 
     [Test]
-    public async Task ValidateOpenApiSpecificationAsync_WhenOwnSchemaValidationFalse_UsesHsdsProfileSpec()
+    public async Task ValidateOpenApiSpecificationAsync_WhenOwnSchemaValidationNone_UsesHsdsProfileSpec()
     {
         // Arrange
         var feedSpecUrl = "https://feed.example.com/openapi.json";
@@ -1781,7 +1781,7 @@ public class OpenApiValidationServiceTests
 
         var serverOptions = Options.Create(new OpenApiValidationServerOptions
         {
-            OwnSchemaValidation = false,
+            OwnSchemaValidation = OwnSchemaValidationMode.None,
             ValidateSpecification = false
         });
 
@@ -1822,11 +1822,11 @@ public class OpenApiValidationServiceTests
         // Assert – endpoint testing should have used the HSDS profile spec (title "HSDS Profile")
         Assert.That(capturedSpec, Is.Not.Null);
         Assert.That(capturedSpec!["info"]?["title"]?.ToString(), Is.EqualTo("HSDS Profile"));
-        Assert.That(result.Notifications, Has.Some.Contains("OwnSchemaValidation is disabled"));
+        Assert.That(result.Notifications, Has.Some.Contains("OwnSchemaValidation is set to None"));
     }
 
     [Test]
-    public async Task ValidateOpenApiSpecificationAsync_WhenOwnSchemaValidationFalse_AndNoHsdsProfileAvailable_FallsBackToFeedSpec()
+    public async Task ValidateOpenApiSpecificationAsync_WhenOwnSchemaValidationNone_AndNoHsdsProfileAvailable_FallsBackToFeedSpec()
     {
         // Arrange
         var feedSpecUrl = "https://feed.example.com/openapi.json";
@@ -1863,7 +1863,7 @@ public class OpenApiValidationServiceTests
 
         var serverOptions = Options.Create(new OpenApiValidationServerOptions
         {
-            OwnSchemaValidation = false,
+            OwnSchemaValidation = OwnSchemaValidationMode.None,
             ValidateSpecification = false
         });
 
@@ -1898,7 +1898,7 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
-    public async Task ValidateOpenApiSpecificationAsync_WhenOwnSchemaValidationFalse_WithFullHsdsRuntime_SkipsSecondPass()
+    public async Task ValidateOpenApiSpecificationAsync_WhenOwnSchemaValidationNone_WithFullHsdsRuntime_SkipsSecondPass()
     {
         // Arrange
         var feedSpecUrl = "https://feed.example.com/openapi.json";
@@ -1936,7 +1936,7 @@ public class OpenApiValidationServiceTests
 
         var serverOptions = Options.Create(new OpenApiValidationServerOptions
         {
-            OwnSchemaValidation = false,
+            OwnSchemaValidation = OwnSchemaValidationMode.None,
             HsdsValidationMode = HsdsValidationMode.FullHsdsRuntime,
             ValidateSpecification = false
         });
@@ -1975,7 +1975,7 @@ public class OpenApiValidationServiceTests
         // Act
         var result = await service.ValidateOpenApiSpecificationAsync(request);
 
-        // Assert – second pass must not be invoked when OwnSchemaValidation is disabled
+        // Assert – second pass must not be invoked when OwnSchemaValidation is None
         hsdsComplianceServiceMock.Verify(s => s.ValidateEndpointResponsesAgainstHsdsProfileAsync(
             It.IsAny<List<EndpointTestResult>>(),
             It.IsAny<Newtonsoft.Json.Linq.JObject>(),

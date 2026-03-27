@@ -265,7 +265,8 @@ public class HsdsComplianceService : IHsdsComplianceService
             return;
         }
 
-        var strictOwnSchemaValidation = _openApiValidationOptions?.StrictOwnSchemaValidation ?? true;
+        var strictOwnSchemaValidation = (_openApiValidationOptions?.OwnSchemaValidation
+            ?? OwnSchemaValidationMode.StrictOwnSchemaValidation) == OwnSchemaValidationMode.StrictOwnSchemaValidation;
         var additionalFieldSeverity = strictOwnSchemaValidation ? "Error" : "Warning";
         foreach (var error in additionalFieldErrors)
         {

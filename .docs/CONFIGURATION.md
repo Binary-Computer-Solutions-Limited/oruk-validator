@@ -252,7 +252,7 @@ Server-side OpenAPI validation settings that are not overridable by client reque
 | Property | Type | Default | Description |
 | --- | --- | --- | --- |
 | `ValidateSpecification` | bool | `true` | Whether to validate OpenAPI specification structure and quality analysis (server-side setting, not overridable per-request) |
-| `StrictOwnSchemaValidation` | bool | `true` | Whether live feed responses are validated strictly against the feed's own schema vs. downgrading to warnings |
+| `OwnSchemaValidation` | string | `"StrictOwnSchemaValidation"` | Own-schema validation mode: `"None"`, `"AllowAdditionalProperties"`, or `"StrictOwnSchemaValidation"` |
 | `HsdsValidationMode` | string | `"SpecAndFeedRuntimeFast"` | HSDS conformance depth: `"SpecAndFeedRuntimeFast"` or `"FullHsdsRuntime"` |
 | `AllowUserSuppliedAuth` | bool | `false` | Whether to allow user-supplied authentication credentials for OpenAPI schema and data source requests |
 
@@ -262,7 +262,7 @@ Server-side OpenAPI validation settings that are not overridable by client reque
 {
   "OpenApiValidation": {
     "ValidateSpecification": true,
-    "StrictOwnSchemaValidation": false,
+    "OwnSchemaValidation": "AllowAdditionalProperties",
     "HsdsValidationMode": "SpecAndFeedRuntimeFast",
     "AllowUserSuppliedAuth": true
   }
@@ -272,7 +272,10 @@ Server-side OpenAPI validation settings that are not overridable by client reque
 ### OpenApiValidation Notes
 
 - **`ValidateSpecification`**: This is a server-side setting that applies to all validation requests. Client requests cannot override this setting. When `true`, the response includes comprehensive specification validation results. When `false`, specification validation is skipped entirely.
-- **`StrictOwnSchemaValidation`**: When `true`, validation failures from the feed's own schema are raised as errors. When `false`, they are downgraded to warnings.
+- **`OwnSchemaValidation`**:
+  - `"None"`: Validate endpoint responses against HSDS profile schema instead of feed schema (when profile schema is available)
+  - `"AllowAdditionalProperties"`: Keep own-schema validation enabled, but downgrade own-schema `ADDITIONAL_FIELD` findings to warnings
+  - `"StrictOwnSchemaValidation"`: Keep own-schema validation enabled and treat own-schema `ADDITIONAL_FIELD` findings as errors
 - **`HsdsValidationMode`**:
   - `"SpecAndFeedRuntimeFast"` (default): Performs strict feed-vs-own-spec runtime validation and feed-spec-vs-HSDS-spec comparison
   - `"FullHsdsRuntime"`: Additionally validates live feed responses against HSDS response schemas
@@ -398,7 +401,7 @@ RateLimiting__Window=60
 
 # OpenApiValidation
 OpenApiValidation__ValidateSpecification=true
-OpenApiValidation__StrictOwnSchemaValidation=false
+OpenApiValidation__OwnSchemaValidation=AllowAdditionalProperties
 OpenApiValidation__HsdsValidationMode="SpecAndFeedRuntimeFast"
 OpenApiValidation__AllowUserSuppliedAuth=true
 

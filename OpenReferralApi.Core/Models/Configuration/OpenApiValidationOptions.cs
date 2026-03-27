@@ -9,6 +9,13 @@ public enum HsdsValidationMode
     FullHsdsRuntime
 }
 
+public enum OwnSchemaValidationMode
+{
+    None,
+    AllowAdditionalProperties,
+    StrictOwnSchemaValidation
+}
+
 /// <summary>
 /// Configuration options for controlling OpenAPI validation and endpoint testing behavior
 /// Allows fine-tuning of validation processes and testing parameters
@@ -44,18 +51,13 @@ public class OpenApiValidationServerOptions
     public const string SectionName = "OpenApiValidation";
 
     /// <summary>
-    /// Whether to validate the feed against its own discovered OpenAPI schema.
-    /// When true (default), endpoint responses are validated against the feed's own openApi.json.
-    /// When false, endpoint responses are validated against the HSDS profile openApi.json only.
+    /// Selects how the feed should be validated against its own discovered OpenAPI schema.
+    /// None validates endpoint responses against the HSDS profile schema instead of the feed's schema.
+    /// AllowAdditionalProperties validates against the feed's own schema but downgrades additional-field findings to warnings.
+    /// StrictOwnSchemaValidation (default) validates against the feed's own schema and keeps additional-field findings as errors.
     /// </summary>
-    public bool OwnSchemaValidation { get; set; } = true;
-
-    /// <summary>
-    /// Controls whether live feed responses are validated strictly against the feed's own schema.
-    /// When true, any validation errors (including additional fields) are raised as errors.
-    /// When false, validation failures are downgraded to warnings.
-    /// </summary>
-    public bool StrictOwnSchemaValidation { get; set; } = true;
+    [DefaultValue(OwnSchemaValidationMode.StrictOwnSchemaValidation)]
+    public OwnSchemaValidationMode OwnSchemaValidation { get; set; } = OwnSchemaValidationMode.StrictOwnSchemaValidation;
 
     /// <summary>
     /// Selects the HSDS conformance depth.

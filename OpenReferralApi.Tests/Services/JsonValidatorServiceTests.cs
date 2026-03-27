@@ -405,7 +405,7 @@ public class JsonValidatorServiceTests
         var result = await _service.ValidateAsync(request);
 
         // Assert — extra field should be ADDITIONAL_FIELD (not VALIDATION_ERROR) so that
-        // StrictOwnSchemaValidation policy can control its severity
+        // OwnSchemaValidation mode can control its severity
         Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
             e => e.ErrorCode == "ADDITIONAL_FIELD"),
             "Extra field from additionalProperties:false schema should be tagged ADDITIONAL_FIELD");

@@ -99,14 +99,14 @@ The following values come from `OpenApiValidationRequest` and can be changed per
 
 The following values are configured under `OpenApiValidation` in server settings and are **not** client-overridable:
 
-- `StrictOwnSchemaValidation`
+- `OwnSchemaValidation`
 - `HsdsValidationMode`
 - `AllowUserSuppliedAuth`
 
 Current default app configuration (`appsettings.json`) is:
 
-- `StrictOwnSchemaValidation = false`
-- `HsdsValidationMode = FullHsdsRuntime`
+- `OwnSchemaValidation = None`
+- `HsdsValidationMode = SpecAndFeedRuntimeFast`
 - `AllowUserSuppliedAuth = true`
 
 ## Flow Details
@@ -197,10 +197,11 @@ Behavior:
 
 ### 6.1 Own-Schema Strictness (Server-Controlled)
 
-`StrictOwnSchemaValidation` controls severity for own-schema `ADDITIONAL_FIELD` findings during runtime validation:
+`OwnSchemaValidation` controls own-schema runtime behavior:
 
-- `true`: treated as `Error` (can fail endpoint/result validity)
-- `false`: treated as `Warning` (does not fail validity on its own)
+- `None`: endpoint responses are validated against HSDS profile schema (when available) instead of the feed's schema
+- `AllowAdditionalProperties`: feed own-schema validation stays enabled, but own-schema `ADDITIONAL_FIELD` findings become warnings
+- `StrictOwnSchemaValidation`: feed own-schema validation stays enabled and own-schema `ADDITIONAL_FIELD` findings remain errors
 
 This policy is applied centrally by `HsdsComplianceService.ApplyAdditionalFieldPolicy`.
 

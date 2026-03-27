@@ -745,7 +745,9 @@ public class EndpointTestingService : IEndpointTestingService
                                         Options = new ValidationOptions
                                         {
                                             ReportAdditionalFields = (options?.ReportAdditionalFields ?? false)
-                                                || (_openApiValidationOptions?.StrictOwnSchemaValidation ?? true)
+                                                || ((_openApiValidationOptions?.OwnSchemaValidation
+                                                     ?? OwnSchemaValidationMode.StrictOwnSchemaValidation)
+                                                    == OwnSchemaValidationMode.StrictOwnSchemaValidation)
                                         }
                                     };
                                     var validationResult = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
