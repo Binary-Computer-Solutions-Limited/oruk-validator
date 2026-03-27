@@ -22,4 +22,11 @@ public class SpecificationOptions
     /// also used as the source list for schema warmup.
     /// </summary>
     public Dictionary<string, string> Urls { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Optional default HSDS profile key (for example, "HSDS-UK-1.0") used only
+    /// as a fallback when profile version detection or feed OpenAPI retrieval fails.
+    /// When provided, it must match one of the configured Urls keys.
+    /// </summary>
+    public string? DefaultProfileVersion { get; set; }
 }

@@ -751,6 +751,160 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WhenBaseDiscoveryFails_UsesConfiguredDefaultProfileFallback()
+    {
+        // Arrange
+        var defaultProfileSpecUrl = $"https://default-{Guid.NewGuid():N}.example.com/specifications/1.0/openapi.json";
+        var request = new OpenApiValidationRequest
+        {
+            BaseUrl = "https://directory.example.com/api",
+            Options = new OpenApiValidationOptions()
+        };
+
+        SetupHttpMock((httpRequest, ct) =>
+        {
+            var requestUrl = httpRequest.RequestUri?.ToString();
+            if (string.Equals(requestUrl, defaultProfileSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateHsdsProfileSpec())
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+        });
+
+        var serviceWithDefaultFallback = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(_httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            specificationOptions: Options.Create(new SpecificationOptions
+            {
+                DefaultProfileVersion = "HSDS-UK-1.0",
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-1.0"] = defaultProfileSpecUrl,
+                    ["HSDS-UK-3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json"
+                }
+            }),
+            openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
+            {
+                ValidateSpecification = false,
+                TestEndpoints = false
+            }));
+
+        // Act
+        var result = await serviceWithDefaultFallback.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(request.OpenApiSchema, Is.Not.Null);
+        Assert.That(request.OpenApiSchema!.Url, Is.EqualTo(defaultProfileSpecUrl));
+        Assert.That(result.Notifications.Any(n => n.Contains("configured default HSDS profile OpenAPI specification", StringComparison.OrdinalIgnoreCase)), Is.True);
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WhenFeedOpenApiFetchFailsWithoutProfileContext_UsesConfiguredDefaultProfileFallback()
+    {
+        // Arrange
+        var feedSpecUrl = $"https://feed-{Guid.NewGuid():N}.example.com/openapi.json";
+        var defaultProfileSpecUrl = $"https://default-{Guid.NewGuid():N}.example.com/specifications/1.0/openapi.json";
+        var request = new OpenApiValidationRequest
+        {
+            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            Options = new OpenApiValidationOptions()
+        };
+
+        SetupHttpMock((httpRequest, ct) =>
+        {
+            var requestUrl = httpRequest.RequestUri?.ToString();
+            if (string.Equals(requestUrl, feedSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+            }
+
+            if (string.Equals(requestUrl, defaultProfileSpecUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateHsdsProfileSpec())
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+        });
+
+        var serviceWithDefaultFallback = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(_httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            specificationOptions: Options.Create(new SpecificationOptions
+            {
+                DefaultProfileVersion = "HSDS-UK-1.0",
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-1.0"] = defaultProfileSpecUrl
+                }
+            }),
+            openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
+            {
+                ValidateSpecification = false,
+                TestEndpoints = false
+            }));
+
+        // Act
+        var result = await serviceWithDefaultFallback.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(request.OpenApiSchema!.Url, Is.EqualTo(defaultProfileSpecUrl));
+        Assert.That(result.Notifications.Any(n => n.Contains("Falling back to the HSDS profile OpenAPI specification", StringComparison.OrdinalIgnoreCase)), Is.True);
+        Assert.That(result.Metadata?.Profile, Is.EqualTo("1.0"));
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WhenConfiguredDefaultProfileIsInvalid_MaintainsExistingFailureFlow()
+    {
+        // Arrange
+        var request = new OpenApiValidationRequest
+        {
+            BaseUrl = "https://directory.example.com/api"
+        };
+
+        var serviceWithInvalidDefault = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(_httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            specificationOptions: Options.Create(new SpecificationOptions
+            {
+                DefaultProfileVersion = "HSDS-UK-9.9",
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-1.0"] = "https://openreferraluk.org/specifications/1.0/openapi.json"
+                }
+            }));
+
+        // Act
+        var result = await serviceWithInvalidDefault.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.False);
+        Assert.That(result.Notifications, Has.Count.EqualTo(1));
+        Assert.That(result.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
+        Assert.That(result.Notifications[0], Does.Contain("Failed to discover OpenAPI schema URL from base URL"));
+    }
+
+    [Test]
     public async Task ValidateOpenApiSpecificationAsync_AddsUnknownProfileErrorWhenProfileContextCannotBeMapped()
     {
         // Arrange

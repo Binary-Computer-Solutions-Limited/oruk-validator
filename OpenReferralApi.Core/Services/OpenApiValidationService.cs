@@ -102,6 +102,10 @@ public class OpenApiValidationService : IOpenApiValidationService
             // Ensure options has default values if not provided
             request.Options ??= new OpenApiValidationOptions();
 
+            var hasConfiguredDefaultProfile = TryGetDefaultProfileSchemaFallback(
+                out var defaultProfileSchemaUrl,
+                out var defaultProfileVersion);
+
             // User-supplied authentication for schema and datasource requests is feature-gated
             // and must pass strict validation before it can be applied.
             var schemaRequestAuth = _authenticationValidationService.TryGetValidatedRequestAuthentication("schema", request.OpenApiSchema?.Authentication);
@@ -138,7 +142,25 @@ public class OpenApiValidationService : IOpenApiValidationService
                     }
                     else
                     {
-                        throw new ArgumentException("Failed to discover OpenAPI schema URL from base URL");
+                        if (hasConfiguredDefaultProfile)
+                        {
+                            request.OpenApiSchema ??= new OpenApiSchema();
+                            request.OpenApiSchema.Url = defaultProfileSchemaUrl;
+                            if (!string.IsNullOrWhiteSpace(defaultProfileVersion))
+                            {
+                                request.ProfileReason = $"Standard version [user: {defaultProfileVersion}] configured default profile fallback";
+                            }
+
+                            result.Notifications.Add("OpenAPI schema URL could not be discovered from the base URL. Falling back to the configured default HSDS profile OpenAPI specification.");
+                            _logger.LogInformation(
+                                "OpenAPI schema URL discovery failed for base URL {BaseUrl}; using configured default profile URL {ProfileSchemaUrl}",
+                                SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty),
+                                SchemaResolverService.SanitizeUrlForLogging(defaultProfileSchemaUrl));
+                        }
+                        else
+                        {
+                            throw new ArgumentException("Failed to discover OpenAPI schema URL from base URL");
+                        }
                     }
                 }
                 else
@@ -175,8 +197,29 @@ public class OpenApiValidationService : IOpenApiValidationService
             {
                 openApiSpec = await GetCachedResolvedOpenApiSpecAsync(request.OpenApiSchema.Url, schemaRequestAuth, cancellationToken, cacheScope: "feed");
             }
-            catch (Exception ex) when (!string.IsNullOrWhiteSpace(knownHsdsSchemaUrl) && resolvedHsdsProfileSpec != null)
+            catch (Exception ex)
             {
+                if (resolvedHsdsProfileSpec == null && hasConfiguredDefaultProfile)
+                {
+                    try
+                    {
+                        resolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(defaultProfileSchemaUrl, null, cancellationToken, cacheScope: "profile");
+                        knownHsdsSchemaUrl = defaultProfileSchemaUrl;
+                    }
+                    catch (Exception defaultFallbackEx)
+                    {
+                        _logger.LogDebug(
+                            defaultFallbackEx,
+                            "Configured default HSDS profile fallback could not be resolved from URL {ProfileSchemaUrl}",
+                            SchemaResolverService.SanitizeUrlForLogging(defaultProfileSchemaUrl));
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(knownHsdsSchemaUrl) || resolvedHsdsProfileSpec == null)
+                {
+                    throw;
+                }
+
                 _logger.LogWarning(
                     ex,
                     "Failed to fetch/resolve OpenAPI from feed URL {FeedSpecUrl}; falling back to HSDS profile schema {ProfileSchemaUrl}",
@@ -238,6 +281,21 @@ public class OpenApiValidationService : IOpenApiValidationService
             }
 
             claimedProfileVersion = _hsdsComplianceService.ExtractClaimedProfileVersion(request.ProfileReason, request.OpenApiSchema?.Url);
+
+            if (string.IsNullOrWhiteSpace(claimedProfileVersion) && hasConfiguredDefaultProfile)
+            {
+                knownHsdsSchemaUrl = defaultProfileSchemaUrl;
+                if (resolvedHsdsProfileSpec == null)
+                {
+                    resolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(knownHsdsSchemaUrl, null, cancellationToken, cacheScope: "profile");
+                }
+
+                if (!string.IsNullOrWhiteSpace(defaultProfileVersion))
+                {
+                    request.ProfileReason = $"Standard version [user: {defaultProfileVersion}] configured default profile fallback";
+                }
+            }
+
             if (resolvedHsdsProfileSpec == null && _hsdsComplianceService.TryGetKnownHsdsSchemaUrl(claimedProfileVersion, out resolvedKnownHsdsSchemaUrl))
             {
                 knownHsdsSchemaUrl = resolvedKnownHsdsSchemaUrl;
@@ -606,6 +664,34 @@ public class OpenApiValidationService : IOpenApiValidationService
 
         var stripped = endpointPath[basePath.Length..];
         return NormalizePath(stripped);
+    }
+
+    private bool TryGetDefaultProfileSchemaFallback(out string schemaUrl, out string? profileVersion)
+    {
+        schemaUrl = string.Empty;
+        profileVersion = null;
+
+        if (string.IsNullOrWhiteSpace(_specificationOptions.DefaultProfileVersion) || _specificationOptions.Urls.Count == 0)
+        {
+            return false;
+        }
+
+        var configuredDefaultKey = _specificationOptions.DefaultProfileVersion.Trim();
+        if (!_specificationOptions.Urls.TryGetValue(configuredDefaultKey, out var configuredDefaultSchemaUrl)
+            || string.IsNullOrWhiteSpace(configuredDefaultSchemaUrl)
+            || !Uri.IsWellFormedUriString(configuredDefaultSchemaUrl, UriKind.Absolute))
+        {
+            _logger.LogWarning(
+                "Specification.DefaultProfileVersion '{DefaultProfileVersion}' is not a valid key in Specification.Urls. Falling back to existing behavior.",
+                SchemaResolverService.SanitizeStringForLogging(configuredDefaultKey));
+            return false;
+        }
+
+        schemaUrl = configuredDefaultSchemaUrl;
+        profileVersion = ProfileVersionNormalizer.NormalizeVersionNumber(configuredDefaultKey)
+            ?? _hsdsComplianceService.ExtractClaimedProfileVersion(null, configuredDefaultSchemaUrl);
+
+        return true;
     }
 
     private string? GetKnownHsdsSchemaUrlFromOptions(string? profileVersion)
