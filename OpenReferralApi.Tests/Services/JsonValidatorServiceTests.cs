@@ -376,6 +376,45 @@ public class JsonValidatorServiceTests
     }
 
     [Test]
+    public async Task ValidateAsync_WhenSchemaForbidsAdditionalProperties_TagsExtraFieldsAsAdditionalField()
+    {
+        // Arrange — schema explicitly disallows additional properties
+        var schema = new
+        {
+            type = "object",
+            properties = new
+            {
+                name = new { type = "string" }
+            },
+            required = new[] { "name" },
+            additionalProperties = false
+        };
+
+        var request = new ValidationRequest
+        {
+            JsonData = new
+            {
+                name = "Ada Lovelace",
+                email = "ada@example.com"  // Not in schema, schema forbids it
+            },
+            Schema = schema,
+            Options = new ValidationOptions()
+        };
+
+        // Act
+        var result = await _service.ValidateAsync(request);
+
+        // Assert — extra field should be ADDITIONAL_FIELD (not VALIDATION_ERROR) so that
+        // StrictOwnSchemaValidation policy can control its severity
+        Assert.That(result.Errors, Has.Some.Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(
+            e => e.ErrorCode == "ADDITIONAL_FIELD"),
+            "Extra field from additionalProperties:false schema should be tagged ADDITIONAL_FIELD");
+        Assert.That(result.Errors, Has.None.Matches<OpenReferralApi.Core.Models.Validation.ValidationError>(
+            e => e.ErrorCode == "VALIDATION_ERROR" && e.Path.Contains("email")),
+            "Extra field should not be reported as a generic VALIDATION_ERROR");
+    }
+
+    [Test]
     public async Task ValidateAsync_WithReportAdditionalFieldsFalse_DoesNotReportAdditionalFields()
     {
         // Arrange

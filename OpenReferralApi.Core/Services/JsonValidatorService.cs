@@ -363,12 +363,13 @@ public class JsonValidatorService : IJsonValidatorService
                 var validationErrors = new List<ValidationError>();
                 jsonToken.Validate(schema, (sender, args) =>
                 {
+                    var isAdditionalProp = args.ValidationError?.ErrorType == ErrorType.AdditionalProperties;
                     validationErrors.Add(new ValidationError
                     {
                         Path = args.Path ?? "",
                         Message = args.Message,
-                        ErrorCode = "VALIDATION_ERROR",
-                        Severity = "Error"
+                        ErrorCode = isAdditionalProp ? "ADDITIONAL_FIELD" : "VALIDATION_ERROR",
+                        Severity = isAdditionalProp ? "Info" : "Error"
                     });
                 });
 
