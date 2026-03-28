@@ -47,7 +47,7 @@ public class OpenApiBootstrapServiceTests
         Assert.That(result.ProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
         Assert.That(result.ProfileReason, Does.Contain("HSDS-UK-3.0"));
 
-        _openApiDiscoveryMock.Verify(x => x.FindOpenApiSpecAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _openApiDiscoveryMock.Verify(x => x.DiscoverOpenApiSpecAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -65,8 +65,11 @@ public class OpenApiBootstrapServiceTests
             });
 
         _openApiDiscoveryMock
-            .Setup(x => x.FindOpenApiSpecAsync("https://api.example.com", "{}", It.IsAny<CancellationToken>()))
-            .ReturnsAsync("https://api.example.com/openapi.json");
+            .Setup(x => x.DiscoverOpenApiSpecAsync("https://api.example.com", "{}", true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OpenApiDiscoveryResult
+            {
+                Url = "https://api.example.com/openapi.json"
+            });
 
         // Act
         var result = await _service.ResolveFromBaseUrlAsync("https://api.example.com");
@@ -92,8 +95,8 @@ public class OpenApiBootstrapServiceTests
             });
 
         _openApiDiscoveryMock
-            .Setup(x => x.FindOpenApiSpecAsync("https://api.example.com", null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string?)null);
+            .Setup(x => x.DiscoverOpenApiSpecAsync("https://api.example.com", null, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OpenApiDiscoveryResult());
 
         // Act
         var result = await _service.ResolveFromBaseUrlAsync("https://api.example.com");

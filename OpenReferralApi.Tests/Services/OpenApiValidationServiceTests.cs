@@ -36,6 +36,9 @@ public class OpenApiValidationServiceTests
         _feedSpecDiscoveryMock
             .Setup(s => s.FindOpenApiSpecAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string?)null);
+        _feedSpecDiscoveryMock
+            .Setup(s => s.DiscoverOpenApiSpecAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OpenApiDiscoveryResult());
 
         _jsonValidatorServiceMock
             .Setup(service => service.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))

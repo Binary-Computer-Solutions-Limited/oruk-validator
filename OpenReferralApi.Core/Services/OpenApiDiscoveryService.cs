@@ -7,6 +7,13 @@ namespace OpenReferralApi.Core.Services;
 public interface IOpenApiDiscoveryService
 {
     Task<string?> FindOpenApiSpecAsync(string baseUrl, string? baseUrlContent = null, CancellationToken cancellationToken = default);
+    Task<OpenApiDiscoveryResult> DiscoverOpenApiSpecAsync(string baseUrl, string? baseUrlContent = null, bool includeDiscoveredSpecContent = false, CancellationToken cancellationToken = default);
+}
+
+public sealed class OpenApiDiscoveryResult
+{
+    public string? Url { get; init; }
+    public string? SpecContent { get; init; }
 }
 
 
@@ -93,6 +100,12 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
 
     public async Task<string?> FindOpenApiSpecAsync(string baseUrl, string? baseUrlContent = null, CancellationToken cancellationToken = default)
     {
+        var discovery = await DiscoverOpenApiSpecAsync(baseUrl, baseUrlContent, includeDiscoveredSpecContent: false, cancellationToken);
+        return discovery.Url;
+    }
+
+    public async Task<OpenApiDiscoveryResult> DiscoverOpenApiSpecAsync(string baseUrl, string? baseUrlContent = null, bool includeDiscoveredSpecContent = false, CancellationToken cancellationToken = default)
+    {
         var client = _httpClientFactory.CreateClient("OpenApiValidationService");
         baseUrl = baseUrl.TrimEnd('/');
 
@@ -110,7 +123,11 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
                     if (LooksLikeOpenApiSpec(content))
                     {
                         _logger.LogInformation("Discovered feed OpenAPI spec via probing at {Path}", path);
-                        return specUrl;
+                        return new OpenApiDiscoveryResult
+                        {
+                            Url = specUrl,
+                            SpecContent = content
+                        };
                     }
                     _logger.LogDebug("Path {Path} returned 200 but content does not look like an OpenAPI spec", path);
                 }
@@ -141,7 +158,14 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
                 {
                     var specUrl = discoveredFromConfig[0];
                     _logger.LogInformation("Discovered feed OpenAPI spec via config endpoint: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(specUrl));
-                    return specUrl;
+                    var discoveredSpecContent = includeDiscoveredSpecContent
+                        ? await TryFetchDiscoveredSpecContentAsync(client, specUrl, cancellationToken)
+                        : null;
+                    return new OpenApiDiscoveryResult
+                    {
+                        Url = specUrl,
+                        SpecContent = discoveredSpecContent
+                    };
                 }
                 _logger.LogDebug("No definitions found at config path {ConfigPath}", configPath);
             }
@@ -163,7 +187,10 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
             if (string.IsNullOrWhiteSpace(html))
             {
                 var response = await client.GetAsync(baseUrl, cancellationToken);
-                if (!response.IsSuccessStatusCode) return null;
+                if (!response.IsSuccessStatusCode)
+                {
+                    return new OpenApiDiscoveryResult();
+                }
 
                 html = await response.Content.ReadAsStringAsync(cancellationToken);
             }
@@ -173,7 +200,14 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
             {
                 var specUrl = discoveredUrl;
                 _logger.LogInformation("Discovered feed OpenAPI spec via HTML scraping: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(specUrl));
-                return specUrl;
+                var discoveredSpecContent = includeDiscoveredSpecContent
+                    ? await TryFetchDiscoveredSpecContentAsync(client, specUrl, cancellationToken)
+                    : null;
+                return new OpenApiDiscoveryResult
+                {
+                    Url = specUrl,
+                    SpecContent = discoveredSpecContent
+                };
             }
         }
         catch (OperationCanceledException)
@@ -205,7 +239,14 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
                 {
                     var specUrl = discoveredUrl;
                     _logger.LogInformation("Discovered feed OpenAPI spec via UI route scraping: {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(specUrl));
-                    return specUrl;
+                    var discoveredSpecContent = includeDiscoveredSpecContent
+                        ? await TryFetchDiscoveredSpecContentAsync(client, specUrl, cancellationToken)
+                        : null;
+                    return new OpenApiDiscoveryResult
+                    {
+                        Url = specUrl,
+                        SpecContent = discoveredSpecContent
+                    };
                 }
                 _logger.LogDebug("UI route {UiPath} returned 200 but no OpenAPI spec URL found in HTML", uiPath);
             }
@@ -223,7 +264,32 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
             "Unable to discover OpenAPI spec from base URL {BaseUrl} after exhaustive probing of standard, config, and UI paths",
             SchemaResolverService.SanitizeUrlForLogging(baseUrl));
 
-        return null;
+        return new OpenApiDiscoveryResult();
+    }
+
+    private async Task<string?> TryFetchDiscoveredSpecContentAsync(HttpClient client, string specUrl, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await client.GetAsync(specUrl, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogDebug("Discovered spec URL {SpecUrl} returned {StatusCode} while trying to fetch spec content", SchemaResolverService.SanitizeUrlForLogging(specUrl), (int)response.StatusCode);
+                return null;
+            }
+
+            var content = await response.Content.ReadAsStringAsync(cancellationToken);
+            return LooksLikeOpenApiSpec(content) ? content : null;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to fetch discovered spec content for {SpecUrl}", SchemaResolverService.SanitizeUrlForLogging(specUrl));
+            return null;
+        }
     }
 
     private static bool LooksLikeOpenApiSpec(string content)

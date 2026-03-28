@@ -48,13 +48,22 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
             ? NormalizeProfileVersion(profileDiscovery.DetectedHsdsProfileVersion)
             : TryExtractProfileVersionFromJson(profileDiscovery.BaseUrlResponseContent);
 
+        OpenApiDiscoveryResult? feedSpecDiscovery = null;
         string? feedSpecUrl = null;
         if (!profileDiscovery.HasExplicitOpenApiUrl)
         {
-            feedSpecUrl = await _openApiDiscoveryService.FindOpenApiSpecAsync(
+            feedSpecDiscovery = await _openApiDiscoveryService.DiscoverOpenApiSpecAsync(
                 baseUrl,
                 profileDiscovery.BaseUrlResponseContent,
-                cancellationToken);
+                includeDiscoveredSpecContent: true,
+                cancellationToken)
+                ?? new OpenApiDiscoveryResult();
+            feedSpecUrl = feedSpecDiscovery.Url;
+        }
+
+        if (string.IsNullOrWhiteSpace(rootProfileVersion) && !string.IsNullOrWhiteSpace(feedSpecDiscovery?.SpecContent))
+        {
+            rootProfileVersion = TryExtractProfileVersionFromOpenApiSpec(feedSpecDiscovery.SpecContent);
         }
 
         var discoveredUrl = profileDiscovery.HasExplicitOpenApiUrl
@@ -113,6 +122,41 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
             var parsed = JObject.Parse(json);
             var rawVersion = parsed.SelectToken("version")?.ToString();
             return NormalizeProfileVersion(rawVersion);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? TryExtractProfileVersionFromOpenApiSpec(string specContent)
+    {
+        if (string.IsNullOrWhiteSpace(specContent))
+        {
+            return null;
+        }
+
+        try
+        {
+            var parsed = JObject.Parse(specContent);
+            var openapiValue = parsed.SelectToken("openapi")?.ToString();
+            if (string.IsNullOrWhiteSpace(openapiValue))
+            {
+                return null;
+            }
+
+            var parts = openapiValue.Split('.');
+            if (parts.Length < 2)
+            {
+                return null;
+            }
+
+            if (int.TryParse(parts[0], out var major) && int.TryParse(parts[1], out var minor))
+            {
+                return $"HSDS-UK-{major}.{minor}";
+            }
+
+            return null;
         }
         catch
         {

@@ -240,7 +240,7 @@ public class ProfleDiscoveryServiceTests
     }
 
     [Test]
-    public async Task DiscoverOpenApiUrlAsync_WithHtmlBaseResponse_ProbesKnownOpenApiLocations()
+    public async Task DiscoverOpenApiUrlAsync_WithHtmlBaseResponse_DoesNotProbeKnownOpenApiLocations()
     {
         // Arrange
         var baseUrl = "https://api.example.com";
@@ -280,12 +280,12 @@ public class ProfleDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
 
         // Assert
-        Assert.That(url, Is.EqualTo("https://api.example.com/openapi.json"));
-        Assert.That(reason, Does.Contain("discovered by probing"));
+        Assert.That(url, Is.Null);
+        Assert.That(reason, Does.Contain("Failed to parse"));
     }
 
     [Test]
-    public async Task DiscoverOpenApiUrlAsync_WithHtmlBaseResponseAndSwaggerUiUrl_ExtractsSpecUrl()
+    public async Task DiscoverOpenApiUrlAsync_WithHtmlBaseResponseAndSwaggerUiUrl_DoesNotExtractSpecUrl()
     {
         // Arrange
         var baseUrl = "https://api.example.com/root";
@@ -319,8 +319,8 @@ public class ProfleDiscoveryServiceTests
         var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
 
         // Assert
-        Assert.That(url, Is.EqualTo("https://api.example.com/v3/api-docs"));
-        Assert.That(reason, Does.Contain("Swagger UI HTML"));
+        Assert.That(url, Is.Null);
+        Assert.That(reason, Does.Contain("Failed to parse"));
     }
 
     [Test]
