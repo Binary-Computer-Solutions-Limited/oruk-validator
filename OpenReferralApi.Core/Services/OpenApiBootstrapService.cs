@@ -153,7 +153,7 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
 
             if (int.TryParse(parts[0], out var major) && int.TryParse(parts[1], out var minor))
             {
-                return $"HSDS-UK-{major}.{minor}";
+                return $"{major}.{minor}";
             }
 
             return null;
@@ -166,6 +166,6 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
 
     private static string? NormalizeProfileVersion(string? rawVersion)
     {
-        return ProfileVersionNormalizer.NormalizeHsdsProfileVersion(rawVersion);
+        return ProfileVersionNormalizer.NormalizeVersionNumber(rawVersion);
     }
 }

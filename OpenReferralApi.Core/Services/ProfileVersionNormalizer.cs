@@ -36,11 +36,5 @@ internal static partial class ProfileVersionNormalizer
         return $"{major}.{minor}";
     }
 
-    internal static string? NormalizeHsdsProfileVersion(string? rawVersion)
-    {
-        var versionNumber = NormalizeVersionNumber(rawVersion);
-        return string.IsNullOrWhiteSpace(versionNumber)
-            ? null
-            : $"HSDS-UK-{versionNumber}";
-    }
+
 }

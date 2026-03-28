@@ -97,11 +97,10 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                 var version = versionToken?.ToString();
                 if (!string.IsNullOrEmpty(version))
                 {
-                    var versionNumber = ProfileVersionNormalizer.NormalizeVersionNumber(version);
-                    var versionedSpec = ResolveSpecificationUrl(versionNumber);
-                    if (!string.IsNullOrWhiteSpace(versionNumber) && !string.IsNullOrWhiteSpace(versionedSpec))
+                    var versionedSpec = ResolveSpecificationUrl(version);
+                    if (!string.IsNullOrWhiteSpace(versionedSpec))
                     {
-                        _logger.LogInformation("Detected version '{Version}'; HSDS-UK {ExtractedVersion} spec: {OpenApiUrl}", SchemaResolverService.SanitizeStringForLogging(version), versionNumber, versionedSpec);
+                        _logger.LogInformation("Detected version '{Version}'; resolved spec: {OpenApiUrl}", SchemaResolverService.SanitizeStringForLogging(version), versionedSpec);
                         return new ProfileDiscoveryResult
                         {
                             Url = versionedSpec,
@@ -205,29 +204,34 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         return !headerName.Any(c => char.IsControl(c) || c == ':' || c == '\r' || c == '\n');
     }
 
-    private string? ResolveSpecificationUrl(string? versionNumber)
+    private string? ResolveSpecificationUrl(string? rawVersion)
     {
+        if (string.IsNullOrWhiteSpace(rawVersion))
+        {
+            return null;
+        }
+
+        // Prefer an exact key match first (e.g. data supplies "HSDS-UK-3.0" which is already a configured key).
+        if (_specificationOptions.Urls.TryGetValue(rawVersion, out var exactUrl)
+            && !string.IsNullOrWhiteSpace(exactUrl))
+        {
+            return exactUrl.Trim();
+        }
+
+        // Fall back to the first configured key whose normalised version matches (e.g. "3.0" → "HSDS-UK-3.0").
+        var versionNumber = ProfileVersionNormalizer.NormalizeVersionNumber(rawVersion);
         if (string.IsNullOrWhiteSpace(versionNumber))
         {
             return null;
         }
 
-        var matchingUrls = _specificationOptions.Urls
-            .Where(entry => !string.IsNullOrWhiteSpace(entry.Value)
+        var firstMatch = _specificationOptions.Urls
+            .FirstOrDefault(entry => !string.IsNullOrWhiteSpace(entry.Value)
                 && string.Equals(
                     ProfileVersionNormalizer.NormalizeVersionNumber(entry.Key),
                     versionNumber,
-                    StringComparison.OrdinalIgnoreCase))
-            .Select(entry => entry.Value.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+                    StringComparison.OrdinalIgnoreCase));
 
-        if (matchingUrls.Count == 1)
-        {
-            return matchingUrls[0];
-        }
-
-        return null;
+        return string.IsNullOrWhiteSpace(firstMatch.Value) ? null : firstMatch.Value.Trim();
     }
-
 }

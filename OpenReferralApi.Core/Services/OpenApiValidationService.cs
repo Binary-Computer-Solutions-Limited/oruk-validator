@@ -696,23 +696,6 @@ public class OpenApiValidationService : IOpenApiValidationService
         return true;
     }
 
-    private string? GetKnownHsdsSchemaUrlFromOptions(string? profileVersion)
-    {
-        var specificationUrls = _specificationOptions.Urls;
-        if (string.IsNullOrWhiteSpace(profileVersion) || specificationUrls.Count == 0)
-        {
-            return null;
-        }
-
-        var key = $"HSDS-UK-{profileVersion.Trim()}";
-        if (specificationUrls.TryGetValue(key, out var mappedUrl) && !string.IsNullOrWhiteSpace(mappedUrl))
-        {
-            return mappedUrl;
-        }
-
-        return null;
-    }
-
     private async Task<JObject> GetCachedResolvedOpenApiSpecAsync(
         string specUrl,
         DataSourceAuthentication? auth,
@@ -929,19 +912,11 @@ public class OpenApiValidationService : IOpenApiValidationService
             return null;
         }
 
-        var matchingKeys = _specificationOptions.Urls.Keys
-            .Where(key => string.Equals(
+        return _specificationOptions.Urls.Keys
+            .FirstOrDefault(key => string.Equals(
                 ProfileVersionNormalizer.NormalizeVersionNumber(key),
                 versionNumber,
-                StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        if (matchingKeys.Count == 1)
-        {
-            return matchingKeys[0];
-        }
-
-        return null;
+                StringComparison.OrdinalIgnoreCase));
     }
 
     private static (string? version, bool fromOpenapiField) TryExtractProfileVersionFromOpenApiSpec(JObject openApiSpec)
