@@ -4,28 +4,23 @@ namespace OpenReferralApi.Core.Services;
 
 internal static partial class ProfileVersionNormalizer
 {
-    [GeneratedRegex("^(?<major>\\d+)(?:\\.(?<minor>\\d+))?$")]
-    private static partial Regex VersionRegex();
+    /// <summary>
+    /// Extracts the trailing major.minor version number from a raw profile version string.
+    /// For example "HSDS-UK-3.0" → "3.0", "V3" → "3.0", "3.2" → "3.2", "SOMESCHEMA-1.5" → "1.5".
+    /// Returns null if no version number can be extracted.
+    /// </summary>
+    [GeneratedRegex("(?<major>\\d+)(?:\\.(?<minor>\\d+))?$")]
+    private static partial Regex TrailingVersionRegex();
+    // Note: GeneratedRegex attribute provides the implementation for the above partial method.
 
-    internal static string? NormalizeVersionNumber(string? rawVersion)
+    internal static string? ExtractMajorMinor(string? rawVersion)
     {
         if (string.IsNullOrWhiteSpace(rawVersion))
         {
             return null;
         }
 
-        var normalizedInput = rawVersion.Trim();
-        if (normalizedInput.StartsWith("HSDS-UK-", StringComparison.OrdinalIgnoreCase))
-        {
-            normalizedInput = normalizedInput.Substring("HSDS-UK-".Length);
-        }
-
-        if (normalizedInput.StartsWith("V", StringComparison.OrdinalIgnoreCase))
-        {
-            normalizedInput = normalizedInput.Substring(1);
-        }
-
-        var match = VersionRegex().Match(normalizedInput);
+        var match = TrailingVersionRegex().Match(rawVersion.Trim());
         if (!match.Success)
         {
             return null;
@@ -36,5 +31,9 @@ internal static partial class ProfileVersionNormalizer
         return $"{major}.{minor}";
     }
 
-
+    /// <summary>
+    /// Kept for backward compatibility with call sites that have not yet been migrated.
+    /// Prefer ExtractMajorMinor for new code.
+    /// </summary>
+    internal static string? NormalizeVersionNumber(string? rawVersion) => ExtractMajorMinor(rawVersion);
 }

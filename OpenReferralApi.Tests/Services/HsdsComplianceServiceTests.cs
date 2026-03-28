@@ -28,15 +28,15 @@ public class HsdsComplianceServiceTests
     }
 
     [Test]
-    public void ExtractClaimedProfileVersion_FromProfileReason_ParsesAndNormalizes()
+    public void ExtractClaimedProfileVersion_FromProfileReason_ReturnsRawExtractedValue()
     {
         var version = _service.ExtractClaimedProfileVersion("Standard version [user: HSDS-UK-V3]", null);
 
-        Assert.That(version, Is.EqualTo("3.0"));
+        Assert.That(version, Is.EqualTo("HSDS-UK-V3"));
     }
 
     [Test]
-    public void ExtractClaimedProfileVersion_FromSchemaUrl_ParsesAndNormalizes()
+    public void ExtractClaimedProfileVersion_FromSchemaUrl_ReturnsRawUrlSegment()
     {
         var version = _service.ExtractClaimedProfileVersion(null, "https://openreferraluk.org/specifications/3.1/openapi.json");
 

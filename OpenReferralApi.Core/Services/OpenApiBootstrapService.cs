@@ -45,7 +45,7 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
 
         // Try detected version from discovered OpenAPI spec first, then fall back to root endpoint
         var rootProfileVersion = !string.IsNullOrWhiteSpace(profileDiscovery.DetectedHsdsProfileVersion)
-            ? NormalizeProfileVersion(profileDiscovery.DetectedHsdsProfileVersion)
+            ? profileDiscovery.DetectedHsdsProfileVersion
             : TryExtractProfileVersionFromJson(profileDiscovery.BaseUrlResponseContent);
 
         OpenApiDiscoveryResult? feedSpecDiscovery = null;
@@ -120,8 +120,8 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
         try
         {
             var parsed = JObject.Parse(json);
-            var rawVersion = parsed.SelectToken("version")?.ToString();
-            return NormalizeProfileVersion(rawVersion);
+            var rawVersion = parsed.SelectToken("version")?.ToString()?.Trim();
+            return string.IsNullOrWhiteSpace(rawVersion) ? null : rawVersion;
         }
         catch
         {
@@ -162,10 +162,5 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
         {
             return null;
         }
-    }
-
-    private static string? NormalizeProfileVersion(string? rawVersion)
-    {
-        return ProfileVersionNormalizer.NormalizeVersionNumber(rawVersion);
     }
 }

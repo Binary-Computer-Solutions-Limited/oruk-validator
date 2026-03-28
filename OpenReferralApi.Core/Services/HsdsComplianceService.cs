@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
@@ -23,7 +22,6 @@ public interface IHsdsComplianceService
 public class HsdsComplianceService : IHsdsComplianceService
 {
     private static readonly Regex ProfileReasonVersionRegex = new(@"Standard version \[user:\s*(?<version>[^\]]+)\]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex VersionNumberRegex = new(@"(?<major>\d+)(?:\.(?<minor>\d+))?", RegexOptions.Compiled);
 
     private static readonly HashSet<string> SupportedHttpMethods = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -52,7 +50,7 @@ public class HsdsComplianceService : IHsdsComplianceService
             var profileReasonMatch = ProfileReasonVersionRegex.Match(profileReason);
             if (profileReasonMatch.Success)
             {
-                var extracted = NormalizeVersion(profileReasonMatch.Groups["version"].Value);
+                var extracted = profileReasonMatch.Groups["version"].Value.Trim();
                 if (!string.IsNullOrWhiteSpace(extracted))
                 {
                     return extracted;
@@ -65,7 +63,11 @@ public class HsdsComplianceService : IHsdsComplianceService
             var urlMatch = Regex.Match(schemaUrl, @"/specifications/(?<version>[^/]+)/openapi\.json", RegexOptions.IgnoreCase);
             if (urlMatch.Success)
             {
-                return NormalizeVersion(urlMatch.Groups["version"].Value);
+                var extracted = urlMatch.Groups["version"].Value.Trim();
+                if (!string.IsNullOrWhiteSpace(extracted))
+                {
+                    return extracted;
+                }
             }
         }
 
@@ -75,19 +77,34 @@ public class HsdsComplianceService : IHsdsComplianceService
     public bool TryGetKnownHsdsSchemaUrl(string? profileVersion, out string schemaUrl)
     {
         schemaUrl = string.Empty;
-        var normalizedVersion = NormalizeVersion(profileVersion);
-        if (string.IsNullOrWhiteSpace(normalizedVersion))
+        if (string.IsNullOrWhiteSpace(profileVersion))
         {
             return false;
         }
 
-        if (!_profileSchemaByVersion.TryGetValue(normalizedVersion, out var resolvedSchemaUrl))
+        // Tier 1: exact match on the raw profile version string (case-insensitive)
+        if (_profileSchemaByVersion.TryGetValue(profileVersion.Trim(), out var exactMatch))
         {
-            return false;
+            schemaUrl = exactMatch;
+            return true;
         }
 
-        schemaUrl = resolvedSchemaUrl;
-        return true;
+        // Tier 2: numeric major.minor fallback — find the first configured key whose numeric part matches
+        var requestedNumeric = ProfileVersionNormalizer.ExtractMajorMinor(profileVersion);
+        if (!string.IsNullOrWhiteSpace(requestedNumeric))
+        {
+            foreach (var entry in _profileSchemaByVersion)
+            {
+                var keyNumeric = ProfileVersionNormalizer.ExtractMajorMinor(entry.Key);
+                if (string.Equals(keyNumeric, requestedNumeric, StringComparison.OrdinalIgnoreCase))
+                {
+                    schemaUrl = entry.Value;
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     public List<ValidationError> CompareFeedSpecAgainstHsdsProfile(JObject feedSpec, JObject hsdsSpec)
@@ -286,36 +303,6 @@ public class HsdsComplianceService : IHsdsComplianceService
             string.Equals(e.Severity, "Error", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static string? NormalizeVersion(string? rawVersion)
-    {
-        if (string.IsNullOrWhiteSpace(rawVersion))
-        {
-            return null;
-        }
-
-        var cleaned = rawVersion
-            .Replace("HSDS-UK-", string.Empty, StringComparison.OrdinalIgnoreCase)
-            .Replace("HSDS-", string.Empty, StringComparison.OrdinalIgnoreCase)
-            .Replace("V", string.Empty, StringComparison.OrdinalIgnoreCase)
-            .Trim();
-
-        var match = VersionNumberRegex.Match(cleaned);
-        if (!match.Success)
-        {
-            return null;
-        }
-
-        var major = match.Groups["major"].Value;
-        var minor = match.Groups["minor"].Success ? match.Groups["minor"].Value : "0";
-        if (!int.TryParse(major, NumberStyles.None, CultureInfo.InvariantCulture, out var majorNumber) ||
-            !int.TryParse(minor, NumberStyles.None, CultureInfo.InvariantCulture, out var minorNumber))
-        {
-            return null;
-        }
-
-        return $"{majorNumber}.{minorNumber}";
-    }
-
     private static IReadOnlyDictionary<string, string> BuildProfileSchemaLookup(SpecificationOptions? options)
     {
         var lookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -337,8 +324,8 @@ public class HsdsComplianceService : IHsdsComplianceService
 
         foreach (var pair in source)
         {
-            var normalizedVersion = NormalizeVersion(pair.Key);
-            if (string.IsNullOrWhiteSpace(normalizedVersion) || string.IsNullOrWhiteSpace(pair.Value))
+            var rawKey = pair.Key?.Trim();
+            if (string.IsNullOrWhiteSpace(rawKey) || string.IsNullOrWhiteSpace(pair.Value))
             {
                 continue;
             }
@@ -349,7 +336,7 @@ public class HsdsComplianceService : IHsdsComplianceService
                 continue;
             }
 
-            destination[normalizedVersion] = schemaUrl;
+            destination[rawKey] = schemaUrl;
         }
     }
     private static Dictionary<string, JObject> GetOperationMap(JObject spec, bool includeOptionalOperations)

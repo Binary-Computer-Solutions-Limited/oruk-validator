@@ -44,8 +44,8 @@ public class OpenApiBootstrapServiceTests
 
         // Assert
         Assert.That(result.OpenApiSchemaUrl, Is.EqualTo("https://api.example.com/custom-openapi.json"));
-        Assert.That(result.ProfileVersion, Is.EqualTo("3.0"));
-        Assert.That(result.ProfileReason, Does.Contain("3.0"));
+        Assert.That(result.ProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
+        Assert.That(result.ProfileReason, Does.Contain("HSDS-UK-3.0"));
 
         _openApiDiscoveryMock.Verify(x => x.DiscoverOpenApiSpecAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
     }

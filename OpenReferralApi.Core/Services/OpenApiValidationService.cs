@@ -690,8 +690,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
 
         schemaUrl = configuredDefaultSchemaUrl;
-        profileVersion = ProfileVersionNormalizer.NormalizeVersionNumber(configuredDefaultKey)
-            ?? _hsdsComplianceService.ExtractClaimedProfileVersion(null, configuredDefaultSchemaUrl);
+        profileVersion = configuredDefaultKey;
 
         return true;
     }
@@ -823,13 +822,23 @@ public class OpenApiValidationService : IOpenApiValidationService
     private string? ResolveMetadataProfileIdentifier(string? profileReason, string? claimedProfileVersion, string? schemaUrl)
     {
         var explicitProfileFromReason = TryExtractProfileIdentifierFromProfileReason(profileReason);
-        var normalizedReasonVersion = ProfileVersionNormalizer.NormalizeVersionNumber(explicitProfileFromReason);
-        var reasonIsNumericVersionOnly = !string.IsNullOrWhiteSpace(explicitProfileFromReason)
-            && string.Equals(explicitProfileFromReason, normalizedReasonVersion, StringComparison.OrdinalIgnoreCase);
 
-        if (!string.IsNullOrWhiteSpace(explicitProfileFromReason) && !reasonIsNumericVersionOnly)
+        // Prefer exact match against configured profile keys
+        if (!string.IsNullOrWhiteSpace(explicitProfileFromReason))
         {
-            return explicitProfileFromReason;
+            // Exact key match
+            if (_specificationOptions.Urls.ContainsKey(explicitProfileFromReason))
+            {
+                return explicitProfileFromReason;
+            }
+
+            // Numeric major.minor fallback to find the configured key
+            var configuredFromVersion = TryResolveConfiguredProfileKeyFromVersion(
+                ProfileVersionNormalizer.ExtractMajorMinor(explicitProfileFromReason) ?? explicitProfileFromReason);
+            if (!string.IsNullOrWhiteSpace(configuredFromVersion))
+            {
+                return configuredFromVersion;
+            }
         }
 
         var configuredProfileFromSchemaUrl = TryResolveConfiguredProfileKeyFromSchemaUrl(schemaUrl);
@@ -838,20 +847,25 @@ public class OpenApiValidationService : IOpenApiValidationService
             return configuredProfileFromSchemaUrl;
         }
 
-        var versionToMap = normalizedReasonVersion
-            ?? ProfileVersionNormalizer.NormalizeVersionNumber(claimedProfileVersion);
-        if (!string.IsNullOrWhiteSpace(versionToMap))
+        if (!string.IsNullOrWhiteSpace(claimedProfileVersion))
         {
-            var configuredProfileFromVersion = TryResolveConfiguredProfileKeyFromVersion(versionToMap);
-            if (!string.IsNullOrWhiteSpace(configuredProfileFromVersion))
+            // Exact key match
+            if (_specificationOptions.Urls.ContainsKey(claimedProfileVersion))
             {
-                return configuredProfileFromVersion;
+                return claimedProfileVersion;
             }
 
-            return versionToMap;
+            var configuredFromVersion = TryResolveConfiguredProfileKeyFromVersion(
+                ProfileVersionNormalizer.ExtractMajorMinor(claimedProfileVersion) ?? claimedProfileVersion);
+            if (!string.IsNullOrWhiteSpace(configuredFromVersion))
+            {
+                return configuredFromVersion;
+            }
+
+            return claimedProfileVersion;
         }
 
-        return explicitProfileFromReason ?? claimedProfileVersion;
+        return explicitProfileFromReason;
     }
 
     private static string? TryExtractProfileIdentifierFromProfileReason(string? profileReason)
@@ -931,11 +945,10 @@ public class OpenApiValidationService : IOpenApiValidationService
 
         foreach (var tokenPath in candidateTokens)
         {
-            var tokenValue = openApiSpec.SelectToken(tokenPath)?.ToString();
-            var normalized = NormalizeVersionToken(tokenValue);
-            if (!string.IsNullOrWhiteSpace(normalized))
+            var tokenValue = openApiSpec.SelectToken(tokenPath)?.ToString()?.Trim();
+            if (!string.IsNullOrWhiteSpace(tokenValue))
             {
-                return (normalized, false);
+                return (tokenValue, false);
             }
         }
 
@@ -949,20 +962,14 @@ public class OpenApiValidationService : IOpenApiValidationService
             if (parts.Length >= 2)
             {
                 var majorMinor = $"{parts[0]}.{parts[1]}";
-                var normalized = NormalizeVersionToken(majorMinor);
-                if (!string.IsNullOrWhiteSpace(normalized))
+                if (!string.IsNullOrWhiteSpace(majorMinor))
                 {
-                    return (normalized, true);
+                    return (majorMinor, true);
                 }
             }
         }
 
         return (null, false);
-    }
-
-    private static string? NormalizeVersionToken(string? rawVersion)
-    {
-        return ProfileVersionNormalizer.NormalizeVersionNumber(rawVersion);
     }
     private static string NormalizeValidationErrorText(string? input)
     {
