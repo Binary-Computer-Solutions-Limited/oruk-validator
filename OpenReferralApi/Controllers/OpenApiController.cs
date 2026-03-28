@@ -8,7 +8,6 @@ namespace OpenReferralApi.Controllers;
 [Route("openreferral")]
 [Produces("application/json")]
 [EnableRateLimiting("fixed")]
-[ApiExplorerSettings(GroupName = "v1")]
 public class OpenReferralController : BaseOpenApiController
 {
     private readonly IOpenApiValidationService _openApiValidationService;
@@ -35,8 +34,8 @@ public class OpenReferralController : BaseOpenApiController
     [HttpPost("validate")]
     [ProducesResponseType(typeof(OpenApiValidationResult), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<OpenApiValidationResult>> ValidateAsync(
         [FromBody] OpenApiValidationRequest request,
         CancellationToken cancellationToken = default)

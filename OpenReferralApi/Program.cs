@@ -53,18 +53,25 @@ builder.Services.Configure<OpenTelemetryOptions>(
 builder.Services.Configure<OpenApiValidationServerOptions>(
     builder.Configuration.GetSection(OpenApiValidationServerOptions.SectionName));
 
+var swaggerDocName = builder.Configuration["Swagger:DocName"] ?? "v2";
+var swaggerVersion = builder.Configuration["Swagger:Version"] ?? swaggerDocName;
+var swaggerTitle = builder.Configuration["Swagger:Title"] ?? "Open Referral UK API";
+var swaggerDescription = builder.Configuration["Swagger:Description"]
+    ?? "API for validating and monitoring Open Referral UK data feeds";
+
 // Add services to the container.
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
     var xmlFilename = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
     options.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, xmlFilename));
+    options.UseInlineDefinitionsForEnums();
 
-    options.SwaggerDoc("v1", new()
+    options.SwaggerDoc(swaggerDocName, new()
     {
-        Title = "Open Referral UK API",
-        Version = "v1",
-        Description = "API for validating and monitoring Open Referral UK data feeds",
+        Title = swaggerTitle,
+        Version = swaggerVersion,
+        Description = swaggerDescription,
         Contact = new()
         {
             Name = "Open Referral UK",
@@ -299,7 +306,7 @@ app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Open Referral UK API v1");
+    c.SwaggerEndpoint($"/swagger/{swaggerDocName}/swagger.json", $"{swaggerTitle} {swaggerVersion}");
     c.RoutePrefix = string.Empty;
     c.DisplayRequestDuration();
 });

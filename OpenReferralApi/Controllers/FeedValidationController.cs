@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using OpenReferralApi.Core.Services;
+using OpenReferralApi.Models;
 
 namespace OpenReferralApi.Controllers;
 
@@ -29,6 +30,8 @@ public class FeedValidationController : ControllerBase
   /// <returns>List of all feeds</returns>
   [HttpGet("feeds")]
   [ProducesResponseType(typeof(List<ServiceFeed>), StatusCodes.Status200OK)]
+  [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
+  [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
   public async Task<ActionResult<List<ServiceFeed>>> GetAllFeeds(CancellationToken cancellationToken)
   {
     var feeds = await _feedValidationService.GetAllFeedsAsync(cancellationToken);
@@ -41,6 +44,8 @@ public class FeedValidationController : ControllerBase
   /// <returns>Validation results for all feeds</returns>
   [HttpPost("validate-all")]
   [ProducesResponseType(typeof(FeedValidationSummary), StatusCodes.Status200OK)]
+  [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
+  [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
   public async Task<ActionResult<FeedValidationSummary>> ValidateAllFeeds(CancellationToken cancellationToken)
   {
     _logger.LogInformation("Manual validation triggered for all feeds");
@@ -127,7 +132,9 @@ public class FeedValidationController : ControllerBase
   /// <returns>Validation result for the specified feed</returns>
   [HttpPost("validate/{feedId}")]
   [ProducesResponseType(typeof(FeedValidationResult), StatusCodes.Status200OK)]
-  [ProducesResponseType(StatusCodes.Status404NotFound)]
+  [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+  [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
+  [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
   public async Task<ActionResult<FeedValidationResult>> ValidateFeed(
       string feedId,
       CancellationToken cancellationToken)
@@ -137,7 +144,11 @@ public class FeedValidationController : ControllerBase
 
     if (feed == null)
     {
-      return NotFound(new { error = "Feed not found", feedId });
+      return NotFound(new ApiErrorResponse
+      {
+        Error = "Feed not found",
+        FeedId = feedId
+      });
     }
 
     var safeFeedId = feedId?.Replace("\r", string.Empty).Replace("\n", string.Empty);

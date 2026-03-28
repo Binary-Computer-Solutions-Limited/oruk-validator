@@ -4,11 +4,34 @@ namespace OpenReferralApi.Core.Models.Endpoints;
 
 public enum EndpointTestStatus
 {
+    /// <summary>
+    /// Endpoint was discovered but not tested yet.
+    /// </summary>
     NotTested,
+
+    /// <summary>
+    /// Endpoint was intentionally skipped by configuration or runtime conditions.
+    /// </summary>
     Skipped,
+
+    /// <summary>
+    /// Endpoint test succeeded and response passed validation.
+    /// </summary>
     PassedValidation,
+
+    /// <summary>
+    /// Endpoint test succeeded with non-blocking validation warnings.
+    /// </summary>
     PassedWithWarnings,
+
+    /// <summary>
+    /// Endpoint test completed but response failed validation.
+    /// </summary>
     FailedValidation,
+
+    /// <summary>
+    /// Endpoint test failed due to an unexpected execution error.
+    /// </summary>
     Error
 }
 
