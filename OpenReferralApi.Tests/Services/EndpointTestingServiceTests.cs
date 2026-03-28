@@ -170,6 +170,40 @@ public class EndpointTestingServiceTests
             Has.Some.Matches<ValidationError>(e => e.ErrorCode == "REQUIRED_ENDPOINT_FAILED"));
     }
 
+      [Test]
+      public async Task TestEndpointsAsync_ResponseSchemaWithComponentsRef_WrapsSchemaWithComponentsContext()
+      {
+        ValidationRequest? capturedValidationRequest = null;
+
+        _jsonValidatorServiceMock
+          .Setup(x => x.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
+          .Callback<ValidationRequest, CancellationToken>((request, _) => capturedValidationRequest = request)
+          .ReturnsAsync(new ValidationResult
+          {
+            IsValid = true,
+            Errors = new List<ValidationError>(),
+            SchemaVersion = "test",
+            Duration = TimeSpan.Zero
+          });
+
+        var results = await _service.TestEndpointsAsync(
+          CreateSpecWithComponentRefResponseSchema(),
+          "https://api.example.com",
+          new OpenApiValidationOptions(),
+          null,
+          null,
+          CancellationToken.None);
+
+        Assert.That(results, Has.Count.EqualTo(1));
+        Assert.That(capturedValidationRequest, Is.Not.Null);
+        Assert.That(capturedValidationRequest!.Schema, Is.TypeOf<JObject>());
+
+        var schema = (JObject)capturedValidationRequest.Schema!;
+        Assert.That(schema["components"], Is.TypeOf<JObject>());
+        Assert.That(schema["x-validation-schema"], Is.Not.Null);
+        Assert.That(schema["$ref"]?.ToString(), Is.EqualTo("#/x-validation-schema"));
+      }
+
     [Test]
     public async Task TestEndpointsAsync_PaginatedEndpointEmptyFeed_ReturnsWarning()
     {
@@ -644,6 +678,51 @@ public class EndpointTestingServiceTests
                   "200": {
                     "description": "ok"
                   }
+                }
+              }
+            }
+          }
+        }
+        """);
+    }
+
+    private static JObject CreateSpecWithComponentRefResponseSchema()
+    {
+        return JObject.Parse("""
+        {
+          "openapi": "3.0.0",
+          "info": { "title": "Test API", "version": "1.0.0" },
+          "paths": {
+            "/services": {
+              "get": {
+                "responses": {
+                  "200": {
+                    "description": "ok",
+                    "content": {
+                      "application/json": {
+                        "schema": {
+                          "$ref": "#/components/schemas/Service"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "components": {
+            "schemas": {
+              "Service": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" },
+                  "contact": { "$ref": "#/components/schemas/Contact" }
+                }
+              },
+              "Contact": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" }
                 }
               }
             }

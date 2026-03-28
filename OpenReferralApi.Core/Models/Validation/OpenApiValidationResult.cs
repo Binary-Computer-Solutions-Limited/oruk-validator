@@ -17,6 +17,14 @@ public class OpenApiValidationResult
     public bool IsValid { get; set; }
 
     /// <summary>
+    /// Additional metadata about the validation process and environment
+    /// Includes timestamps, API information, testing configuration, and version details
+    /// Helpful for audit trails, debugging, and result correlation
+    /// </summary>
+    [JsonProperty("metadata")]
+    public CommonValidationMetadata? Metadata { get; set; }
+
+    /// <summary>
     /// Detailed results of OpenAPI specification validation and analysis
     /// Includes schema compliance, security analysis, quality metrics, and recommendations
     /// Null if specification validation was disabled in options
@@ -54,12 +62,4 @@ public class OpenApiValidationResult
     /// </summary>
     [JsonProperty("notifications")]
     public List<string> Notifications { get; set; } = new();
-
-    /// <summary>
-    /// Additional metadata about the validation process and environment
-    /// Includes timestamps, API information, testing configuration, and version details
-    /// Helpful for audit trails, debugging, and result correlation
-    /// </summary>
-    [JsonProperty("metadata")]
-    public CommonValidationMetadata? Metadata { get; set; }
 }

@@ -733,15 +733,15 @@ public class EndpointTestingService : IEndpointTestingService
                                 var schema = jsonContentObject["schema"];
                                 if (schema != null)
                                 {
-                                    var schemaJson = schema.ToString();
+                                    var schemaForValidation = BuildValidationSchemaWithComponentsContext(schema, openApiDocument);
+                                    var schemaJson = schemaForValidation.ToString();
                                     _logger.LogDebug("validating against schema (length: {Length} chars)", schemaJson.Length);
-                                    // Schema is extracted from the already-resolved OpenAPI document
-                                    // All $ref references were resolved when fetching the OpenAPI spec
-                                    // JsonValidatorService will create a JSchema from this resolved schema
+                                    // Build schema in full OpenAPI context so internal refs like
+                                    // #/components/schemas/* can be pre-resolved before JSchema creation.
                                     var validationRequest = new ValidationRequest
                                     {
                                         JsonData = JsonConvert.DeserializeObject(testResult.ResponseBody ?? "{}"),
-                                        Schema = schema,
+                                        Schema = schemaForValidation,
                                         Options = new ValidationOptions
                                         {
                                             ReportAdditionalFields = (options?.ReportAdditionalFields ?? false)
@@ -765,6 +765,23 @@ public class EndpointTestingService : IEndpointTestingService
         {
             _logger.LogWarning(ex, "Could not validate response for {Url}", SchemaResolverService.SanitizeUrlForLogging(testResult.RequestUrl ?? string.Empty));
         }
+    }
+
+    private static JToken BuildValidationSchemaWithComponentsContext(JToken schema, JObject openApiDocument)
+    {
+        if (openApiDocument["components"] is not JObject components)
+        {
+            return schema.DeepClone();
+        }
+
+        var wrappedSchema = new JObject
+        {
+            ["components"] = components.DeepClone(),
+            ["x-validation-schema"] = schema.DeepClone(),
+            ["$ref"] = "#/x-validation-schema"
+        };
+
+        return wrappedSchema;
     }
 
     private static void NormalizeValidationResultErrors(ValidationResult? validationResult)
