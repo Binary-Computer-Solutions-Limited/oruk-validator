@@ -1,6 +1,7 @@
 using System.Net;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using HealthChecks.UI.Client;
@@ -331,6 +332,185 @@ app.Logger.LogInformation(
     "OpenApiValidation settings at startup: {@OpenApiValidationSettings}",
     openApiValidationSettings);
 
+const string validationRequestExample = """
+{
+    "openApiSchema": {
+        "url": "https://example.org/openapi.json"
+    },
+    "baseUrl": "https://api.example.org",
+    "options": {
+        "includeResponseBody": false,
+        "includeTestResults": true
+    }
+}
+""";
+
+const string openReferralValidationResponseExample = """
+{
+    "isValid": true,
+    "summary": {
+        "totalEndpoints": 42,
+        "successfulTests": 42,
+        "failedTests": 0,
+        "skippedTests": 0
+    },
+    "notifications": [],
+    "metadata": {
+        "profile": "HSDS-UK-3.0"
+    }
+}
+""";
+
+const string openReferralUkValidationResponseExample = """
+{
+    "service": {
+        "url": "https://api.example.org",
+        "isValid": true,
+        "profile": "HSDS-UK-3.0",
+        "profileReason": "Matched configured schema URL"
+    },
+    "testSuites": [],
+    "specificationValidation": null,
+    "notifications": []
+}
+""";
+
+const string validationProblemResponseExample = """
+{
+    "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+    "title": "One or more validation errors occurred.",
+    "status": 400,
+    "errors": {
+        "request": [
+            "OpenAPI schema URL must be provided or discoverable from baseUrl"
+        ]
+    }
+}
+""";
+
+const string problemDetailsRateLimitExample = """
+{
+    "type": "https://tools.ietf.org/html/rfc6585#section-4",
+    "title": "Too Many Requests",
+    "status": 429
+}
+""";
+
+const string problemDetailsServerErrorExample = """
+{
+    "type": "https://tools.ietf.org/html/rfc9110#section-15.6.1",
+    "title": "An error occurred while processing your request.",
+    "status": 500
+}
+""";
+
+void ApplyValidationOperationExamples(OpenApiDocument document)
+{
+    OpenApiOperation? GetPostOperation(IOpenApiPathItem? pathItem)
+    {
+        if (pathItem?.Operations == null)
+        {
+            return null;
+        }
+
+        return pathItem.Operations.TryGetValue(HttpMethod.Post, out var operation) ? operation : null;
+    }
+
+        if (document.Paths.TryGetValue("/openreferral/validate", out var openReferralPath))
+        {
+                ApplyExamplesToOperation(
+            GetPostOperation(openReferralPath),
+                        validationRequestExample,
+                        new Dictionary<string, string>
+                        {
+                                ["200"] = openReferralValidationResponseExample,
+                                ["400"] = validationProblemResponseExample,
+                                ["429"] = problemDetailsRateLimitExample,
+                                ["500"] = problemDetailsServerErrorExample
+                        });
+        }
+
+        if (document.Paths.TryGetValue("/openreferraluk/validate", out var openReferralUkPath))
+        {
+                ApplyExamplesToOperation(
+                GetPostOperation(openReferralUkPath),
+                        validationRequestExample,
+                        new Dictionary<string, string>
+                        {
+                                ["200"] = openReferralUkValidationResponseExample,
+                                ["400"] = validationProblemResponseExample,
+                                ["429"] = problemDetailsRateLimitExample,
+                                ["500"] = problemDetailsServerErrorExample
+                        });
+        }
+
+        if (document.Paths.TryGetValue("/api/openapi/validate", out var legacyPath))
+        {
+                ApplyExamplesToOperation(
+                GetPostOperation(legacyPath),
+                        validationRequestExample,
+                        new Dictionary<string, string>
+                        {
+                                ["200"] = openReferralUkValidationResponseExample,
+                                ["400"] = validationProblemResponseExample,
+                                ["429"] = problemDetailsRateLimitExample,
+                                ["500"] = problemDetailsServerErrorExample
+                        });
+        }
+}
+
+void ApplyExamplesToOperation(
+        OpenApiOperation? operation,
+        string requestExample,
+        IReadOnlyDictionary<string, string> responseExamples)
+{
+        if (operation == null)
+        {
+                return;
+        }
+
+    if (operation.Responses == null)
+    {
+        return;
+    }
+
+        var requestExampleNode = JsonNode.Parse(requestExample);
+        if (requestExampleNode != null)
+        {
+                if (operation.RequestBody?.Content != null)
+                {
+                        foreach (var mediaType in operation.RequestBody.Content.Values)
+                        {
+                                mediaType.Example = requestExampleNode;
+                        }
+                }
+        }
+
+        foreach (var (statusCode, responseExample) in responseExamples)
+        {
+            if (!operation.Responses.TryGetValue(statusCode, out var response))
+            {
+                continue;
+            }
+
+            if (response?.Content == null)
+                {
+                        continue;
+                }
+
+                var responseExampleNode = JsonNode.Parse(responseExample);
+                if (responseExampleNode == null)
+                {
+                        continue;
+                }
+
+                foreach (var mediaType in response.Content.Values)
+                {
+                        mediaType.Example = responseExampleNode;
+                }
+        }
+}
+
 // Configure the HTTP request pipeline
 app.UseExceptionHandler();
 
@@ -341,6 +521,7 @@ app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseSwagger(options =>
 {
     options.OpenApiVersion = swaggerOpenApiVersion;
+    options.PreSerializeFilters.Add((document, _) => ApplyValidationOperationExamples(document));
 });
 app.UseSwaggerUI(c =>
 {
