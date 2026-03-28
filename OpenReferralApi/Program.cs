@@ -7,14 +7,11 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using OpenReferralApi.Core.Services;
+using OpenReferralApi.Extensions;
 using OpenReferralApi.HealthChecks;
 using OpenReferralApi.Middleware;
 using OpenReferralApi.Services;
 using OpenReferralApi.Swagger;
-using OpenReferralApi.Telemetry;
-using OpenTelemetry.Metrics;
-using OpenTelemetry.Resources;
-using OpenTelemetry.Trace;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -186,7 +183,7 @@ builder.Services.AddScoped<IProfileDiscoveryService, ProfileDiscoveryService>();
 builder.Services.AddScoped<IOpenApiBootstrapService, OpenApiBootstrapService>();
 builder.Services.AddScoped<IOpenReferralUKValidationResponseMapper, OpenReferralUKValidationResponseMapper>();
 
-// Configure Memory Cache with size limit from cache options
+// Memory Cache configuration
 builder.Services.AddMemoryCache(options =>
 {
     var cacheOpts = builder.Configuration.GetSection(CacheOptions.SectionName).Get<CacheOptions>() ?? new CacheOptions();
@@ -198,69 +195,7 @@ builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
 // OpenTelemetry Configuration
-var otelOptions = builder.Configuration.GetSection(OpenTelemetryOptions.SectionName).Get<OpenTelemetryOptions>() ?? new OpenTelemetryOptions();
-if (otelOptions.Enabled)
-{
-    var resourceBuilder = ResourceBuilder.CreateDefault()
-        .AddService(
-            serviceName: Instrumentation.ServiceName,
-            serviceVersion: Instrumentation.ServiceVersion)
-        .AddAttributes(new Dictionary<string, object>
-        {
-            ["deployment.environment"] = builder.Environment.EnvironmentName
-        });
-
-    builder.Services.AddOpenTelemetry()
-        .WithMetrics(metrics =>
-        {
-            metrics
-                .SetResourceBuilder(resourceBuilder)
-                .AddAspNetCoreInstrumentation()
-                .AddHttpClientInstrumentation()
-                .AddMeter(Instrumentation.ServiceName);
-
-            if (!string.IsNullOrEmpty(otelOptions.OtlpEndpoint))
-            {
-                metrics.AddOtlpExporter(options =>
-                {
-                    options.Endpoint = new Uri(otelOptions.OtlpEndpoint);
-                });
-            }
-
-            if (builder.Environment.IsDevelopment())
-            {
-                metrics.AddConsoleExporter();
-            }
-        })
-        .WithTracing(tracing =>
-        {
-            tracing
-                .SetResourceBuilder(resourceBuilder)
-                .AddAspNetCoreInstrumentation(options =>
-                {
-                    options.RecordException = true;
-                    options.Filter = httpContext =>
-                    {
-                        return !httpContext.Request.Path.StartsWithSegments("/health-check");
-                    };
-                })
-                .AddHttpClientInstrumentation()
-                .AddSource(Instrumentation.ActivitySource.Name);
-
-            if (!string.IsNullOrEmpty(otelOptions.OtlpEndpoint))
-            {
-                tracing.AddOtlpExporter(options =>
-                {
-                    options.Endpoint = new Uri(otelOptions.OtlpEndpoint);
-                });
-            }
-
-            if (builder.Environment.IsDevelopment())
-            {
-                tracing.AddConsoleExporter();
-            }
-        });
-}
+builder.ConfigureOpenTelemetry();
 
 var app = builder.Build();
 

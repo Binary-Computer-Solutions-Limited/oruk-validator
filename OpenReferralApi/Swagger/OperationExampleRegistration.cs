@@ -1,5 +1,3 @@
-using System.Net;
-
 namespace OpenReferralApi.Swagger;
 
 internal sealed record OperationExampleRegistration(

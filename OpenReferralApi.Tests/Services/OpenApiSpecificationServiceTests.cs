@@ -2,7 +2,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using Newtonsoft.Json.Linq;
-using OpenReferralApi.Core.Models.Schema;
 using OpenReferralApi.Core.Services;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
 

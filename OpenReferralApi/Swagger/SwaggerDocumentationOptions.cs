@@ -1,5 +1,4 @@
 using Microsoft.OpenApi;
-using Microsoft.Extensions.Configuration;
 
 namespace OpenReferralApi.Swagger;
 

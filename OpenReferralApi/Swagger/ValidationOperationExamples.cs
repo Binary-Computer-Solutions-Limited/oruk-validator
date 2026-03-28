@@ -1,5 +1,3 @@
-using System.Net;
-
 namespace OpenReferralApi.Swagger;
 
 internal static class ValidationOperationExamples
