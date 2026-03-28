@@ -7,6 +7,7 @@ using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.OpenApi;
 using OpenReferralApi.Core.Services;
 using OpenReferralApi.HealthChecks;
 using OpenReferralApi.Middleware;
@@ -58,6 +59,14 @@ var swaggerVersion = builder.Configuration["Swagger:Version"] ?? swaggerDocName;
 var swaggerTitle = builder.Configuration["Swagger:Title"] ?? "Open Referral UK API";
 var swaggerDescription = builder.Configuration["Swagger:Description"]
     ?? "API for validating and monitoring Open Referral UK data feeds";
+var swaggerOpenApiVersionSetting = builder.Configuration["Swagger:OpenApiSpecVersion"];
+
+var swaggerOpenApiVersion = Enum.TryParse<OpenApiSpecVersion>(
+    swaggerOpenApiVersionSetting,
+    ignoreCase: true,
+    out var configuredOpenApiVersion)
+    ? configuredOpenApiVersion
+    : OpenApiSpecVersion.OpenApi2_0;
 
 // Add services to the container.
 builder.Services.AddEndpointsApiExplorer();
@@ -66,6 +75,32 @@ builder.Services.AddSwaggerGen(options =>
     var xmlFilename = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
     options.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, xmlFilename));
     options.UseInlineDefinitionsForEnums();
+    options.DescribeAllParametersInCamelCase();
+
+    options.CustomOperationIds(apiDescription =>
+    {
+        var controller = apiDescription.ActionDescriptor.RouteValues["controller"];
+        var action = apiDescription.ActionDescriptor.RouteValues["action"];
+        var method = apiDescription.HttpMethod?.ToUpperInvariant();
+        var relativePath = apiDescription.RelativePath?.Replace("/", "_")?.Replace("{", string.Empty).Replace("}", string.Empty);
+        return $"{controller}_{action}_{method}_{relativePath}";
+    });
+
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        Description = "Optional bearer token support for deployments that secure this API."
+    });
+
+    options.AddSecurityDefinition("ApiKey", new OpenApiSecurityScheme
+    {
+        Type = SecuritySchemeType.ApiKey,
+        Name = "X-API-Key",
+        In = ParameterLocation.Header,
+        Description = "Optional API key support for deployments that secure this API."
+    });
 
     options.SwaggerDoc(swaggerDocName, new()
     {
@@ -303,7 +338,10 @@ app.UseExceptionHandler();
 app.UseMiddleware<CorrelationIdMiddleware>();
 
 // Enable Swagger in all environments
-app.UseSwagger();
+app.UseSwagger(options =>
+{
+    options.OpenApiVersion = swaggerOpenApiVersion;
+});
 app.UseSwaggerUI(c =>
 {
     c.SwaggerEndpoint($"/swagger/{swaggerDocName}/swagger.json", $"{swaggerTitle} {swaggerVersion}");

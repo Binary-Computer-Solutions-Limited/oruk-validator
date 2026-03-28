@@ -14,6 +14,7 @@ public class OpenApiValidationRequest
     /// Used to fetch and authenticate access to the OpenAPI specification
     /// If null, the schema URL will be discovered from the baseUrl
     /// </summary>
+    /// <example>{"url":"https://example.org/openapi.json"}</example>
     [JsonProperty("openApiSchema")]
     public OpenApiSchema? OpenApiSchema { get; set; }
 
@@ -22,6 +23,7 @@ public class OpenApiValidationRequest
     /// Required if endpoint testing is enabled in options
     /// Should include protocol (http/https) and may include port (e.g., "https://api.example.com:8080")
     /// </summary>
+    /// <example>https://api.example.org</example>
     [JsonProperty("baseUrl")]
     public string? BaseUrl { get; set; }
 
@@ -30,6 +32,7 @@ public class OpenApiValidationRequest
     /// Supports API keys, bearer tokens, basic auth, and custom headers
     /// Required if endpoint testing is enabled and the API requires authentication for access
     /// </summary>
+    /// <example>{"method":"BearerToken","token":"sample-token"}</example>
     [JsonProperty("dataSourceAuth")]
     public DataSourceAuthentication? DataSourceAuth { get; set; }
 
@@ -38,6 +41,7 @@ public class OpenApiValidationRequest
     /// Determines what types of validation and testing to perform
     /// If null, default options will be used (specification validation only)
     /// </summary>
+    /// <example>{"includeResponseBody":false,"includeTestResults":true}</example>
     [JsonProperty("options")]
     public OpenApiValidationOptions? Options { get; set; }
 
