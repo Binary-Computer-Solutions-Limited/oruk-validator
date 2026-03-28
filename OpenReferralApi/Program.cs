@@ -404,111 +404,205 @@ const string problemDetailsServerErrorExample = """
 }
 """;
 
+const string feedListResponseExample = """
+[
+    {
+        "id": "67f6fa9f5cb2fc547f5e2b10",
+        "name": "Example Service Feed",
+        "url": "https://api.example.org",
+        "isUp": true,
+        "isValid": true,
+        "lastChecked": "2026-03-28T20:00:00Z"
+    }
+]
+""";
+
+const string feedValidateAllResponseExample = """
+{
+    "totalFeeds": 1,
+    "upFeeds": 1,
+    "validFeeds": 1,
+    "downFeeds": 0,
+    "invalidFeeds": 0,
+    "averageResponseTimeMs": 123.4,
+    "results": [
+        {
+            "feedId": "67f6fa9f5cb2fc547f5e2b10",
+            "feedName": "Example Service Feed",
+            "feedUrl": "https://api.example.org",
+            "isUp": true,
+            "isValid": true,
+            "responseTimeMs": 123.4,
+            "validationErrorCount": 0
+        }
+    ]
+}
+""";
+
+const string feedValidateSingleResponseExample = """
+{
+    "feedId": "67f6fa9f5cb2fc547f5e2b10",
+    "feedName": "Example Service Feed",
+    "feedUrl": "https://api.example.org",
+    "isUp": true,
+    "isValid": true,
+    "responseTimeMs": 123.4,
+    "validationErrorCount": 0
+}
+""";
+
+const string feedNotFoundResponseExample = """
+{
+    "error": "Feed not found",
+    "feedId": "67f6fa9f5cb2fc547f5e2b10"
+}
+""";
+
 void ApplyValidationOperationExamples(OpenApiDocument document)
 {
-    OpenApiOperation? GetPostOperation(IOpenApiPathItem? pathItem)
+    IOpenApiPathItem? GetPathItem(string path)
+    {
+        if (document.Paths.TryGetValue(path, out var exactPathItem))
+        {
+            return exactPathItem;
+        }
+
+        var match = document.Paths.FirstOrDefault(kvp =>
+            string.Equals(kvp.Key, path, StringComparison.OrdinalIgnoreCase));
+
+        return string.IsNullOrEmpty(match.Key) ? null : match.Value;
+    }
+
+    OpenApiOperation? GetOperation(IOpenApiPathItem? pathItem, HttpMethod method)
     {
         if (pathItem?.Operations == null)
         {
             return null;
         }
 
-        return pathItem.Operations.TryGetValue(HttpMethod.Post, out var operation) ? operation : null;
+        return pathItem.Operations.TryGetValue(method, out var operation) ? operation : null;
     }
 
-        if (document.Paths.TryGetValue("/openreferral/validate", out var openReferralPath))
+    ApplyExamplesToOperation(
+        GetOperation(GetPathItem("/openreferral/validate"), HttpMethod.Post),
+        validationRequestExample,
+        new Dictionary<string, string>
         {
-                ApplyExamplesToOperation(
-            GetPostOperation(openReferralPath),
-                        validationRequestExample,
-                        new Dictionary<string, string>
-                        {
-                                ["200"] = openReferralValidationResponseExample,
-                                ["400"] = validationProblemResponseExample,
-                                ["429"] = problemDetailsRateLimitExample,
-                                ["500"] = problemDetailsServerErrorExample
-                        });
-        }
+            ["200"] = openReferralValidationResponseExample,
+            ["400"] = validationProblemResponseExample,
+            ["429"] = problemDetailsRateLimitExample,
+            ["500"] = problemDetailsServerErrorExample
+        });
 
-        if (document.Paths.TryGetValue("/openreferraluk/validate", out var openReferralUkPath))
+    ApplyExamplesToOperation(
+        GetOperation(GetPathItem("/openreferraluk/validate"), HttpMethod.Post),
+        validationRequestExample,
+        new Dictionary<string, string>
         {
-                ApplyExamplesToOperation(
-                GetPostOperation(openReferralUkPath),
-                        validationRequestExample,
-                        new Dictionary<string, string>
-                        {
-                                ["200"] = openReferralUkValidationResponseExample,
-                                ["400"] = validationProblemResponseExample,
-                                ["429"] = problemDetailsRateLimitExample,
-                                ["500"] = problemDetailsServerErrorExample
-                        });
-        }
+            ["200"] = openReferralUkValidationResponseExample,
+            ["400"] = validationProblemResponseExample,
+            ["429"] = problemDetailsRateLimitExample,
+            ["500"] = problemDetailsServerErrorExample
+        });
 
-        if (document.Paths.TryGetValue("/api/openapi/validate", out var legacyPath))
+    ApplyExamplesToOperation(
+        GetOperation(GetPathItem("/api/openapi/validate"), HttpMethod.Post),
+        validationRequestExample,
+        new Dictionary<string, string>
         {
-                ApplyExamplesToOperation(
-                GetPostOperation(legacyPath),
-                        validationRequestExample,
-                        new Dictionary<string, string>
-                        {
-                                ["200"] = openReferralUkValidationResponseExample,
-                                ["400"] = validationProblemResponseExample,
-                                ["429"] = problemDetailsRateLimitExample,
-                                ["500"] = problemDetailsServerErrorExample
-                        });
-        }
+            ["200"] = openReferralUkValidationResponseExample,
+            ["400"] = validationProblemResponseExample,
+            ["429"] = problemDetailsRateLimitExample,
+            ["500"] = problemDetailsServerErrorExample
+        });
+
+    ApplyExamplesToOperation(
+        GetOperation(GetPathItem("/api/feedvalidation/feeds"), HttpMethod.Get),
+        requestExample: null,
+        new Dictionary<string, string>
+        {
+            ["200"] = feedListResponseExample,
+            ["429"] = problemDetailsRateLimitExample,
+            ["500"] = problemDetailsServerErrorExample
+        });
+
+    ApplyExamplesToOperation(
+        GetOperation(GetPathItem("/api/feedvalidation/validate-all"), HttpMethod.Post),
+        requestExample: null,
+        new Dictionary<string, string>
+        {
+            ["200"] = feedValidateAllResponseExample,
+            ["429"] = problemDetailsRateLimitExample,
+            ["500"] = problemDetailsServerErrorExample
+        });
+
+    ApplyExamplesToOperation(
+        GetOperation(GetPathItem("/api/feedvalidation/validate/{feedId}"), HttpMethod.Post),
+        requestExample: null,
+        new Dictionary<string, string>
+        {
+            ["200"] = feedValidateSingleResponseExample,
+            ["404"] = feedNotFoundResponseExample,
+            ["429"] = problemDetailsRateLimitExample,
+            ["500"] = problemDetailsServerErrorExample
+        });
 }
 
 void ApplyExamplesToOperation(
-        OpenApiOperation? operation,
-        string requestExample,
-        IReadOnlyDictionary<string, string> responseExamples)
+    OpenApiOperation? operation,
+    string? requestExample,
+    IReadOnlyDictionary<string, string> responseExamples)
 {
-        if (operation == null)
-        {
-                return;
-        }
+    if (operation == null)
+    {
+        return;
+    }
 
     if (operation.Responses == null)
     {
         return;
     }
 
-        var requestExampleNode = JsonNode.Parse(requestExample);
+    JsonNode? requestExampleNode = null;
+    if (!string.IsNullOrWhiteSpace(requestExample))
+    {
+        requestExampleNode = JsonNode.Parse(requestExample);
+    }
+
         if (requestExampleNode != null)
         {
-                if (operation.RequestBody?.Content != null)
-                {
-                        foreach (var mediaType in operation.RequestBody.Content.Values)
-                        {
-                                mediaType.Example = requestExampleNode;
-                        }
-                }
-        }
-
-        foreach (var (statusCode, responseExample) in responseExamples)
+        if (operation.RequestBody?.Content != null)
         {
-            if (!operation.Responses.TryGetValue(statusCode, out var response))
+            foreach (var mediaType in operation.RequestBody.Content.Values)
             {
-                continue;
+                mediaType.Example = requestExampleNode;
             }
-
-            if (response?.Content == null)
-                {
-                        continue;
-                }
-
-                var responseExampleNode = JsonNode.Parse(responseExample);
-                if (responseExampleNode == null)
-                {
-                        continue;
-                }
-
-                foreach (var mediaType in response.Content.Values)
-                {
-                        mediaType.Example = responseExampleNode;
-                }
         }
+        }
+
+    foreach (var (statusCode, responseExample) in responseExamples)
+    {
+        if (!operation.Responses.TryGetValue(statusCode, out var response))
+        {
+            continue;
+        }
+
+        if (response?.Content == null)
+        {
+            continue;
+        }
+
+        var responseExampleNode = JsonNode.Parse(responseExample);
+        if (responseExampleNode == null)
+        {
+            continue;
+        }
+
+        foreach (var mediaType in response.Content.Values)
+        {
+            mediaType.Example = responseExampleNode;
+        }
+    }
 }
 
 // Configure the HTTP request pipeline
