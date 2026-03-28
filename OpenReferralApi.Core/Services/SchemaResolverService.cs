@@ -67,7 +67,6 @@ public class SchemaResolverService : ISchemaResolverService
   private readonly CacheOptions _cacheOptions;
   private readonly RemoteSchemaLoader _remoteSchemaLoader;
   private readonly ReferenceResolver _referenceResolver;
-  private readonly string? _localSpecificationBaseUrl;
 
   /// <summary>
   /// Initializes a new instance of the SchemaResolver for remote schema resolution.
@@ -76,27 +75,24 @@ public class SchemaResolverService : ISchemaResolverService
   /// <param name="logger">Logger instance.</param>
   /// <param name="memoryCache">Memory cache for persistent schema caching.</param>
   /// <param name="cacheOptions">Cache configuration options.</param>
-  /// <param name="specificationOptions">Specification configuration options for URL rewriting.</param>
+  /// <param name="schemaResolutionOptions">Schema resolution configuration options for URL normalization.</param>
   public SchemaResolverService(
     IHttpClientFactory httpClientFactory,
     ILogger<SchemaResolverService> logger,
     IMemoryCache memoryCache,
     IOptions<CacheOptions> cacheOptions,
-    IOptions<SpecificationOptions>? specificationOptions = null,
     IOptions<SchemaResolutionOptions>? schemaResolutionOptions = null)
   {
     _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
     _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     _memoryCache = memoryCache ?? throw new ArgumentNullException(nameof(memoryCache));
     _cacheOptions = cacheOptions?.Value ?? throw new ArgumentNullException(nameof(cacheOptions));
-    _localSpecificationBaseUrl = specificationOptions?.Value?.BaseUrl;
     var httpClient = httpClientFactory.CreateClient();
     _remoteSchemaLoader = new RemoteSchemaLoader(
       httpClient,
       logger,
       memoryCache,
       cacheOptions,
-      _localSpecificationBaseUrl,
       schemaResolutionOptions?.Value?.KnownJsonSchemaUrls,
       schemaResolutionOptions?.Value?.WarnOnUnknownJsonSchemaDraft ?? true);
     _referenceResolver = new ReferenceResolver(logger, _remoteSchemaLoader);

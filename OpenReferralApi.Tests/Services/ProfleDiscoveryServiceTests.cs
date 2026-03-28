@@ -29,14 +29,15 @@ public class ProfleDiscoveryServiceTests
             .Setup(f => f.CreateClient("OpenApiValidationService"))
             .Returns(_httpClient);
 
-        _specificationOptionsMock
-            .Setup(o => o.Value)
-            .Returns(new SpecificationOptions
+        ConfigureSpecificationOptions(new SpecificationOptions
+        {
+            Urls = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                BaseUrl = "https://openreferraluk.org/specifications/"
-            });
-
-        _service = new ProfileDiscoveryService(_httpClientFactoryMock.Object, _loggerMock.Object, _specificationOptionsMock.Object);
+                ["HSDS-UK-1.0"] = "https://cached.example.com/1.0/openapi.json",
+                ["HSDS-UK-3.0"] = "https://cached.example.com/3.0/openapi.json",
+                ["HSDS-UK-3.1"] = "https://cached.example.com/3.1/openapi.json"
+            }
+        });
     }
 
     [TearDown]
@@ -152,6 +153,31 @@ public class ProfleDiscoveryServiceTests
 
         // Assert
         Assert.That(url, Does.Contain("3.0/openapi.json"));
+        Assert.That(reason, Does.Contain("Standard version [user: 3.0] read from '/' endpoint"));
+    }
+
+    [Test]
+    public async Task DiscoverOpenApiUrlAsync_WithConfiguredUrlsAndNoBaseUrl_ReturnsConfiguredSpec()
+    {
+        // Arrange
+        ConfigureSpecificationOptions(new SpecificationOptions
+        {
+            Urls = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["HSDS-UK-3.0"] = "https://cached.example.com/3.0/openapi.json"
+            }
+        });
+
+        var baseUrl = "https://api.example.com";
+        var responseContent = @"{""version"": ""3.0""}";
+
+        SetupHttpResponse(HttpStatusCode.OK, responseContent);
+
+        // Act
+        var (url, reason) = await _service.DiscoverOpenApiUrlAsync(baseUrl);
+
+        // Assert
+        Assert.That(url, Is.EqualTo("https://cached.example.com/3.0/openapi.json"));
         Assert.That(reason, Does.Contain("Standard version [user: 3.0] read from '/' endpoint"));
     }
 
@@ -452,5 +478,14 @@ public class ProfleDiscoveryServiceTests
                 ItExpr.IsAny<HttpRequestMessage>(),
                 ItExpr.IsAny<CancellationToken>())
             .ReturnsAsync(mockResponse);
+    }
+
+    private void ConfigureSpecificationOptions(SpecificationOptions options)
+    {
+        _specificationOptionsMock
+            .Setup(o => o.Value)
+            .Returns(options);
+
+        _service = new ProfileDiscoveryService(_httpClientFactoryMock.Object, _loggerMock.Object, _specificationOptionsMock.Object);
     }
 }

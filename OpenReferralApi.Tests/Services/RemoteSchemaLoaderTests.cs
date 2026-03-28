@@ -702,7 +702,6 @@ public class RemoteSchemaLoaderTests
             _loggerMock.Object,
             _memoryCache,
             cacheOptions,
-            localSpecificationBaseUrl: null,
             knownJsonSchemaUrls: new[] { canonicalUrl });
 
         // Act

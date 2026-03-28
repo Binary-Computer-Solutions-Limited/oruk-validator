@@ -35,13 +35,13 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<ProfileDiscoveryService> _logger;
-    private readonly string _baseSpecificationUrl;
+    private readonly SpecificationOptions _specificationOptions;
 
     public ProfileDiscoveryService(IHttpClientFactory httpClientFactory, ILogger<ProfileDiscoveryService> logger, IOptions<SpecificationOptions> specificationOptions)
     {
         _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _baseSpecificationUrl = specificationOptions?.Value.BaseUrl ?? throw new ArgumentNullException(nameof(specificationOptions));
+        _specificationOptions = specificationOptions?.Value ?? throw new ArgumentNullException(nameof(specificationOptions));
     }
 
     public async Task<ProfileDiscoveryResult> DiscoverAsync(string baseUrl, DataSourceAuthentication? authentication = null, CancellationToken cancellationToken = default)
@@ -97,11 +97,11 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                 var version = versionToken?.ToString();
                 if (!string.IsNullOrEmpty(version))
                 {
-                    var extractedVersion = ExtractVersionNumber(version);
-                    if (extractedVersion.HasValue)
+                    var versionNumber = ProfileVersionNormalizer.NormalizeVersionNumber(version);
+                    var versionedSpec = ResolveSpecificationUrl(versionNumber);
+                    if (!string.IsNullOrWhiteSpace(versionNumber) && !string.IsNullOrWhiteSpace(versionedSpec))
                     {
-                        var versionedSpec = $"{_baseSpecificationUrl}{extractedVersion.Value:0.0}/openapi.json";
-                        _logger.LogInformation("Detected version '{Version}'; HSDS-UK {ExtractedVersion:0.0} spec: {OpenApiUrl}", SchemaResolverService.SanitizeStringForLogging(version), extractedVersion.Value, versionedSpec);
+                        _logger.LogInformation("Detected version '{Version}'; HSDS-UK {ExtractedVersion} spec: {OpenApiUrl}", SchemaResolverService.SanitizeStringForLogging(version), versionNumber, versionedSpec);
                         return new ProfileDiscoveryResult
                         {
                             Url = versionedSpec,
@@ -205,18 +205,26 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         return !headerName.Any(c => char.IsControl(c) || c == ':' || c == '\r' || c == '\n');
     }
 
-    private static float? ExtractVersionNumber(string version)
+    private string? ResolveSpecificationUrl(string? versionNumber)
     {
-        // Try to extract version number from formats like "HSDS-UK-3.0", "V3", "3.0", "3.1", etc.
-        var versionString = version
-            .Replace("HSDS-UK-", "", StringComparison.OrdinalIgnoreCase)
-            .Replace("V", "", StringComparison.OrdinalIgnoreCase)
-            .Replace("v", "")
-            .Trim();
-
-        if (float.TryParse(versionString, out var versionNumber))
+        if (string.IsNullOrWhiteSpace(versionNumber))
         {
-            return versionNumber;
+            return null;
+        }
+
+        var matchingUrls = _specificationOptions.Urls
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Value)
+                && string.Equals(
+                    ProfileVersionNormalizer.NormalizeVersionNumber(entry.Key),
+                    versionNumber,
+                    StringComparison.OrdinalIgnoreCase))
+            .Select(entry => entry.Value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (matchingUrls.Count == 1)
+        {
+            return matchingUrls[0];
         }
 
         return null;
