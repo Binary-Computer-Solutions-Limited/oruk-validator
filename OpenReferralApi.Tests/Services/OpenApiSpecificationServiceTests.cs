@@ -326,4 +326,91 @@ public class OpenApiSpecificationServiceTests
         Assert.That(result.QualityMetrics.DocumentationCoverage, Is.GreaterThan(0));
         Assert.That(result.QualityMetrics.QualityScore, Is.GreaterThan(0));
     }
+
+    [Test]
+    public async Task ValidateAsync_AddsEndpointTestingRecommendations_WhenOperationMetadataIsIncomplete()
+    {
+        var spec = JObject.Parse("""
+        {
+          "openapi": "3.1.0",
+          "info": {
+            "title": "Test",
+            "version": "1.0.0",
+            "description": "desc",
+            "contact": { "name": "owner" },
+            "license": { "name": "MIT" }
+          },
+          "paths": {
+            "/services": {
+              "get": {
+                "responses": {
+                  "200": {
+                    "description": "ok"
+                  }
+                }
+              }
+            }
+          }
+        }
+        """);
+
+        var result = await _service.ValidateAsync(spec, CancellationToken.None);
+
+        Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "servers"));
+        Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "paths./services.get.operationId"));
+        Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "paths./services.get.responses" && r.Message.Contains("error response codes", StringComparison.OrdinalIgnoreCase)));
+        Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "paths./services.get.responses" && r.Message.Contains("missing a response schema", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [Test]
+    public async Task ValidateAsync_DoesNotAddEndpointTestingRecommendations_WhenOperationMetadataIsComplete()
+    {
+        var spec = JObject.Parse("""
+        {
+          "openapi": "3.1.0",
+          "servers": [
+            { "url": "https://api.example.org" }
+          ],
+          "info": {
+            "title": "Test",
+            "version": "1.0.0",
+            "description": "desc",
+            "contact": { "name": "owner" },
+            "license": { "name": "MIT" }
+          },
+          "paths": {
+            "/services": {
+              "get": {
+                "operationId": "listServices",
+                "responses": {
+                  "200": {
+                    "description": "ok",
+                    "content": {
+                      "application/json": {
+                        "schema": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  },
+                  "400": {
+                    "description": "bad request"
+                  },
+                  "500": {
+                    "description": "server error"
+                  }
+                }
+              }
+            }
+          }
+        }
+        """);
+
+        var result = await _service.ValidateAsync(spec, CancellationToken.None);
+
+        Assert.That(result.Recommendations.Any(r => r.Path == "servers"), Is.False);
+        Assert.That(result.Recommendations.Any(r => r.Path == "paths./services.get.operationId"), Is.False);
+        Assert.That(result.Recommendations.Any(r => r.Path == "paths./services.get.responses" && r.Message.Contains("error response codes", StringComparison.OrdinalIgnoreCase)), Is.False);
+        Assert.That(result.Recommendations.Any(r => r.Path == "paths./services.get.responses" && r.Message.Contains("missing a response schema", StringComparison.OrdinalIgnoreCase)), Is.False);
+    }
 }

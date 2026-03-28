@@ -831,6 +831,188 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                 Impact = "Clarifies usage rights and restrictions"
             });
         }
+
+        AddEndpointQualityRecommendations(specObject, recommendations);
+    }
+
+    private void AddEndpointQualityRecommendations(JObject specObject, List<Recommendation> recommendations)
+    {
+        if (!HasServerMetadata(specObject))
+        {
+            recommendations.Add(new Recommendation
+            {
+                Type = "Improvement",
+                Category = "Documentation",
+                Priority = "Medium",
+                Message = "Server/base URL metadata is missing",
+                Path = "servers",
+                ActionRequired = "Add 'servers' (OpenAPI 3.x) or host/basePath/schemes (Swagger 2.0) so client tooling can resolve endpoint URLs consistently",
+                Impact = "Improves endpoint testing reliability and machine-readability for client generators"
+            });
+        }
+
+        if (!specObject.ContainsKey("paths") || specObject["paths"] is not JObject pathsObject)
+        {
+            return;
+        }
+
+        foreach (var path in pathsObject.Properties())
+        {
+            if (path.Value is not JObject pathObject)
+            {
+                continue;
+            }
+
+            foreach (var method in pathObject.Properties())
+            {
+                if (!IsOperationMethod(method.Name) || method.Value is not JObject operationObject)
+                {
+                    continue;
+                }
+
+                var operationPath = $"paths.{path.Name}.{method.Name}";
+
+                if (string.IsNullOrWhiteSpace(operationObject["operationId"]?.ToString()))
+                {
+                    recommendations.Add(new Recommendation
+                    {
+                        Type = "Improvement",
+                        Category = "Best Practice",
+                        Priority = "Medium",
+                        Message = "Operation ID is missing",
+                        Path = $"{operationPath}.operationId",
+                        ActionRequired = "Add a stable, unique operationId for this endpoint",
+                        Impact = "Improves machine-readable integrations, SDK generation, and traceability in validation reports"
+                    });
+                }
+
+                if (!TryGetResponsesObject(operationObject, out var responsesObject))
+                {
+                    recommendations.Add(new Recommendation
+                    {
+                        Type = "Improvement",
+                        Category = "Testing",
+                        Priority = "High",
+                        Message = "Responses object is missing for this operation",
+                        Path = $"{operationPath}.responses",
+                        ActionRequired = "Define response status codes and payload structures for this operation",
+                        Impact = "Improves endpoint validation quality and ensures consumers can handle expected outcomes"
+                    });
+
+                    continue;
+                }
+
+                var hasErrorResponse = responsesObject.Properties().Any(p => IsErrorStatusCode(p.Name));
+                if (!hasErrorResponse)
+                {
+                    recommendations.Add(new Recommendation
+                    {
+                        Type = "Improvement",
+                        Category = "Testing",
+                        Priority = "High",
+                        Message = "No error response codes are documented",
+                        Path = $"{operationPath}.responses",
+                        ActionRequired = "Document at least one 4xx and/or 5xx response for this operation",
+                        Impact = "Improves feed validation accuracy by allowing negative-path behavior to be tested consistently"
+                    });
+                }
+
+                var successResponseWithoutSchema = responsesObject.Properties()
+                    .Where(p => IsSuccessStatusCode(p.Name) && p.Value is JObject)
+                    .Any(p => !ResponseHasSchema((JObject)p.Value));
+
+                if (successResponseWithoutSchema)
+                {
+                    recommendations.Add(new Recommendation
+                    {
+                        Type = "Improvement",
+                        Category = "Data Quality",
+                        Priority = "High",
+                        Message = "One or more success responses are missing a response schema",
+                        Path = $"{operationPath}.responses",
+                        ActionRequired = "Add explicit schemas for 2xx responses (response.content.*.schema in OpenAPI 3.x or response.schema in Swagger 2.0)",
+                        Impact = "Enables stronger runtime payload validation and improves feed quality checks"
+                    });
+                }
+            }
+        }
+    }
+
+    private static bool HasServerMetadata(JObject specObject)
+    {
+        if (specObject["servers"] is JArray servers && servers.Count > 0)
+        {
+            return true;
+        }
+
+        var host = specObject["host"]?.ToString();
+        var basePath = specObject["basePath"]?.ToString();
+        var schemes = specObject["schemes"] as JArray;
+
+        return !string.IsNullOrWhiteSpace(host)
+               || !string.IsNullOrWhiteSpace(basePath)
+               || (schemes != null && schemes.Count > 0);
+    }
+
+    private static bool IsOperationMethod(string methodName)
+    {
+        return methodName.Equals("get", StringComparison.OrdinalIgnoreCase)
+               || methodName.Equals("post", StringComparison.OrdinalIgnoreCase)
+               || methodName.Equals("put", StringComparison.OrdinalIgnoreCase)
+               || methodName.Equals("patch", StringComparison.OrdinalIgnoreCase)
+               || methodName.Equals("delete", StringComparison.OrdinalIgnoreCase)
+               || methodName.Equals("head", StringComparison.OrdinalIgnoreCase)
+               || methodName.Equals("options", StringComparison.OrdinalIgnoreCase)
+               || methodName.Equals("trace", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryGetResponsesObject(JObject operationObject, out JObject responsesObject)
+    {
+        responsesObject = null!;
+        if (operationObject["responses"] is not JObject responses)
+        {
+            return false;
+        }
+
+        responsesObject = responses;
+        return true;
+    }
+
+    private static bool IsSuccessStatusCode(string responseCode)
+    {
+        return responseCode.Length == 3
+               && responseCode[0] == '2'
+               && responseCode.All(char.IsDigit);
+    }
+
+    private static bool IsErrorStatusCode(string responseCode)
+    {
+        if (responseCode.Equals("default", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return responseCode.Length == 3
+               && (responseCode[0] == '4' || responseCode[0] == '5')
+               && responseCode.All(char.IsDigit);
+    }
+
+    private static bool ResponseHasSchema(JObject responseObject)
+    {
+        // OpenAPI 3.x: responses.<code>.content.<mediaType>.schema
+        if (responseObject["content"] is JObject contentObject)
+        {
+            foreach (var mediaType in contentObject.Properties())
+            {
+                if (mediaType.Value is JObject mediaTypeObject && mediaTypeObject["schema"] != null)
+                {
+                    return true;
+                }
+            }
+        }
+
+        // Swagger 2.0: responses.<code>.schema
+        return responseObject["schema"] != null;
     }
 
     private static string SanitizeExceptionMessage(string message)
