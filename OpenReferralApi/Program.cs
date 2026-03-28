@@ -458,6 +458,93 @@ const string feedNotFoundResponseExample = """
 }
 """;
 
+const string mockApiDetailsResponseExample = """
+{
+    "api_version": "3.0",
+    "data": {
+        "id": "example-api",
+        "name": "Example Open Referral API",
+        "description": "Mock metadata payload"
+    }
+}
+""";
+
+const string mockServiceListResponseExample = """
+{
+    "data": [
+        {
+            "id": "service-001",
+            "name": "Food Bank Support",
+            "description": "Support with emergency food parcels"
+        }
+    ]
+}
+""";
+
+const string mockServiceDetailResponseExample = """
+{
+    "data": {
+        "id": "service-001",
+        "name": "Food Bank Support",
+        "description": "Support with emergency food parcels",
+        "status": "active"
+    }
+}
+""";
+
+const string mockOrganizationListResponseExample = """
+{
+    "data": [
+        {
+            "id": "org-001",
+            "name": "Example Community Trust"
+        }
+    ]
+}
+""";
+
+const string mockOrganizationDetailResponseExample = """
+{
+    "data": {
+        "id": "org-001",
+        "name": "Example Community Trust",
+        "description": "Community services provider"
+    }
+}
+""";
+
+const string mockV1ValidateResponseExample = """
+{
+    "isValid": true,
+    "profile": "HSDS-UK-1.0",
+    "errors": []
+}
+""";
+
+const string mockV1DashboardResponseExample = """
+{
+    "summary": {
+        "totalFeeds": 1,
+        "validFeeds": 1,
+        "invalidFeeds": 0
+    }
+}
+""";
+
+const string mockNotFoundResponseExample = """
+{
+    "error": "Mock file not found",
+    "file": "Mocks/V3.0-UK-Default/service_list.json"
+}
+""";
+
+const string mockServerErrorResponseExample = """
+{
+    "error": "Error reading mock file",
+    "message": "The process cannot access the file because it is being used by another process."
+}
+""";
+
 void ApplyValidationOperationExamples(OpenApiDocument document)
 {
     IOpenApiPathItem? GetPathItem(string path)
@@ -545,6 +632,76 @@ void ApplyValidationOperationExamples(OpenApiDocument document)
             ["404"] = feedNotFoundResponseExample,
             ["429"] = problemDetailsRateLimitExample,
             ["500"] = problemDetailsServerErrorExample
+        });
+
+    ApplyExamplesToOperation(
+        GetOperation(GetPathItem("/api/mock"), HttpMethod.Get),
+        requestExample: null,
+        new Dictionary<string, string>
+        {
+            ["200"] = mockApiDetailsResponseExample,
+            ["404"] = mockNotFoundResponseExample,
+            ["500"] = mockServerErrorResponseExample
+        });
+
+    ApplyExamplesToOperation(
+        GetOperation(GetPathItem("/api/mock/services"), HttpMethod.Get),
+        requestExample: null,
+        new Dictionary<string, string>
+        {
+            ["200"] = mockServiceListResponseExample,
+            ["404"] = mockNotFoundResponseExample,
+            ["500"] = mockServerErrorResponseExample
+        });
+
+    ApplyExamplesToOperation(
+        GetOperation(GetPathItem("/api/mock/services/{id}"), HttpMethod.Get),
+        requestExample: null,
+        new Dictionary<string, string>
+        {
+            ["200"] = mockServiceDetailResponseExample,
+            ["404"] = mockNotFoundResponseExample,
+            ["500"] = mockServerErrorResponseExample
+        });
+
+    ApplyExamplesToOperation(
+        GetOperation(GetPathItem("/api/mock/organizations"), HttpMethod.Get),
+        requestExample: null,
+        new Dictionary<string, string>
+        {
+            ["200"] = mockOrganizationListResponseExample,
+            ["404"] = mockNotFoundResponseExample,
+            ["500"] = mockServerErrorResponseExample
+        });
+
+    ApplyExamplesToOperation(
+        GetOperation(GetPathItem("/api/mock/organizations/{id}"), HttpMethod.Get),
+        requestExample: null,
+        new Dictionary<string, string>
+        {
+            ["200"] = mockOrganizationDetailResponseExample,
+            ["404"] = mockNotFoundResponseExample,
+            ["500"] = mockServerErrorResponseExample
+        });
+
+    ApplyExamplesToOperation(
+        GetOperation(GetPathItem("/api/mock/v1/dashboard"), HttpMethod.Get),
+        requestExample: null,
+        new Dictionary<string, string>
+        {
+            ["200"] = mockV1DashboardResponseExample,
+            ["404"] = mockNotFoundResponseExample,
+            ["500"] = mockServerErrorResponseExample
+        });
+
+    ApplyExamplesToOperation(
+        GetOperation(GetPathItem("/api/mock/v1/validate"), HttpMethod.Post),
+        requestExample: null,
+        new Dictionary<string, string>
+        {
+            ["200"] = mockV1ValidateResponseExample,
+            ["404"] = mockNotFoundResponseExample,
+            ["500"] = mockServerErrorResponseExample
         });
 }
 
