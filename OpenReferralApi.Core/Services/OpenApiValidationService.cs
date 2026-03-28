@@ -279,6 +279,10 @@ public class OpenApiValidationService : IOpenApiValidationService
                     });
                 }
             }
+            else if (!string.IsNullOrWhiteSpace(misplacedHsdsVersionWarning))
+            {
+                result.Notifications.Add(misplacedHsdsVersionWarning);
+            }
 
             claimedProfileVersion = _hsdsComplianceService.ExtractClaimedProfileVersion(request.ProfileReason, request.OpenApiSchema?.Url);
 

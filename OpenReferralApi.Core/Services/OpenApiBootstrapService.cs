@@ -139,21 +139,20 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
         try
         {
             var parsed = JObject.Parse(specContent);
-            var openapiValue = parsed.SelectToken("openapi")?.ToString();
-            if (string.IsNullOrWhiteSpace(openapiValue))
-            {
-                return null;
-            }
 
-            var parts = openapiValue.Split('.');
-            if (parts.Length < 2)
+            // Only extract from legitimate HSDS version fields.
+            // Deliberately do NOT fall back to the "openapi" field — that field specifies the
+            // OpenAPI specification version, not the HSDS schema version. If a version can only
+            // be inferred from "openapi", leave it unset here so that OpenApiValidationService
+            // can detect and report the misplacement with a proper warning.
+            var candidateTokens = new[] { "x-hsds-version", "version", "info.x-hsds-version", "info.x-profile-version" };
+            foreach (var tokenPath in candidateTokens)
             {
-                return null;
-            }
-
-            if (int.TryParse(parts[0], out var major) && int.TryParse(parts[1], out var minor))
-            {
-                return $"{major}.{minor}";
+                var tokenValue = parsed.SelectToken(tokenPath)?.ToString()?.Trim();
+                if (!string.IsNullOrWhiteSpace(tokenValue))
+                {
+                    return tokenValue;
+                }
             }
 
             return null;
