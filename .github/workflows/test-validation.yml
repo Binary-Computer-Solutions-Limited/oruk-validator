@@ -71,7 +71,7 @@ jobs:
                 "includeResponseBody": false,
                 "includeTestResults": true
             }
-          }' | tee validation-results.log 2>&1 || true
+          }' | tee response.http 2>&1 || true
 
     - name: Output API Logs
       # This runs even if the curl command fails
@@ -79,7 +79,7 @@ jobs:
       run: |
         echo "--- API LOGS ---"
         cat api.log
-        
+
     - name: Sanitize Artifact Name
       id: slug
       run: |
@@ -93,7 +93,7 @@ jobs:
       with:
         name: api-log-${{ steps.slug.outputs.url_slug }}
         path: |
-          OpenReferralApi/logs/*.log
-          validation-results.log
+          api.log
+          response.http
         if-no-files-found: warn 
         retention-days: 5
