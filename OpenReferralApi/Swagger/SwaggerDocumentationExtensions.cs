@@ -3,6 +3,11 @@ using Microsoft.OpenApi;
 
 namespace OpenReferralApi.Swagger;
 
+/// <summary>
+/// Swagger documentation extensions for OpenAPI 3.1 generation.
+/// Note: The "Swagger" namespace is retained for backward compatibility and consistency with Swashbuckle.AspNetCore,
+/// despite the API documentation now using OpenAPI 3.1 specification.
+/// </summary>
 public static class SwaggerDocumentationExtensions
 {
     public static IServiceCollection AddSwaggerDocumentation(this IServiceCollection services, IConfiguration configuration)
