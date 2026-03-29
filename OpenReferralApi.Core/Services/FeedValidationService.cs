@@ -13,6 +13,7 @@ public interface IFeedValidationService
   Task<List<ServiceFeed>> GetAllFeedsAsync(CancellationToken cancellationToken = default);
   Task UpdateFeedStatusAsync(string feedId, bool isUp, bool isValid, string? error, double? responseTimeMs, int? validationErrorCount, CancellationToken cancellationToken = default);
   Task<FeedValidationResult> ValidateSingleFeedAsync(ServiceFeed feed, CancellationToken cancellationToken = default);
+  Task<FeedValidationResult> ValidateAndUpdateFeedAsync(ServiceFeed feed, CancellationToken cancellationToken = default);
   Task<List<FeedValidationResult>> ValidateAndUpdateFeedsAsync(List<ServiceFeed> feeds, int maxConcurrency = 5, CancellationToken cancellationToken = default);
 }
 
@@ -236,18 +237,7 @@ public class FeedValidationService : IFeedValidationService
       await semaphore.WaitAsync(cancellationToken);
       try
       {
-        var result = await ValidateSingleFeedAsync(feed, cancellationToken);
-
-        await UpdateFeedStatusAsync(
-            feedId: result.FeedId,
-            isUp: result.IsUp,
-            isValid: result.IsValid,
-            error: result.ErrorMessage,
-            responseTimeMs: result.ResponseTimeMs,
-            validationErrorCount: result.ValidationErrorCount,
-            cancellationToken: cancellationToken);
-
-        return result;
+        return await ValidateAndUpdateFeedAsync(feed, cancellationToken);
       }
       catch (Exception ex)
       {
@@ -270,6 +260,24 @@ public class FeedValidationService : IFeedValidationService
 
     var results = await Task.WhenAll(tasks);
     return results.ToList();
+  }
+
+  public async Task<FeedValidationResult> ValidateAndUpdateFeedAsync(
+      ServiceFeed feed,
+      CancellationToken cancellationToken = default)
+  {
+    var result = await ValidateSingleFeedAsync(feed, cancellationToken);
+
+    await UpdateFeedStatusAsync(
+        feedId: result.FeedId,
+        isUp: result.IsUp,
+        isValid: result.IsValid,
+        error: result.ErrorMessage,
+        responseTimeMs: result.ResponseTimeMs,
+        validationErrorCount: result.ValidationErrorCount,
+        cancellationToken: cancellationToken);
+
+    return result;
   }
 
   /// <summary>
@@ -319,6 +327,20 @@ public class NullFeedValidationService : IFeedValidationService
   }
 
   public Task<FeedValidationResult> ValidateSingleFeedAsync(ServiceFeed feed, CancellationToken cancellationToken = default)
+  {
+    _logger.LogWarning("Feed validation service is not available. MongoDB is not configured.");
+    return Task.FromResult(new FeedValidationResult
+    {
+      FeedId = feed.Id ?? string.Empty,
+      FeedUrl = feed.Url,
+      FeedName = feed.NameAsString,
+      IsUp = false,
+      IsValid = false,
+      ErrorMessage = "Feed validation service is not available. MongoDB is not configured."
+    });
+  }
+
+  public Task<FeedValidationResult> ValidateAndUpdateFeedAsync(ServiceFeed feed, CancellationToken cancellationToken = default)
   {
     _logger.LogWarning("Feed validation service is not available. MongoDB is not configured.");
     return Task.FromResult(new FeedValidationResult

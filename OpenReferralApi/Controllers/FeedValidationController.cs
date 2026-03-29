@@ -111,16 +111,7 @@ public class FeedValidationController : ControllerBase
     var safeFeedId = feedId?.Replace("\r", string.Empty).Replace("\n", string.Empty);
     _logger.LogInformation("Manual validation triggered for feed {FeedId}", safeFeedId);
 
-    var result = await _feedValidationService.ValidateSingleFeedAsync(feed, cancellationToken);
-
-    await _feedValidationService.UpdateFeedStatusAsync(
-        feedId: result.FeedId,
-        isUp: result.IsUp,
-        isValid: result.IsValid,
-        error: result.ErrorMessage,
-        responseTimeMs: result.ResponseTimeMs,
-        validationErrorCount: result.ValidationErrorCount,
-        cancellationToken: cancellationToken);
+    var result = await _feedValidationService.ValidateAndUpdateFeedAsync(feed, cancellationToken);
 
     return Ok(result);
   }
