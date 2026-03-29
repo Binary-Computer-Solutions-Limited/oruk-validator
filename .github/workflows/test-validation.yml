@@ -65,16 +65,11 @@ jobs:
           -d '{
               "baseUrl": "${{ matrix.base-url }}",
               "options": {
-              "timeoutSeconds": 30,
-              "maxConcurrentRequests": 5,
-              "reportAdditionalFields": true,
-              "hsdsValidationMode": "SpecAndFeedRuntimeFast",
-              "testEndpoints": true,
-              "validateSpecification": true,
-              "testOptionalEndpoints": true,
-              "treatOptionalEndpointsAsWarnings": true,
-              "includeResponseBody": false,
-              "includeTestResults": true
+                "timeoutSeconds": 30,
+                "maxConcurrentRequests": 5,
+                "reportAdditionalFields": true,
+                "includeResponseBody": false,
+                "includeTestResults": true
             }
           }' | tee validation-results.log 2>&1 || true
 
