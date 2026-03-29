@@ -4,7 +4,7 @@ This page captures the currently implemented behavior in the API and complements
 
 ## Canonical Repository
 
-- GitHub: https://github.com/OpenReferralUK/oruk-validator
+- GitHub: <https://github.com/OpenReferralUK/oruk-validator>
 - Website owner/maintainer reference: iStandUK and the Open Referral UK community
 
 ## API Routes In Use

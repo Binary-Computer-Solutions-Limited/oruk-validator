@@ -271,4 +271,102 @@ public class FeedValidationServiceTests
         Assert.That(result.IsValid, Is.False);
         Assert.That(result.ErrorMessage, Does.Contain("Unexpected error"));
     }
+
+    [Test]
+    public async Task ValidateAndUpdateFeedAsync_WithMongoPipeline_ValidatesAndPersistsStatus()
+    {
+        // Arrange
+        var service = CreateService(out var collectionMock);
+        var feed = new ServiceFeed
+        {
+            Id = "507f1f77bcf86cd799439011",
+            UrlField = "https://example.com/openapi",
+            ActiveField = true
+        };
+
+        var existingFeed = new ServiceFeed
+        {
+            Id = feed.Id,
+            UrlField = feed.UrlField,
+            ActiveField = true,
+            StatusIsUp = false,
+            StatusIsValid = false,
+            StatusOverall = false
+        };
+
+        var cursorMock = new Mock<IAsyncCursor<ServiceFeed>>();
+        cursorMock.SetupSequence(c => c.MoveNextAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true)
+            .ReturnsAsync(false);
+        cursorMock.SetupSequence(c => c.MoveNext(It.IsAny<CancellationToken>()))
+            .Returns(true)
+            .Returns(false);
+        cursorMock.SetupGet(c => c.Current)
+            .Returns(new List<ServiceFeed> { existingFeed });
+
+        collectionMock
+            .Setup(c => c.FindAsync(
+                It.IsAny<FilterDefinition<ServiceFeed>>(),
+                It.IsAny<FindOptions<ServiceFeed, ServiceFeed>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(cursorMock.Object);
+
+        collectionMock
+            .Setup(c => c.UpdateOneAsync(
+                It.IsAny<FilterDefinition<ServiceFeed>>(),
+                It.IsAny<UpdateDefinition<ServiceFeed>>(),
+                It.IsAny<UpdateOptions>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Mock.Of<UpdateResult>());
+
+        _validationServiceMock
+            .Setup(x => x.ValidateOpenApiSpecificationAsync(It.IsAny<OpenApiValidationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OpenApiValidationResult
+            {
+                IsValid = true,
+                Duration = TimeSpan.FromMilliseconds(250),
+                SpecificationValidation = new OpenApiSpecificationValidation { Errors = new List<ValidationError>() },
+                EndpointTests = new List<EndpointTestResult>
+                {
+                    new()
+                    {
+                        Path = "/services",
+                        Method = "GET",
+                        ValidationErrors = new List<ValidationError>(),
+                        TestResults = new List<HttpTestResult>
+                        {
+                            new() { IsSuccessStatusCode = true }
+                        }
+                    }
+                }
+            });
+
+        // Act
+        var result = await service.ValidateAndUpdateFeedAsync(feed, CancellationToken.None);
+
+        // Assert
+        Assert.That(result.FeedId, Is.EqualTo(feed.Id));
+        Assert.That(result.IsUp, Is.True);
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.ResponseTimeMs, Is.GreaterThan(0));
+
+        _validationServiceMock.Verify(
+            x => x.ValidateOpenApiSpecificationAsync(It.IsAny<OpenApiValidationRequest>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        collectionMock.Verify(
+            c => c.FindAsync(
+                It.IsAny<FilterDefinition<ServiceFeed>>(),
+                It.IsAny<FindOptions<ServiceFeed, ServiceFeed>>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        collectionMock.Verify(
+            c => c.UpdateOneAsync(
+                It.IsAny<FilterDefinition<ServiceFeed>>(),
+                It.IsAny<UpdateDefinition<ServiceFeed>>(),
+                It.IsAny<UpdateOptions>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
 }
