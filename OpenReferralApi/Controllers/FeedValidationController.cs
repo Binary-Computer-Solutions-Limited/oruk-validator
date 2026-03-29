@@ -60,50 +60,7 @@ public class FeedValidationController : ControllerBase
         Message = "No feeds found in database"
       });
     }
-
-    // Validate feeds in parallel to avoid timeouts (same pattern as background service)
-    // Use SemaphoreSlim to limit concurrent validations
-    var maxConcurrency = 5; // Process 5 feeds at a time
-    using var semaphore = new SemaphoreSlim(maxConcurrency);
-    
-    var tasks = feeds.Select(async feed =>
-    {
-      await semaphore.WaitAsync(cancellationToken);
-      try
-      {
-        var result = await _feedValidationService.ValidateSingleFeedAsync(feed, cancellationToken);
-
-        await _feedValidationService.UpdateFeedStatusAsync(
-            feedId: result.FeedId,
-            isUp: result.IsUp,
-            isValid: result.IsValid,
-            error: result.ErrorMessage,
-            responseTimeMs: result.ResponseTimeMs,
-            validationErrorCount: result.ValidationErrorCount,
-            cancellationToken: cancellationToken);
-
-        return result;
-      }
-      catch (Exception ex)
-      {
-        _logger.LogError(ex, "Failed to validate feed {FeedId}", feed.Id);
-        return new FeedValidationResult
-        {
-          FeedId = feed.Id ?? string.Empty,
-          FeedUrl = feed.Url,
-          FeedName = feed.NameAsString,
-          IsUp = false,
-          IsValid = false,
-          ErrorMessage = $"Validation error: {ex.Message}"
-        };
-      }
-      finally
-      {
-        semaphore.Release();
-      }
-    });
-
-    var results = await Task.WhenAll(tasks);
+    var results = await _feedValidationService.ValidateAndUpdateFeedsAsync(feeds, cancellationToken: cancellationToken);
 
     var summary = new FeedValidationSummary
     {
@@ -114,7 +71,7 @@ public class FeedValidationController : ControllerBase
       InvalidFeeds = results.Count(r => r.IsUp && !r.IsValid),
       AverageResponseTimeMs = results.Where(r => r.ResponseTimeMs.HasValue)
             .Average(r => r.ResponseTimeMs),
-      Results = results.ToList()
+      Results = results
     };
 
     _logger.LogInformation(

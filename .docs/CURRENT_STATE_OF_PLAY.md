@@ -33,8 +33,6 @@ This page captures the currently implemented behavior in the API and complements
   - Full health check output.
 - `GET /health-check/ready`
   - Readiness checks.
-- `GET /health-check/overall`
-  - Readiness/deployment checks.
 - `GET /health-check/live`
   - Liveness endpoint that also includes `schemaWarmup` status in the JSON body.
 

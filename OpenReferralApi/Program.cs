@@ -234,13 +234,6 @@ app.MapHealthChecks("/health-check/ready", new HealthCheckOptions
     ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
 });
 
-// Overall service health for CI/deploy checks
-app.MapHealthChecks("/health-check/overall", new HealthCheckOptions
-{
-    Predicate = check => check.Tags.Contains("ready"),
-    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
-});
-
 app.MapHealthChecks("/health-check/live", new HealthCheckOptions
 {
     Predicate = _ => false,

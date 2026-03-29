@@ -137,7 +137,6 @@ When running locally in development mode, interactive API documentation is avail
 
 - `GET /health-check` all registered checks
 - `GET /health-check/ready` readiness checks
-- `GET /health-check/overall` deployment/readiness checks
 - `GET /health-check/live` liveness check including `schemaWarmup` status snapshot
 
 ## Authentication

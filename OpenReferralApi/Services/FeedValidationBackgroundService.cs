@@ -116,46 +116,12 @@ public class FeedValidationBackgroundService : BackgroundService
         _logger.LogWarning("No feeds found in database");
         return;
       }
-
-      // Use SemaphoreSlim to limit concurrent validations and prevent overwhelming the dyno
-      var maxConcurrency = 5; // Process 5 feeds at a time to maintain web server responsiveness
-      using var semaphore = new SemaphoreSlim(maxConcurrency);
-      
-      var tasks = feeds.Select(async feed =>
-      {
-        await semaphore.WaitAsync(cancellationToken);
-        try
-        {
-          var result = await feedValidationService.ValidateSingleFeedAsync(feed, cancellationToken);
-
-          await feedValidationService.UpdateFeedStatusAsync(
-                    feedId: result.FeedId,
-                    isUp: result.IsUp,
-                    isValid: result.IsValid,
-                    error: result.ErrorMessage,
-                    responseTimeMs: result.ResponseTimeMs,
-                    validationErrorCount: result.ValidationErrorCount,
-                    cancellationToken: cancellationToken);
-
-          return result;
-        }
-        catch (Exception ex)
-        {
-          _logger.LogError(ex, "Failed to validate feed {FeedId}", feed.Id);
-          return null;
-        }
-        finally
-        {
-          semaphore.Release();
-        }
-      });
-
-      var results = await Task.WhenAll(tasks);
+      var results = await feedValidationService.ValidateAndUpdateFeedsAsync(feeds, cancellationToken: cancellationToken);
 
       // Log summary
-      var successCount = results.Count(r => r?.IsUp == true);
-      var validCount = results.Count(r => r?.IsValid == true);
-      var failedCount = results.Count(r => r?.IsUp == false);
+      var successCount = results.Count(r => r.IsUp);
+      var validCount = results.Count(r => r.IsValid);
+      var failedCount = results.Count(r => !r.IsUp);
 
       stopwatch.Stop();
 

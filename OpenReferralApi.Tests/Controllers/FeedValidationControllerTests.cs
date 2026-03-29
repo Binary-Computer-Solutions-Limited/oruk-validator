@@ -82,13 +82,8 @@ public class FeedValidationControllerTests
             .ReturnsAsync(feeds);
 
         _feedValidationServiceMock
-            .Setup(x => x.ValidateSingleFeedAsync(It.IsAny<ServiceFeed>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((ServiceFeed f, CancellationToken ct) =>
-                validationResults.First(r => r.FeedId == f.Id));
-
-        _feedValidationServiceMock
-            .Setup(x => x.UpdateFeedStatusAsync(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<string>(), It.IsAny<double?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+            .Setup(x => x.ValidateAndUpdateFeedsAsync(It.IsAny<List<ServiceFeed>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(validationResults);
 
         // Act
         var result = await _controller.ValidateAllFeeds(CancellationToken.None);

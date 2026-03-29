@@ -13,6 +13,7 @@ public interface IFeedValidationService
   Task<List<ServiceFeed>> GetAllFeedsAsync(CancellationToken cancellationToken = default);
   Task UpdateFeedStatusAsync(string feedId, bool isUp, bool isValid, string? error, double? responseTimeMs, int? validationErrorCount, CancellationToken cancellationToken = default);
   Task<FeedValidationResult> ValidateSingleFeedAsync(ServiceFeed feed, CancellationToken cancellationToken = default);
+  Task<List<FeedValidationResult>> ValidateAndUpdateFeedsAsync(List<ServiceFeed> feeds, int maxConcurrency = 5, CancellationToken cancellationToken = default);
 }
 
 public class FeedValidationService : IFeedValidationService
@@ -218,6 +219,59 @@ public class FeedValidationService : IFeedValidationService
     return result;
   }
 
+  public async Task<List<FeedValidationResult>> ValidateAndUpdateFeedsAsync(
+      List<ServiceFeed> feeds,
+      int maxConcurrency = 5,
+      CancellationToken cancellationToken = default)
+  {
+    if (feeds.Count == 0)
+    {
+      return new List<FeedValidationResult>();
+    }
+
+    using var semaphore = new SemaphoreSlim(maxConcurrency);
+
+    var tasks = feeds.Select(async feed =>
+    {
+      await semaphore.WaitAsync(cancellationToken);
+      try
+      {
+        var result = await ValidateSingleFeedAsync(feed, cancellationToken);
+
+        await UpdateFeedStatusAsync(
+            feedId: result.FeedId,
+            isUp: result.IsUp,
+            isValid: result.IsValid,
+            error: result.ErrorMessage,
+            responseTimeMs: result.ResponseTimeMs,
+            validationErrorCount: result.ValidationErrorCount,
+            cancellationToken: cancellationToken);
+
+        return result;
+      }
+      catch (Exception ex)
+      {
+        _logger.LogError(ex, "Failed to validate feed {FeedId}", feed.Id);
+        return new FeedValidationResult
+        {
+          FeedId = feed.Id ?? string.Empty,
+          FeedUrl = feed.Url,
+          FeedName = feed.NameAsString,
+          IsUp = false,
+          IsValid = false,
+          ErrorMessage = $"Validation error: {SanitizeExceptionMessage(ex.Message)}"
+        };
+      }
+      finally
+      {
+        semaphore.Release();
+      }
+    });
+
+    var results = await Task.WhenAll(tasks);
+    return results.ToList();
+  }
+
   /// <summary>
   /// Sanitizes exception messages to prevent log injection attacks by removing control characters.
   /// </summary>
@@ -276,6 +330,12 @@ public class NullFeedValidationService : IFeedValidationService
       IsValid = false,
       ErrorMessage = "Feed validation service is not available. MongoDB is not configured."
     });
+  }
+
+  public Task<List<FeedValidationResult>> ValidateAndUpdateFeedsAsync(List<ServiceFeed> feeds, int maxConcurrency = 5, CancellationToken cancellationToken = default)
+  {
+    _logger.LogWarning("Feed validation service is not available. MongoDB is not configured.");
+    return Task.FromResult(new List<FeedValidationResult>());
   }
 }
 
