@@ -46,7 +46,7 @@ jobs:
     - name: Run API in background
       # Redirect stdout and stderr to api.log
       run: |
-        dotnet run --project OpenReferralApi/OpenReferralApi.csproj --configuration Release > api.log 2>&1 &
+        dotnet run --project OpenReferralApi/OpenReferralApi.csproj --configuration Release --no-launch-profile > api.log 2>&1 &
       env:
         ASPNETCORE_URLS: "http://localhost:6969"
 
@@ -57,8 +57,8 @@ jobs:
 
     - name: Run Validation Request
       run: |
-        # Added -i to see response headers and body in the logs
-        curl -i -X 'POST' \
+        # Added -i for response headers/body and -L to follow any redirect
+        curl -i -L -X 'POST' \
           'http://localhost:6969/openreferral/validate' \
           -H 'accept: application/json' \
           -H 'Content-Type: application/json' \
