@@ -73,6 +73,13 @@ jobs:
             }
           }' | tee validation-results.log 2>&1 || true
 
+    - name: Output API Logs
+      # This runs even if the curl command fails
+      if: always()
+      run: |
+        echo "--- API LOGS ---"
+        cat api.log
+        
     - name: Sanitize Artifact Name
       id: slug
       run: |
