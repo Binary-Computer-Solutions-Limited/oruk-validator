@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
@@ -209,7 +210,7 @@ public class HsdsComplianceService : IHsdsComplianceService
             {
                 var validationRequest = new ValidationRequest
                 {
-                    JsonData = JsonConvert.DeserializeObject(testResult.ResponseBody ?? "{}"),
+                    JsonData = JsonNode.Parse(testResult.ResponseBody ?? "{}"),
                     Schema = hsdsResponseSchema,
                     Options = new ValidationOptions
                     {

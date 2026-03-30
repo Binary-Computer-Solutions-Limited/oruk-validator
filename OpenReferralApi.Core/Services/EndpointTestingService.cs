@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net.Http.Headers;
@@ -738,7 +739,7 @@ public class EndpointTestingService : IEndpointTestingService
                                     // #/components/schemas/* can be pre-resolved before JSchema creation.
                                     var validationRequest = new ValidationRequest
                                     {
-                                        JsonData = JsonConvert.DeserializeObject(testResult.ResponseBody ?? "{}"),
+                                        JsonData = JsonNode.Parse(testResult.ResponseBody ?? "{}"),
                                         Schema = schemaForValidation,
                                         Options = new ValidationOptions
                                         {

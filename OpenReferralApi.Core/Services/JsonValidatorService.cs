@@ -103,7 +103,7 @@ public class JsonValidatorService : IJsonValidatorService
 
             // Validate the JSON data
             // Format with indentation so validation error line numbers are accurate
-            var jsonDataString = JsonConvert.SerializeObject(jsonData, Formatting.Indented);
+            var jsonDataString = System.Text.Json.JsonSerializer.Serialize(jsonData, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
             var validationErrors = await ValidateJsonAgainstSchemaAsync(jsonDataString, schema, request.Options);
 
             // Report additional fields if requested
@@ -169,7 +169,7 @@ public class JsonValidatorService : IJsonValidatorService
         {
             _logger.LogInformation("Starting schema validation");
 
-            var schemaJson = JsonConvert.SerializeObject(schema);
+            var schemaJson = System.Text.Json.JsonSerializer.Serialize(schema);
             var jsonSchema = await _schemaResolverService.CreateSchemaFromJsonAsync(schemaJson, cancellationToken);
 
             // Basic schema validation
@@ -331,7 +331,7 @@ public class JsonValidatorService : IJsonValidatorService
     {
         try
         {
-            var schemaJson = JsonConvert.SerializeObject(schema);
+            var schemaJson = System.Text.Json.JsonSerializer.Serialize(schema);
             return await _schemaResolverService.CreateSchemaFromJsonAsync(schemaJson);
         }
         catch (Exception ex)
@@ -407,7 +407,7 @@ public class JsonValidatorService : IJsonValidatorService
                 var content = await response.Content.ReadAsStringAsync(ct);
 
                 // Parse and return the JSON data
-                return JsonConvert.DeserializeObject<object>(content)
+                return System.Text.Json.JsonSerializer.Deserialize<object>(content)
                     ?? throw new InvalidOperationException("Failed to deserialize JSON data from URL");
             }
             catch (HttpRequestException ex)
