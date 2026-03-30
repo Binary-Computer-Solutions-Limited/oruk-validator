@@ -399,7 +399,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             if (_openApiValidationOptions.ValidateSpecification && specValidation != null)
             {
-                specValidation.Errors = NormalizeAndDeduplicateValidationErrors(specValidationErrors!);
+                specValidation.Errors = ValidationErrorNormalizer.NormalizeAndDeduplicateByPath(specValidationErrors!);
                 specValidation.IsValid = !specValidation.Errors.Any(e =>
                     string.Equals(e.Severity, "Error", StringComparison.OrdinalIgnoreCase));
                 result.SpecificationValidation = specValidation;
@@ -495,41 +495,6 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
 
         return result;
-    }
-
-    private static List<ValidationError> NormalizeAndDeduplicateValidationErrors(IEnumerable<ValidationError> errors)
-    {
-        var capacity = errors is ICollection<ValidationError> collection ? collection.Count : 0;
-        var seenPaths = capacity > 0
-            ? new HashSet<string>(capacity, StringComparer.Ordinal)
-            : new HashSet<string>(StringComparer.Ordinal);
-        var deduplicatedErrors = capacity > 0
-            ? new List<ValidationError>(capacity)
-            : new List<ValidationError>();
-
-        foreach (var error in errors)
-        {
-            var normalizedPath = ValidationPathNormalizer.NormalizeArrayIndexes(error.Path);
-
-            // Keep the first validation error encountered for each normalized path.
-            if (!seenPaths.Add(normalizedPath))
-            {
-                continue;
-            }
-
-            // Normalize message only for kept entries to avoid work for discarded duplicates.
-            deduplicatedErrors.Add(new ValidationError
-            {
-                Path = normalizedPath,
-                Message = ValidationPathNormalizer.NormalizeArrayIndexes(error.Message),
-                ErrorCode = error.ErrorCode,
-                Severity = error.Severity,
-                LineNumber = error.LineNumber,
-                ColumnNumber = error.ColumnNumber
-            });
-        }
-
-        return deduplicatedErrors;
     }
 
     private static bool ShouldIncludeProfileComplianceFinding(ValidationError error)

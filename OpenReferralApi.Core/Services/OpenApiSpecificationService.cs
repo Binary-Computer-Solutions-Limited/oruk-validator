@@ -208,7 +208,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
             });
         }
 
-        validation.Errors = NormalizeAndDeduplicateValidationErrors(errors);
+        validation.Errors = ValidationErrorNormalizer.NormalizeAndDeduplicateByPath(errors);
         validation.IsValid = !validation.Errors.Any(e => string.Equals(e.Severity, "Error", StringComparison.OrdinalIgnoreCase));
 
         _logger.LogInformation("OpenAPI specification validation completed. IsValid: {IsValid}, Errors: {ErrorCount}",
@@ -248,38 +248,6 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
     {
         var knownUrls = _schemaResolutionOptions.Value.KnownJsonSchemaUrls;
         return knownUrls?.Contains(dialect, StringComparer.OrdinalIgnoreCase) == true;
-    }
-
-    private static List<ValidationError> NormalizeAndDeduplicateValidationErrors(IEnumerable<ValidationError> errors)
-    {
-        var capacity = errors is ICollection<ValidationError> collection ? collection.Count : 0;
-        var seenPaths = capacity > 0
-            ? new HashSet<string>(capacity, StringComparer.Ordinal)
-            : new HashSet<string>(StringComparer.Ordinal);
-        var deduplicatedErrors = capacity > 0
-            ? new List<ValidationError>(capacity)
-            : new List<ValidationError>();
-
-        foreach (var error in errors)
-        {
-            var normalizedPath = ValidationPathNormalizer.NormalizeArrayIndexes(error.Path);
-            if (!seenPaths.Add(normalizedPath))
-            {
-                continue;
-            }
-
-            deduplicatedErrors.Add(new ValidationError
-            {
-                Path = normalizedPath,
-                Message = ValidationPathNormalizer.NormalizeArrayIndexes(error.Message),
-                ErrorCode = error.ErrorCode,
-                Severity = error.Severity,
-                LineNumber = error.LineNumber,
-                ColumnNumber = error.ColumnNumber
-            });
-        }
-
-        return deduplicatedErrors;
     }
 
     private SchemaAnalysis AnalyzeSchemaStructure(JObject specObject)
