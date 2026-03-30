@@ -17,7 +17,6 @@ public interface IOpenApiValidationService
 
 public class OpenApiValidationService : IOpenApiValidationService
 {
-    private static readonly Regex ArrayIndexRegex = new(@"\[[^\]]*\]", RegexOptions.Compiled);
     private static readonly ConcurrentDictionary<string, CachedResolvedSpec> FeedResolvedSpecCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly ConcurrentDictionary<string, CachedResolvedSpec> ProfileResolvedSpecCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Meter CacheMetricsMeter = new("OpenReferralApi.Core.OpenApiValidationService", "1.0.0");
@@ -510,7 +509,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
         foreach (var error in errors)
         {
-            var normalizedPath = NormalizeValidationErrorText(error.Path);
+            var normalizedPath = ValidationPathNormalizer.NormalizeArrayIndexes(error.Path);
 
             // Keep the first validation error encountered for each normalized path.
             if (!seenPaths.Add(normalizedPath))
@@ -522,7 +521,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             deduplicatedErrors.Add(new ValidationError
             {
                 Path = normalizedPath,
-                Message = NormalizeValidationErrorText(error.Message),
+                Message = ValidationPathNormalizer.NormalizeArrayIndexes(error.Message),
                 ErrorCode = error.ErrorCode,
                 Severity = error.Severity,
                 LineNumber = error.LineNumber,
@@ -974,21 +973,6 @@ public class OpenApiValidationService : IOpenApiValidationService
 
         return (null, false);
     }
-    private static string NormalizeValidationErrorText(string? input)
-    {
-        if (string.IsNullOrEmpty(input))
-        {
-            return string.Empty;
-        }
-
-        if (input.IndexOf('[') < 0)
-        {
-            return input;
-        }
-
-        return ArrayIndexRegex.Replace(input, string.Empty);
-    }
-
     /// <summary>
     /// Sanitizes exception messages to prevent log injection attacks by removing control characters.
     /// </summary>

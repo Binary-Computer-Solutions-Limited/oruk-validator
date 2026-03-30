@@ -214,7 +214,7 @@ public class OpenApiSpecificationServiceTests
         var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
         Assert.That(result.Errors.Count(e => e.ErrorCode == "V"), Is.EqualTo(1));
-        Assert.That(result.Errors.First(e => e.ErrorCode == "V").Path.Contains("["), Is.False);
+        Assert.That(result.Errors.First(e => e.ErrorCode == "V").Path, Is.EqualTo("paths[/services].get.responses[].content"));
     }
 
     [Test]

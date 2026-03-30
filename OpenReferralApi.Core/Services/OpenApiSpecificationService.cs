@@ -14,8 +14,6 @@ public interface IOpenApiSpecificationService
 
 public class OpenApiSpecificationService : IOpenApiSpecificationService
 {
-    private static readonly Regex ArrayIndexRegex = new(@"\[[^\]]*\]", RegexOptions.Compiled);
-
     private readonly ILogger<OpenApiSpecificationService> _logger;
     private readonly IJsonValidatorService _jsonValidatorService;
     private readonly IOptions<SchemaResolutionOptions> _schemaResolutionOptions;
@@ -264,7 +262,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
 
         foreach (var error in errors)
         {
-            var normalizedPath = NormalizeValidationErrorText(error.Path);
+            var normalizedPath = ValidationPathNormalizer.NormalizeArrayIndexes(error.Path);
             if (!seenPaths.Add(normalizedPath))
             {
                 continue;
@@ -273,7 +271,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
             deduplicatedErrors.Add(new ValidationError
             {
                 Path = normalizedPath,
-                Message = NormalizeValidationErrorText(error.Message),
+                Message = ValidationPathNormalizer.NormalizeArrayIndexes(error.Message),
                 ErrorCode = error.ErrorCode,
                 Severity = error.Severity,
                 LineNumber = error.LineNumber,
@@ -282,21 +280,6 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         }
 
         return deduplicatedErrors;
-    }
-
-    private static string NormalizeValidationErrorText(string? input)
-    {
-        if (string.IsNullOrEmpty(input))
-        {
-            return string.Empty;
-        }
-
-        if (input.IndexOf('[') < 0)
-        {
-            return input;
-        }
-
-        return ArrayIndexRegex.Replace(input, string.Empty);
     }
 
     private SchemaAnalysis AnalyzeSchemaStructure(JObject specObject)

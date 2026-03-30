@@ -434,8 +434,8 @@ public class OpenApiValidationServiceTests
 
         // Assert
         Assert.That(errors, Has.Count.EqualTo(2));
-        Assert.That(errors.All(e => !e.Path.Contains("[")), Is.True);
-        Assert.That(errors.All(e => !e.Message.Contains("[")), Is.True);
+        Assert.That(errors.All(e => e.Path.Contains("[]")), Is.True);
+        Assert.That(errors.All(e => e.Message.Contains("[]")), Is.True);
     }
 
     [Test]
@@ -507,10 +507,10 @@ public class OpenApiValidationServiceTests
 
         // Assert
         Assert.That(errors, Has.Count.EqualTo(1), "Entries with the same normalized path should collapse to the first error");
-        Assert.That(errors[0].Path, Is.EqualTo("items.name"));
+        Assert.That(errors[0].Path, Is.EqualTo("items[].name"));
         Assert.That(errors[0].Severity, Is.EqualTo("Error"));
         Assert.That(errors[0].ErrorCode, Is.EqualTo("VALIDATION_ERROR"));
-        Assert.That(errors[0].Message, Is.EqualTo("items.name is required"));
+        Assert.That(errors[0].Message, Is.EqualTo("items[].name is required"));
     }
 
     [Test]
@@ -2913,8 +2913,8 @@ public class OpenApiValidationServiceTests
 
         // Assert
         Assert.That(errors, Has.Count.EqualTo(2));
-        Assert.That(errors.All(e => !e.Path.Contains("[")), Is.True);
-        Assert.That(errors.All(e => !e.Message.Contains("[")), Is.True);
+        Assert.That(errors.All(e => e.Path.Contains("[]")), Is.True);
+        Assert.That(errors.All(e => e.Message.Contains("[]")), Is.True);
     }
 
     [Test]
@@ -2967,8 +2967,8 @@ public class OpenApiValidationServiceTests
 
         // Assert
         Assert.That(errors, Has.Count.EqualTo(1));
-        Assert.That(errors[0].Path, Is.EqualTo("data"));
-        Assert.That(errors[0].Message, Is.EqualTo("data should be object"));
+        Assert.That(errors[0].Path, Is.EqualTo("data[]"));
+        Assert.That(errors[0].Message, Is.EqualTo("data[] should be object"));
     }
 
     [Test]
@@ -2998,8 +2998,8 @@ public class OpenApiValidationServiceTests
 
         // Assert
         Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.NotTested));
-        Assert.That(warning.Path.Contains("["), Is.False, "Path should be normalized");
-        Assert.That(warning.Message.Contains("["), Is.False, "Message should be normalized");
+        Assert.That(warning.Path.Contains("[]"), Is.True, "Path should retain array level markers");
+        Assert.That(warning.Message.Contains("[0]"), Is.False, "Message should not include concrete array indexes");
     }
 
     [Test]

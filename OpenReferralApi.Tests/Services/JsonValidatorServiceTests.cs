@@ -553,16 +553,16 @@ public class JsonValidatorServiceTests
         // Assert
         Assert.That(result.IsValid, Is.True);
         Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
-            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users.age"),
+            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users[].age"),
             "Should report additional fields in array items");
         Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
-            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users.role"),
+            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users[].role"),
             "Should report additional fields in array items");
         Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
-            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Message == "Field 'users.age' is not defined in the schema"),
+            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Message == "Field 'users[].age' is not defined in the schema"),
             "Should normalize array indices in additional-field message for users.age");
         Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
-            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Message == "Field 'users.role' is not defined in the schema"),
+            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Message == "Field 'users[].role' is not defined in the schema"),
             "Should normalize array indices in additional-field message for users.role");
     }
 
@@ -613,8 +613,8 @@ public class JsonValidatorServiceTests
 
         // Assert
         var additionalField = result.Errors.Single(e => e.ErrorCode == "ADDITIONAL_FIELD");
-        Assert.That(additionalField.Path, Is.EqualTo("service_at_locations.regular_schedule"));
-        Assert.That(additionalField.Message, Is.EqualTo("Field 'service_at_locations.regular_schedule' is not defined in the schema"));
+        Assert.That(additionalField.Path, Is.EqualTo("service_at_locations[].regular_schedule"));
+        Assert.That(additionalField.Message, Is.EqualTo("Field 'service_at_locations[].regular_schedule' is not defined in the schema"));
         Assert.That(additionalField.Message.Contains("[0]"), Is.False, "Message should not include array indices");
     }
 
@@ -666,12 +666,12 @@ public class JsonValidatorServiceTests
 
         // Assert
         var ageWarnings = result.Errors
-            .Where(e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users.age")
+            .Where(e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users[].age")
             .ToList();
 
-        Assert.That(ageWarnings.Count, Is.EqualTo(1), "Expected one deduplicated warning for users.age");
-        Assert.That(ageWarnings[0].Message, Is.EqualTo("Field 'users.age' is not defined in the schema"));
-        Assert.That(ageWarnings[0].Message.Contains("["), Is.False, "Deduplicated message should be normalized");
+        Assert.That(ageWarnings.Count, Is.EqualTo(1), "Expected one deduplicated warning for users[].age");
+        Assert.That(ageWarnings[0].Message, Is.EqualTo("Field 'users[].age' is not defined in the schema"));
+        Assert.That(ageWarnings[0].Message.Contains("[0]"), Is.False, "Deduplicated message should not include concrete indexes");
     }
 
     private void SetupHttpMock(string schemaJson, string dataJson)

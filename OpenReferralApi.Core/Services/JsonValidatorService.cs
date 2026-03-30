@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
@@ -523,7 +522,7 @@ public class JsonValidatorService : IJsonValidatorService
             
             foreach (var warning in warnings)
             {
-                var normalizedPath = NormalizeAdditionalFieldPath(warning.Path);
+                var normalizedPath = ValidationPathNormalizer.NormalizeArrayIndexes(warning.Path);
                 if (!uniqueWarnings.ContainsKey(normalizedPath))
                 {
                     warning.Path = normalizedPath;
@@ -597,14 +596,6 @@ public class JsonValidatorService : IJsonValidatorService
                 }
             }
         }
-    }
-
-    /// <summary>
-    /// Removes array index segments from a path (for example "service_at_locations[0]" -> "service_at_locations").
-    /// </summary>
-    private string NormalizeAdditionalFieldPath(string path)
-    {
-        return Regex.Replace(path, @"\[[^\]]*\]", "");
     }
 
     private static string BuildAdditionalFieldMessage(string path)

@@ -24,8 +24,6 @@ public interface IEndpointTestingService
 
 public class EndpointTestingService : IEndpointTestingService
 {
-    private static readonly Regex ArrayIndexRegex = new(@"\[[^\]]*\]", RegexOptions.Compiled);
-
     private readonly ILogger<EndpointTestingService> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IJsonValidatorService _jsonValidatorService;
@@ -806,7 +804,7 @@ public class EndpointTestingService : IEndpointTestingService
 
         foreach (var error in errors)
         {
-            var normalizedPath = NormalizeValidationErrorText(error.Path);
+            var normalizedPath = ValidationPathNormalizer.NormalizeArrayIndexes(error.Path);
 
             // Keep the first validation error encountered for each normalized path.
             if (!seenPaths.Add(normalizedPath))
@@ -818,7 +816,7 @@ public class EndpointTestingService : IEndpointTestingService
             deduplicatedErrors.Add(new ValidationError
             {
                 Path = normalizedPath,
-                Message = NormalizeValidationErrorText(error.Message),
+                Message = ValidationPathNormalizer.NormalizeArrayIndexes(error.Message),
                 ErrorCode = error.ErrorCode,
                 Severity = error.Severity,
                 LineNumber = error.LineNumber,
@@ -828,22 +826,6 @@ public class EndpointTestingService : IEndpointTestingService
 
         return deduplicatedErrors;
     }
-
-    private static string NormalizeValidationErrorText(string? input)
-    {
-        if (string.IsNullOrEmpty(input))
-        {
-            return string.Empty;
-        }
-
-        if (input.IndexOf('[') < 0)
-        {
-            return input;
-        }
-
-        return ArrayIndexRegex.Replace(input, string.Empty);
-    }
-
     private static string SanitizeExceptionMessage(string message)
     {
         if (string.IsNullOrEmpty(message))
