@@ -109,10 +109,7 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            }
+            OwnSchemaUrl = "https://example.com/openapi.json"
         };
         SetupHttpMock(json);
 
@@ -130,10 +127,7 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://api.example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://api.example.com/openapi.json",
             BaseUrl = "https://api.example.com"
         };
         SetupHttpMock(json);
@@ -153,10 +147,7 @@ public class OpenApiValidationServiceTests
         var customProfileSpecUrl = "https://raw.githubusercontent.com/openreferral/specification/refs/heads/3.2/schema/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = customProfileSpecUrl
-            },
+            OwnSchemaUrl = customProfileSpecUrl,
             ProfileReason = "Standard version [user: 3.2] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
         };
@@ -211,10 +202,7 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            }
+            OwnSchemaUrl = "https://example.com/openapi.json"
         };
         SetupHttpMock(json);
 
@@ -232,10 +220,7 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            }
+            OwnSchemaUrl = "https://example.com/openapi.json"
         };
         SetupHttpMock(json);
 
@@ -257,10 +242,7 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             Options = new OpenApiValidationOptions
             {
                 //ValidateSpecification = true 
@@ -283,10 +265,7 @@ public class OpenApiValidationServiceTests
         var json = CreateSwagger20Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/swagger.json"
-            },
+            OwnSchemaUrl = "https://example.com/swagger.json",
             Options = new OpenApiValidationOptions
             {
                 //ValidateSpecification = true 
@@ -313,10 +292,7 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             Options = new OpenApiValidationOptions()
         };
         SetupHttpMock(json);
@@ -360,10 +336,7 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             Options = new OpenApiValidationOptions()
         };
 
@@ -445,10 +418,7 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             Options = new OpenApiValidationOptions {
                 //ValidateSpecification = true
             }
@@ -520,10 +490,7 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            }
+            OwnSchemaUrl = "https://example.com/openapi.json"
         };
         SetupHttpMock(json);
 
@@ -540,10 +507,7 @@ public class OpenApiValidationServiceTests
         // Arrange
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             Options = new OpenApiValidationOptions()
         };
 
@@ -585,7 +549,7 @@ public class OpenApiValidationServiceTests
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            OwnSchemaUrl = feedSpecUrl ,
             Options = new OpenApiValidationOptions { 
                 // ValidateSpecification = true 
                 ReportAdditionalFields = true
@@ -633,7 +597,7 @@ public class OpenApiValidationServiceTests
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            OwnSchemaUrl = feedSpecUrl ,
             Options = new OpenApiValidationOptions { 
                 // ValidateSpecification = true 
                 ReportAdditionalFields = true
@@ -683,7 +647,7 @@ public class OpenApiValidationServiceTests
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            OwnSchemaUrl = feedSpecUrl ,
             Options = new OpenApiValidationOptions { 
                 // ValidateSpecification = true 
                 ReportAdditionalFields = true
@@ -729,7 +693,7 @@ public class OpenApiValidationServiceTests
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            OwnSchemaUrl = feedSpecUrl ,
             Options = new OpenApiValidationOptions
             {
                 ReportAdditionalFields = false
@@ -774,7 +738,7 @@ public class OpenApiValidationServiceTests
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            OwnSchemaUrl = feedSpecUrl ,
             Options = new OpenApiValidationOptions { 
                 // ValidateSpecification = true 
                 ReportAdditionalFields = true
@@ -808,7 +772,7 @@ public class OpenApiValidationServiceTests
         Assert.That(result.IsValid, Is.True);
         Assert.That(result.SpecificationValidation, Is.Not.Null);
         Assert.That(result.Notifications, Has.Some.EqualTo("Unable to fetch OpenAPI specification from the feed URL. Falling back to the HSDS profile OpenAPI specification."));
-        Assert.That(request.OpenApiSchema!.Url, Is.EqualTo(hsdsSpecUrl));
+        Assert.That(request.OwnSchemaUrl, Is.EqualTo(hsdsSpecUrl));
     }
 
     [Test]
@@ -863,8 +827,8 @@ public class OpenApiValidationServiceTests
 
         // Assert
         Assert.That(result.IsValid, Is.True);
-        Assert.That(request.OpenApiSchema, Is.Not.Null);
-        Assert.That(request.OpenApiSchema!.Url, Is.EqualTo(defaultProfileSpecUrl));
+        Assert.That(request.OwnSchemaUrl, Is.Not.Null);
+        Assert.That(request.OwnSchemaUrl, Is.EqualTo(defaultProfileSpecUrl));
         Assert.That(result.Notifications.Any(n => n.Contains("configured default HSDS profile OpenAPI specification", StringComparison.OrdinalIgnoreCase)), Is.True);
     }
 
@@ -876,7 +840,7 @@ public class OpenApiValidationServiceTests
         var defaultProfileSpecUrl = $"https://default-{Guid.NewGuid():N}.example.com/specifications/1.0/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            OwnSchemaUrl = feedSpecUrl ,
             Options = new OpenApiValidationOptions()
         };
 
@@ -925,7 +889,7 @@ public class OpenApiValidationServiceTests
 
         // Assert
         Assert.That(result.IsValid, Is.True);
-        Assert.That(request.OpenApiSchema!.Url, Is.EqualTo(defaultProfileSpecUrl));
+        Assert.That(request.OwnSchemaUrl, Is.EqualTo(defaultProfileSpecUrl));
         Assert.That(result.Notifications.Any(n => n.Contains("Falling back to the HSDS profile OpenAPI specification", StringComparison.OrdinalIgnoreCase)), Is.True);
         Assert.That(result.Metadata?.Profile, Is.EqualTo("HSDS-UK-1.0"));
     }
@@ -966,13 +930,160 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WhenSchemaIsDiscovered_DoesNotRequestSchemaAuth()
+    {
+        // Arrange
+        var discoveredSchemaUrl = "https://directory.example.com/openapi.json";
+        var auth = new DataSourceAuthentication { BearerToken = "test-token" };
+        var request = new OpenApiValidationRequest
+        {
+            BaseUrl = "https://directory.example.com/api",
+            DataSourceAuth = auth,
+            Options = new OpenApiValidationOptions()
+        };
+
+        var authenticationValidationServiceMock = new Mock<IAuthenticationValidationService>();
+        authenticationValidationServiceMock
+            .Setup(s => s.TryGetValidatedRequestAuthentication("datasource", It.IsAny<DataSourceAuthentication?>()))
+            .Returns(auth);
+        authenticationValidationServiceMock
+            .Setup(s => s.TryGetValidatedRequestAuthentication("schema", It.IsAny<DataSourceAuthentication?>()))
+            .Returns(auth);
+
+        var bootstrapServiceMock = new Mock<IOpenApiBootstrapService>();
+        bootstrapServiceMock
+            .Setup(s => s.ResolveFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OpenApiBootstrapResult
+            {
+                OpenApiSchemaUrl = discoveredSchemaUrl,
+                DiscoveryReason = "discovered from base URL",
+                UsedDataServiceOpenApi = true
+            });
+
+        var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>
+        {
+            var requestUrl = httpRequest.RequestUri?.ToString() ?? string.Empty;
+            if (string.Equals(requestUrl, discoveredSchemaUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateOpenApi30Spec())
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+        }));
+
+        using var _ = httpClient;
+
+        var service = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            authenticationValidationService: authenticationValidationServiceMock.Object,
+            openApiBootstrapService: bootstrapServiceMock.Object,
+            openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
+            {
+                ValidateSpecification = false,
+                TestEndpoints = false,
+                AllowUserSuppliedAuth = true
+            }));
+
+        // Act
+        var result = await service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.True);
+        authenticationValidationServiceMock.Verify(
+            s => s.TryGetValidatedRequestAuthentication("datasource", It.IsAny<DataSourceAuthentication?>()),
+            Times.Once);
+        authenticationValidationServiceMock.Verify(
+            s => s.TryGetValidatedRequestAuthentication("schema", It.IsAny<DataSourceAuthentication?>()),
+            Times.Never);
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WhenOwnSchemaUrlProvided_RequestsSchemaAuth()
+    {
+        // Arrange
+        var ownSchemaUrl = "https://example.com/openapi.json";
+        var auth = new DataSourceAuthentication { BearerToken = "test-token" };
+        var request = new OpenApiValidationRequest
+        {
+            OwnSchemaUrl = ownSchemaUrl,
+            DataSourceAuth = auth,
+            Options = new OpenApiValidationOptions()
+        };
+
+        var authenticationValidationServiceMock = new Mock<IAuthenticationValidationService>();
+        authenticationValidationServiceMock
+            .Setup(s => s.TryGetValidatedRequestAuthentication("datasource", It.IsAny<DataSourceAuthentication?>()))
+            .Returns(auth);
+        authenticationValidationServiceMock
+            .Setup(s => s.TryGetValidatedRequestAuthentication("schema", It.IsAny<DataSourceAuthentication?>()))
+            .Returns(auth);
+
+        var bootstrapServiceMock = new Mock<IOpenApiBootstrapService>();
+
+        var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>
+        {
+            var requestUrl = httpRequest.RequestUri?.ToString() ?? string.Empty;
+            if (string.Equals(requestUrl, ownSchemaUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(CreateOpenApi30Spec())
+                };
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+        }));
+
+        using var _ = httpClient;
+
+        var service = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            authenticationValidationService: authenticationValidationServiceMock.Object,
+            openApiBootstrapService: bootstrapServiceMock.Object,
+            openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
+            {
+                ValidateSpecification = false,
+                TestEndpoints = false,
+                AllowUserSuppliedAuth = true
+            }));
+
+        // Act
+        var result = await service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.True);
+        authenticationValidationServiceMock.Verify(
+            s => s.TryGetValidatedRequestAuthentication("datasource", It.IsAny<DataSourceAuthentication?>()),
+            Times.Once);
+        authenticationValidationServiceMock.Verify(
+            s => s.TryGetValidatedRequestAuthentication("schema", It.IsAny<DataSourceAuthentication?>()),
+            Times.Once);
+        bootstrapServiceMock.Verify(
+            s => s.ResolveFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Test]
     public async Task ValidateOpenApiSpecificationAsync_AddsUnknownProfileErrorWhenProfileContextCannotBeMapped()
     {
         // Arrange
         var feedSpecUrl = "https://feed.example.com/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            OwnSchemaUrl = feedSpecUrl ,
             Options = new OpenApiValidationOptions { 
                 // ValidateSpecification = true 
             },
@@ -999,7 +1110,7 @@ public class OpenApiValidationServiceTests
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            OwnSchemaUrl = feedSpecUrl ,
             Options = new OpenApiValidationOptions { 
                 // ValidateSpecification = true 
             }
@@ -1045,7 +1156,7 @@ public class OpenApiValidationServiceTests
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            OwnSchemaUrl = feedSpecUrl ,
             Options = new OpenApiValidationOptions { 
                 // ValidateSpecification = true 
             }
@@ -1093,7 +1204,7 @@ public class OpenApiValidationServiceTests
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            OwnSchemaUrl = feedSpecUrl ,
             Options = new OpenApiValidationOptions { 
                 // ValidateSpecification = true 
                 ReportAdditionalFields = true
@@ -1143,7 +1254,7 @@ public class OpenApiValidationServiceTests
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            OwnSchemaUrl = feedSpecUrl ,
             Options = new OpenApiValidationOptions { 
                 // ValidateSpecification = true 
             },
@@ -1210,7 +1321,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            OwnSchemaUrl = feedSpecUrl ,
             BaseUrl = "https://feed.example.com",
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
@@ -1341,7 +1452,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            OwnSchemaUrl = feedSpecUrl ,
             BaseUrl = "https://feed.example.com",
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
@@ -1482,7 +1593,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            OwnSchemaUrl = feedSpecUrl ,
             BaseUrl = "https://feed.example.com",
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
@@ -1583,7 +1694,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = "https://example.com/openapi.json" },
+            OwnSchemaUrl = "https://example.com/openapi.json" ,
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions
             {
@@ -1627,7 +1738,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = "https://example.com/openapi.json" },
+            OwnSchemaUrl = "https://example.com/openapi.json" ,
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions
             {
@@ -1690,7 +1801,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            OwnSchemaUrl = feedSpecUrl ,
             BaseUrl = "https://feed.example.com",
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
@@ -1776,7 +1887,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            OwnSchemaUrl = feedSpecUrl ,
             BaseUrl = "https://feed.example.com",
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
@@ -1859,7 +1970,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            OwnSchemaUrl = feedSpecUrl ,
             BaseUrl = "https://feed.example.com",
             Options = new OpenApiValidationOptions()
         };
@@ -1931,7 +2042,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            OwnSchemaUrl = feedSpecUrl ,
             BaseUrl = "https://feed.example.com",
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
@@ -1997,10 +2108,7 @@ public class OpenApiValidationServiceTests
         // Arrange
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/notfound.json"
-            }
+            OwnSchemaUrl = "https://example.com/notfound.json"
         };
 
         var mockHandler = new MockHttpMessageHandler((req, ct) =>
@@ -2036,10 +2144,7 @@ public class OpenApiValidationServiceTests
         // Arrange
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://invalid.example.com/openapi.json"
-            }
+            OwnSchemaUrl = "https://invalid.example.com/openapi.json"
         };
 
         var mockHandler = new MockHttpMessageHandler((req, ct) =>
@@ -2111,10 +2216,7 @@ public class OpenApiValidationServiceTests
         // Arrange
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/invalid.json"
-            }
+            OwnSchemaUrl = "https://example.com/invalid.json"
         };
 
         var mockHandler = new MockHttpMessageHandler((req, ct) =>
@@ -2156,10 +2258,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = feedSpecUrl
-            },
+            OwnSchemaUrl = feedSpecUrl,
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
         };
@@ -2190,7 +2289,7 @@ public class OpenApiValidationServiceTests
         // Assert
         Assert.That(result.IsValid, Is.True);
         Assert.That(result.Notifications.Any(n => n.Contains("Falling back to the HSDS profile OpenAPI specification", StringComparison.OrdinalIgnoreCase)), Is.True);
-        Assert.That(request.OpenApiSchema!.Url, Is.EqualTo(hsdsSpecUrl));
+        Assert.That(request.OwnSchemaUrl, Is.EqualTo(hsdsSpecUrl));
     }
 
     [Test]
@@ -2254,10 +2353,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = uniqueFeedSpecUrl
-            },
+            OwnSchemaUrl = uniqueFeedSpecUrl,
             Options = new OpenApiValidationOptions()
         };
 
@@ -2286,10 +2382,7 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            }
+            OwnSchemaUrl = "https://example.com/openapi.json"
         };
         var mockHandler = new MockHttpMessageHandler((req, ct) =>
         {
@@ -2328,10 +2421,7 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions { IncludeResponseBody = false }
         };
@@ -2354,10 +2444,7 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions { IncludeTestResults = false }
         };
@@ -2380,10 +2467,7 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30SpecWithResponseSchema();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions {
                 IncludeTestResults = false
@@ -2430,10 +2514,7 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30PaginatedSpec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions()
         };
@@ -2587,7 +2668,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = feedSpecUrl },
+            OwnSchemaUrl = feedSpecUrl ,
             BaseUrl = "https://feed.example.com",
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
@@ -2618,10 +2699,7 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30PaginatedSpec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions()
         };
@@ -2659,10 +2737,7 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30PaginatedSpec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions()
         };
@@ -2746,7 +2821,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = specUrl },
+            OwnSchemaUrl = specUrl ,
             BaseUrl = baseUrl,
             Options = new OpenApiValidationOptions()
         };
@@ -2825,7 +2900,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema { Url = specUrl },
+            OwnSchemaUrl = specUrl ,
             BaseUrl = baseUrl,
             Options = new OpenApiValidationOptions()
         };
@@ -2856,10 +2931,7 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30SpecWithResponseSchema();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions
             {
@@ -2924,10 +2996,7 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30SpecWithResponseSchema();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions
             {
@@ -2978,10 +3047,7 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30ParameterizedOnlySpecWithIndexedPath();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions
             {
@@ -3009,10 +3075,7 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30OptionalEndpointSpec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions()
         };
@@ -3069,10 +3132,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions
             {
@@ -3137,10 +3197,7 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30OptionalEndpointSpec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions()
         };
@@ -3194,10 +3251,7 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30MixedRequiredAndOptionalSpec();
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions()
         };
@@ -3266,10 +3320,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             DataSourceAuth = new DataSourceAuthentication
             {
@@ -3314,10 +3365,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             DataSourceAuth = new DataSourceAuthentication
             {
@@ -3363,10 +3411,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             DataSourceAuth = new DataSourceAuthentication
             {
@@ -3412,10 +3457,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             DataSourceAuth = new DataSourceAuthentication
             {
@@ -3469,10 +3511,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             DataSourceAuth = new DataSourceAuthentication
             {
@@ -3526,10 +3565,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             DataSourceAuth = new DataSourceAuthentication
             {
@@ -3580,10 +3616,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             DataSourceAuth = null,  // No authentication provided
             Options = new OpenApiValidationOptions()
@@ -3625,10 +3658,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             DataSourceAuth = new DataSourceAuthentication(),  // Empty auth data
             Options = new OpenApiValidationOptions()
@@ -3669,10 +3699,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             DataSourceAuth = new DataSourceAuthentication
             {
@@ -3721,10 +3748,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json"
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "http://api.example.com",
             DataSourceAuth = new DataSourceAuthentication
             {
@@ -3776,14 +3800,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json",
-                Authentication = new DataSourceAuthentication
-                {
-                    BearerToken = "schema-token"
-                }
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             DataSourceAuth = new DataSourceAuthentication
             {
@@ -3848,14 +3865,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://example.com/openapi.json",
-                Authentication = new DataSourceAuthentication
-                {
-                    BearerToken = "schema-token"
-                }
-            },
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             DataSourceAuth = new DataSourceAuthentication
             {

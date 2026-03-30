@@ -34,10 +34,7 @@ public class OpenReferralUkControllerTests
         var request = new OpenApiValidationRequest
         {
             BaseUrl = "https://api.example.com",
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://api.example.com/openapi.json"
-            }
+            OwnSchemaUrl = "https://api.example.com/openapi.json"
         };
 
         var validationResult = new OpenApiValidationResult

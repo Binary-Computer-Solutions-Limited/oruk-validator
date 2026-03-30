@@ -16,7 +16,7 @@ public abstract class BaseOpenApiController : ControllerBase
     protected ActionResult? ValidateRequestAndReturnErrorIfInvalid(
         OpenApiValidationRequest request)
     {
-        if (string.IsNullOrEmpty(request.OpenApiSchema?.Url) && string.IsNullOrEmpty(request.BaseUrl))
+        if (string.IsNullOrEmpty(request.OwnSchemaUrl) && string.IsNullOrEmpty(request.BaseUrl))
         {
             return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
             {

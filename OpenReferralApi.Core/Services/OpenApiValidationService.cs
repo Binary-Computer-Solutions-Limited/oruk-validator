@@ -104,14 +104,20 @@ public class OpenApiValidationService : IOpenApiValidationService
                 out var defaultProfileSchemaUrl,
                 out var defaultProfileVersion);
 
-            // User-supplied authentication for schema and datasource requests is feature-gated
-            // and must pass strict validation before it can be applied.
-            var schemaRequestAuth = _authenticationValidationService.TryGetValidatedRequestAuthentication("schema", request.OpenApiSchema?.Authentication);
+            // User-supplied authentication for schema requests should only apply when the caller
+            // explicitly supplied ownSchemaUrl. Discovered or fallback schema URLs must not reuse
+            // schema-scoped request authentication.
+            var hasExplicitOwnSchemaUrl = !string.IsNullOrWhiteSpace(request.OwnSchemaUrl);
+            var schemaRequestAuth = hasExplicitOwnSchemaUrl
+                ? _authenticationValidationService.TryGetValidatedRequestAuthentication("schema", request.DataSourceAuth)
+                : null;
+
+            // Datasource authentication can still be used for bootstrap discovery and endpoint testing.
             var dataSourceRequestAuth = _authenticationValidationService.TryGetValidatedRequestAuthentication("datasource", request.DataSourceAuth);
 
             // Discover OpenAPI schema URL if not provided
             var usedBaseUrlDiscovery = false;
-            if (request.OpenApiSchema == null || string.IsNullOrEmpty(request.OpenApiSchema.Url))
+            if (string.IsNullOrEmpty(request.OwnSchemaUrl))
             {
                 if (!string.IsNullOrEmpty(request.BaseUrl))
                 {
@@ -134,16 +140,14 @@ public class OpenApiValidationService : IOpenApiValidationService
                         }
 
                         _logger.LogInformation("Discovered OpenAPI schema URL: {Url} (Reason: {Reason})", SchemaResolverService.SanitizeUrlForLogging(discoveredUrl), reason);
-                        request.OpenApiSchema ??= new OpenApiSchema();
-                        request.OpenApiSchema.Url = discoveredUrl;
+                        request.OwnSchemaUrl = discoveredUrl;
                         request.ProfileReason = bootstrap.ProfileReason;
                     }
                     else
                     {
                         if (hasConfiguredDefaultProfile)
                         {
-                            request.OpenApiSchema ??= new OpenApiSchema();
-                            request.OpenApiSchema.Url = defaultProfileSchemaUrl;
+                            request.OwnSchemaUrl = defaultProfileSchemaUrl;
                             if (!string.IsNullOrWhiteSpace(defaultProfileVersion))
                             {
                                 request.ProfileReason = $"Standard version [user: {defaultProfileVersion}] configured default profile fallback";
@@ -167,12 +171,12 @@ public class OpenApiValidationService : IOpenApiValidationService
                 }
             }
 
-            if (string.IsNullOrEmpty(request.OpenApiSchema?.Url))
+            if (string.IsNullOrEmpty(request.OwnSchemaUrl))
             {
                 throw new ArgumentException("OpenAPI schema URL must be provided or BaseUrl must allow discovery");
             }
 
-            var claimedProfileVersion = _hsdsComplianceService.ExtractClaimedProfileVersion(request.ProfileReason, request.OpenApiSchema.Url);
+            var claimedProfileVersion = _hsdsComplianceService.ExtractClaimedProfileVersion(request.ProfileReason, request.OwnSchemaUrl);
             JObject? resolvedHsdsProfileSpec = null;
             string? knownHsdsSchemaUrl = null;
 
@@ -193,7 +197,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             JObject openApiSpec;
             try
             {
-                openApiSpec = await GetCachedResolvedOpenApiSpecAsync(request.OpenApiSchema.Url, schemaRequestAuth, cancellationToken, cacheScope: "feed");
+                openApiSpec = await GetCachedResolvedOpenApiSpecAsync(request.OwnSchemaUrl, schemaRequestAuth, cancellationToken, cacheScope: "feed");
             }
             catch (Exception ex)
             {
@@ -221,18 +225,18 @@ public class OpenApiValidationService : IOpenApiValidationService
                 _logger.LogWarning(
                     ex,
                     "Failed to fetch/resolve OpenAPI from feed URL {FeedSpecUrl}; falling back to HSDS profile schema {ProfileSchemaUrl}",
-                    SchemaResolverService.SanitizeUrlForLogging(request.OpenApiSchema.Url),
+                    SchemaResolverService.SanitizeUrlForLogging(request.OwnSchemaUrl),
                     SchemaResolverService.SanitizeUrlForLogging(knownHsdsSchemaUrl));
 
                 openApiSpec = (JObject)resolvedHsdsProfileSpec.DeepClone();
-                request.OpenApiSchema.Url = knownHsdsSchemaUrl;
+                request.OwnSchemaUrl = knownHsdsSchemaUrl;
                 feedSpecFellBackToHsdsProfile = true;
                 result.Notifications.Add("Unable to fetch OpenAPI specification from the feed URL. Falling back to the HSDS profile OpenAPI specification.");
             }
 
             // If discovery could not infer an HSDS profile version, try extracting it from the OpenAPI document itself.
             string? misplacedHsdsVersionWarning = null;
-            if (!HasExplicitProfileVersionContext(request.ProfileReason, request.OpenApiSchema?.Url))
+            if (!HasExplicitProfileVersionContext(request.ProfileReason, request.OwnSchemaUrl))
             {
                 var (versionFromSpec, fromOpenapiField) = TryExtractProfileVersionFromOpenApiSpec(openApiSpec);
                 if (!string.IsNullOrWhiteSpace(versionFromSpec))
@@ -282,7 +286,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 result.Notifications.Add(misplacedHsdsVersionWarning);
             }
 
-            claimedProfileVersion = _hsdsComplianceService.ExtractClaimedProfileVersion(request.ProfileReason, request.OpenApiSchema?.Url);
+            claimedProfileVersion = _hsdsComplianceService.ExtractClaimedProfileVersion(request.ProfileReason, request.OwnSchemaUrl);
 
             if (string.IsNullOrWhiteSpace(claimedProfileVersion) && hasConfiguredDefaultProfile)
             {
@@ -391,8 +395,8 @@ public class OpenApiValidationService : IOpenApiValidationService
                 }
 
                 var endpointValidationSpecUrl = useOwnSchemaValidation
-                    ? request.OpenApiSchema?.Url
-                    : knownHsdsSchemaUrl ?? request.OpenApiSchema?.Url;
+                    ? request.OwnSchemaUrl
+                    : knownHsdsSchemaUrl ?? request.OwnSchemaUrl;
                 endpointTests = await _endpointTestingService.TestEndpointsAsync(endpointValidationSpec, request.BaseUrl, request.Options, dataSourceRequestAuth, endpointValidationSpecUrl, cancellationToken);
                 result.EndpointTests = endpointTests;
             }
@@ -441,7 +445,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 TestTimestamp = DateTime.UtcNow,
                 TestDuration = stopwatch.Elapsed,
                 UserAgent = "OpenReferral-Validator/1.0",
-                Profile = ResolveMetadataProfileIdentifier(request.ProfileReason, claimedProfileVersion, request.OpenApiSchema?.Url),
+                Profile = ResolveMetadataProfileIdentifier(request.ProfileReason, claimedProfileVersion, request.OwnSchemaUrl),
                 ProfileReason = request.ProfileReason
             };
 
@@ -479,7 +483,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             if (IsSpecFetchOrResolveFailure(ex))
             {
-                var safeSpecUrl = SchemaResolverService.SanitizeUrlForLogging(request.OpenApiSchema?.Url ?? string.Empty);
+                var safeSpecUrl = SchemaResolverService.SanitizeUrlForLogging(request.OwnSchemaUrl ?? string.Empty);
                 var rootMessage = TextSanitizer.SanitizeExceptionMessage(GetInnermostException(ex).Message);
                 var notification = string.IsNullOrEmpty(safeSpecUrl)
                     ? $"Unable to get or resolve the OpenAPI specification. {rootMessage}"

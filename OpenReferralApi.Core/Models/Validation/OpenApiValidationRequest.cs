@@ -10,13 +10,12 @@ public class OpenApiValidationRequest
 {
 
     /// <summary>
-    /// OpenAPI schema configuration including URL and optional authentication
-    /// Used to fetch and authenticate access to the OpenAPI specification
-    /// If null, the schema URL will be discovered from the baseUrl
+    /// URL to fetch the OpenAPI specification from (JSON or YAML)
+    /// The service will download and parse the specification from this URL
+    /// Supports HTTP/HTTPS URLs and handles $ref resolution for external references
     /// </summary>
-    /// <example>{"url":"https://example.org/openapi.json"}</example>
-    [JsonProperty("openApiSchema")]
-    public OpenApiSchema? OpenApiSchema { get; set; }
+    [JsonProperty("ownSchemaUrl")]
+    public string? OwnSchemaUrl { get; set; }
 
     /// <summary>
     /// Base URL of the live API server for endpoint testing

@@ -31,10 +31,7 @@ public class OpenApiControllerTests
         var request = new OpenApiValidationRequest
         {
             BaseUrl = "https://api.example.com",
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://api.example.com/openapi.json"
-            }
+            OwnSchemaUrl = "https://api.example.com/openapi.json"
         };
 
         var validationResult = new OpenApiValidationResult
@@ -61,10 +58,7 @@ public class OpenApiControllerTests
         var request = new OpenApiValidationRequest
         {
             BaseUrl = "https://api.example.com",
-            OpenApiSchema = new OpenApiSchema
-            {
-                Url = "https://api.example.com/openapi.json"
-            }
+            OwnSchemaUrl = "https://api.example.com/openapi.json"
         };
 
         var expectedNotification = "Unable to get or resolve the OpenAPI specification from https://api.example.com/openapi.json. 404";
@@ -97,8 +91,7 @@ public class OpenApiControllerTests
         // Arrange
         var request = new OpenApiValidationRequest
         {
-            BaseUrl = null,
-            OpenApiSchema = null
+            BaseUrl = null
         };
 
         // Act
