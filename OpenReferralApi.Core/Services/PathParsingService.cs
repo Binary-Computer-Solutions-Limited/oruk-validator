@@ -155,7 +155,7 @@ public class PathParsingService : IPathParsingService
                 {
                     result.IsAccessible = false;
                     result.StatusCode = 0;
-                    result.ErrorMessage = SanitizeExceptionMessage(ex.Message);
+                    result.ErrorMessage = TextSanitizer.SanitizeExceptionMessage(ex.Message);
                     _logger.LogWarning(ex, "HTTP request failed for URI: {Uri}", uri);
                 }
                 catch (TaskCanceledException ex) when (ex.CancellationToken.IsCancellationRequested)
@@ -179,7 +179,7 @@ public class PathParsingService : IPathParsingService
             _logger.LogError(ex, "Error checking accessibility of URI: {Uri}", uri);
             result.IsAccessible = false;
             result.StatusCode = 0;
-            result.ErrorMessage = SanitizeExceptionMessage(ex.Message);
+            result.ErrorMessage = TextSanitizer.SanitizeExceptionMessage(ex.Message);
         }
 
         return result;
@@ -211,7 +211,7 @@ public class PathParsingService : IPathParsingService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error resolving relative URI '{RelativeUri}' against base '{baseUrl}'", relativeUri, baseUrl);
-            throw new ArgumentException($"Failed to resolve relative URI '{relativeUri}' against base '{baseUrl}': {SanitizeExceptionMessage(ex.Message)}", ex);
+            throw new ArgumentException($"Failed to resolve relative URI '{relativeUri}' against base '{baseUrl}': {TextSanitizer.SanitizeExceptionMessage(ex.Message)}", ex);
         }
     }
 
@@ -358,24 +358,5 @@ public class PathParsingService : IPathParsingService
         };
     }
 
-    /// <summary>
-    /// Sanitizes exception messages to prevent log injection attacks by removing control characters.
-    /// </summary>
-    private static string SanitizeExceptionMessage(string message)
-    {
-        if (string.IsNullOrEmpty(message))
-            return string.Empty;
-
-        // Remove control characters (including CR/LF) to prevent log forging
-        var sanitized = new string(message.Where(c => !char.IsControl(c)).ToArray());
-
-        // Limit length to prevent log flooding
-        const int maxLength = 500;
-        if (sanitized.Length > maxLength)
-        {
-            sanitized = sanitized.Substring(0, maxLength) + "...(truncated)";
-        }
-
-        return sanitized;
-    }
 }
+

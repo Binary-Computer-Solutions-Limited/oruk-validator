@@ -29,7 +29,7 @@ public class AuthenticationValidationService : IAuthenticationValidationService
             {
                 _logger.LogWarning(
                     "User-supplied authentication was provided for {Context} but is disabled by server configuration",
-                    SanitizeForLogging(context));
+                    TextSanitizer.SanitizeForLogging(context));
             }
 
             return null;
@@ -40,7 +40,7 @@ public class AuthenticationValidationService : IAuthenticationValidationService
         {
             _logger.LogWarning(
                 "Rejected invalid user-supplied authentication for {Context}",
-                SanitizeForLogging(context));
+                TextSanitizer.SanitizeForLogging(context));
         }
 
         return validated;
@@ -201,14 +201,4 @@ public class AuthenticationValidationService : IAuthenticationValidationService
         return true;
     }
 
-    private static string SanitizeForLogging(string? value)
-    {
-        if (string.IsNullOrEmpty(value))
-        {
-            return string.Empty;
-        }
-
-        return value.Replace("\r", string.Empty)
-                    .Replace("\n", string.Empty);
-    }
 }

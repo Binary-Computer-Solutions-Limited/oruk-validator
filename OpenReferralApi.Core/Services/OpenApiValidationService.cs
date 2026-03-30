@@ -480,7 +480,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             if (IsSpecFetchOrResolveFailure(ex))
             {
                 var safeSpecUrl = SchemaResolverService.SanitizeUrlForLogging(request.OpenApiSchema?.Url ?? string.Empty);
-                var rootMessage = SanitizeExceptionMessage(GetInnermostException(ex).Message);
+                var rootMessage = TextSanitizer.SanitizeExceptionMessage(GetInnermostException(ex).Message);
                 var notification = string.IsNullOrEmpty(safeSpecUrl)
                     ? $"Unable to get or resolve the OpenAPI specification. {rootMessage}"
                     : $"Unable to get or resolve the OpenAPI specification from {safeSpecUrl}. {rootMessage}";
@@ -938,27 +938,6 @@ public class OpenApiValidationService : IOpenApiValidationService
 
         return (null, false);
     }
-    /// <summary>
-    /// Sanitizes exception messages to prevent log injection attacks by removing control characters.
-    /// </summary>
-    private static string SanitizeExceptionMessage(string message)
-    {
-        if (string.IsNullOrEmpty(message))
-            return string.Empty;
-
-        // Remove control characters (including CR/LF) to prevent log forging
-        var sanitized = new string(message.Where(c => !char.IsControl(c)).ToArray());
-
-        // Limit length to prevent log flooding
-        const int maxLength = 500;
-        if (sanitized.Length > maxLength)
-        {
-            sanitized = sanitized.Substring(0, maxLength) + "...(truncated)";
-        }
-
-        return sanitized;
-    }
-
     private static Exception GetInnermostException(Exception exception)
     {
         var current = exception;

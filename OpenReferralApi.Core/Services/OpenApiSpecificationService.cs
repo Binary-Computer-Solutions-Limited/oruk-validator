@@ -51,7 +51,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
             errors.Add(new ValidationError
             {
                 Path = "",
-                Message = $"Validation error: {SanitizeExceptionMessage(ex.Message)}",
+                Message = $"Validation error: {TextSanitizer.SanitizeExceptionMessage(ex.Message)}",
                 ErrorCode = "VALIDATION_ERROR",
                 Severity = "Error"
             });
@@ -202,7 +202,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
             errors.Add(new ValidationError
             {
                 Path = "",
-                Message = $"Could not validate against OpenAPI schema: {SanitizeExceptionMessage(ex.Message)}",
+                Message = $"Could not validate against OpenAPI schema: {TextSanitizer.SanitizeExceptionMessage(ex.Message)}",
                 ErrorCode = "SCHEMA_VALIDATION_FAILED",
                 Severity = "Error"
             });
@@ -965,19 +965,4 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         return responseObject["schema"] != null;
     }
 
-    private static string SanitizeExceptionMessage(string message)
-    {
-        if (string.IsNullOrEmpty(message))
-            return string.Empty;
-
-        var sanitized = new string(message.Where(c => !char.IsControl(c)).ToArray());
-
-        const int maxLength = 500;
-        if (sanitized.Length > maxLength)
-        {
-            sanitized = sanitized.Substring(0, maxLength) + "...(truncated)";
-        }
-
-        return sanitized;
-    }
 }
