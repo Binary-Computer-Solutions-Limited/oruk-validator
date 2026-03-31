@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
+using OpenReferralApi.Core.Logging;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
 
 namespace OpenReferralApi.Core.Services;
@@ -95,7 +96,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
         try
         {
-            _logger.LogInformation("Starting OpenAPI specification testing");
+            _logger.StartingOpenApiTesting();
 
             // Ensure options has default values if not provided
             request.Options ??= new OpenApiValidationOptions();
@@ -133,13 +134,12 @@ public class OpenApiValidationService : IOpenApiValidationService
                             && _hsdsComplianceService.TryGetKnownHsdsSchemaUrl(bootstrap.ProfileVersion, out var bootstrapMappedProfileSchemaUrl))
                         {
                             discoveredUrl = bootstrapMappedProfileSchemaUrl;
-                            _logger.LogInformation(
-                                "No OpenAPI spec found on data service; using profile schema URL {ProfileSchemaUrl} for profile version {ProfileVersion}",
+                            _logger.UsingProfileSchemaUrl(
                                 SchemaResolverService.SanitizeUrlForLogging(bootstrapMappedProfileSchemaUrl),
                                 bootstrap.ProfileVersion);
                         }
 
-                        _logger.LogInformation("Discovered OpenAPI schema URL: {Url} (Reason: {Reason})", SchemaResolverService.SanitizeUrlForLogging(discoveredUrl), reason);
+                        _logger.DiscoveredOpenApiSchemaUrl(SchemaResolverService.SanitizeUrlForLogging(discoveredUrl), reason);
                         request.OwnSchemaUrl = discoveredUrl;
                         request.ProfileReason = bootstrap.ProfileReason;
                     }
@@ -154,8 +154,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                             }
 
                             result.Notifications.Add("OpenAPI schema URL could not be discovered from the base URL. Falling back to the configured default HSDS profile OpenAPI specification.");
-                            _logger.LogInformation(
-                                "OpenAPI schema URL discovery failed for base URL {BaseUrl}; using configured default profile URL {ProfileSchemaUrl}",
+                            _logger.UsingDefaultProfileSchemaUrl(
                                 SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty),
                                 SchemaResolverService.SanitizeUrlForLogging(defaultProfileSchemaUrl));
                         }
@@ -210,9 +209,8 @@ public class OpenApiValidationService : IOpenApiValidationService
                     }
                     catch (Exception defaultFallbackEx)
                     {
-                        _logger.LogDebug(
+                        _logger.DefaultProfileFallbackCouldNotBeResolved(
                             defaultFallbackEx,
-                            "Configured default HSDS profile fallback could not be resolved from URL {ProfileSchemaUrl}",
                             SchemaResolverService.SanitizeUrlForLogging(defaultProfileSchemaUrl));
                     }
                 }
@@ -222,9 +220,8 @@ public class OpenApiValidationService : IOpenApiValidationService
                     throw;
                 }
 
-                _logger.LogWarning(
+                _logger.FallingBackToHsdsProfileSchema(
                     ex,
-                    "Failed to fetch/resolve OpenAPI from feed URL {FeedSpecUrl}; falling back to HSDS profile schema {ProfileSchemaUrl}",
                     SchemaResolverService.SanitizeUrlForLogging(request.OwnSchemaUrl),
                     SchemaResolverService.SanitizeUrlForLogging(knownHsdsSchemaUrl));
 
@@ -244,10 +241,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     request.ProfileReason = $"Standard version [user: {versionFromSpec}] read from OpenAPI spec";
                     if (fromOpenapiField)
                     {
-                        _logger.LogWarning(
-                            "HSDS schema version was incorrectly defined in the 'openapi' field (value: {OpenapiValue}). " +
-                            "The 'openapi' field specifies the OpenAPI specification version, not the HSDS schema version. " +
-                            "Detected HSDS version {HsdsVersion} — please add an 'x-hsds-version' or 'version' field to the spec.",
+                        _logger.HsdsVersionMisplaced(
                             SchemaResolverService.SanitizeStringForLogging(openApiSpec.SelectToken("openapi")?.ToString() ?? string.Empty),
                             versionFromSpec);
                         misplacedHsdsVersionWarning =
@@ -449,8 +443,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 ProfileReason = request.ProfileReason
             };
 
-            _logger.LogInformation("OpenAPI testing completed. IsValid: {IsValid}, Endpoints: {EndpointCount}",
-                result.IsValid, result.EndpointTests.Count);
+            _logger.OpenApiTestingCompleted(result.IsValid, result.EndpointTests.Count);
 
             // Honor option to exclude response bodies from the produced result (does not affect testing)
             if (!request.Options.IncludeResponseBody && result.EndpointTests != null)
@@ -477,7 +470,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during OpenAPI testing");
+            _logger.ErrorDuringOpenApiTesting(ex);
             result.IsValid = false;
             result.Summary = new OpenApiValidationSummary();
 
@@ -654,9 +647,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             || string.IsNullOrWhiteSpace(configuredDefaultSchemaUrl)
             || !Uri.IsWellFormedUriString(configuredDefaultSchemaUrl, UriKind.Absolute))
         {
-            _logger.LogWarning(
-                "Specification.DefaultProfileVersion '{DefaultProfileVersion}' is not a valid key in Specification.Urls. Falling back to existing behavior.",
-                SchemaResolverService.SanitizeStringForLogging(configuredDefaultKey));
+            _logger.InvalidDefaultProfileVersion(SchemaResolverService.SanitizeStringForLogging(configuredDefaultKey));
             return false;
         }
 
@@ -680,18 +671,12 @@ public class OpenApiValidationService : IOpenApiValidationService
             && !string.IsNullOrWhiteSpace(cachedEntry.ResolvedSpecJson))
         {
             ResolvedOpenApiCacheHitsCounter.Add(1, new KeyValuePair<string, object?>("scope", cacheScope));
-            _logger.LogDebug(
-                "Resolved OpenAPI cache hit (scope: {CacheScope}) for URL {SpecUrl}",
-                cacheScope,
-                SchemaResolverService.SanitizeUrlForLogging(specUrl));
+            _logger.ResolvedOpenApiCacheHit(cacheScope, SchemaResolverService.SanitizeUrlForLogging(specUrl));
             return JObject.Parse(cachedEntry.ResolvedSpecJson);
         }
 
         ResolvedOpenApiCacheMissesCounter.Add(1, new KeyValuePair<string, object?>("scope", cacheScope));
-        _logger.LogDebug(
-            "Resolved OpenAPI cache miss (scope: {CacheScope}) for URL {SpecUrl}",
-            cacheScope,
-            SchemaResolverService.SanitizeUrlForLogging(specUrl));
+        _logger.ResolvedOpenApiCacheMiss(cacheScope, SchemaResolverService.SanitizeUrlForLogging(specUrl));
 
         if (string.Equals(cacheScope, "profile", StringComparison.Ordinal))
         {
@@ -718,18 +703,13 @@ public class OpenApiValidationService : IOpenApiValidationService
                     DateTime.UtcNow.Add(GetProfileSchemaCacheTtl()));
                 }
 
-                _logger.LogDebug(
-                    "Resolved HSDS profile OpenAPI via schema resolver warmup path for URL {SpecUrl}",
-                    SchemaResolverService.SanitizeUrlForLogging(specUrl));
+                _logger.ResolvedProfileViaWarmup(SchemaResolverService.SanitizeUrlForLogging(specUrl));
 
                 return resolvedFromWarmupObject;
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(
-                    ex,
-                    "Warmup-path resolution unavailable for HSDS profile URL {SpecUrl}; falling back to direct fetch",
-                    SchemaResolverService.SanitizeUrlForLogging(specUrl));
+                _logger.WarmupPathResolutionUnavailable(ex, SchemaResolverService.SanitizeUrlForLogging(specUrl));
             }
         }
 

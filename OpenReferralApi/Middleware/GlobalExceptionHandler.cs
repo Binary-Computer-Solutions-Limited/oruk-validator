@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.AspNetCore.Diagnostics;
+using OpenReferralApi.Logging;
 
 namespace OpenReferralApi.Middleware;
 
@@ -22,10 +23,7 @@ public class GlobalExceptionHandler : IExceptionHandler
         Exception exception,
         CancellationToken cancellationToken)
     {
-        _logger.LogError(
-            exception,
-            "An unhandled exception occurred. TraceId: {TraceId}",
-            httpContext.TraceIdentifier);
+        _logger.UnhandledExceptionOccurred(exception, httpContext.TraceIdentifier);
 
         var problemDetails = new ProblemDetails
         {

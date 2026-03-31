@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
+using OpenReferralApi.Core.Logging;
 
 namespace OpenReferralApi.Core.Services;
 
@@ -95,10 +96,7 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
             ? $"Standard version [user: {rootProfileVersion}] detected"
             : "Version not found in '/' response";
 
-        _logger.LogInformation(
-            "Bootstrap discovery resolved schema URL {SchemaUrl} with profile context {ProfileReason}",
-            SchemaResolverService.SanitizeUrlForLogging(discoveredUrl),
-            profileReason);
+        _logger.BootstrapDiscoveryResolved(SchemaResolverService.SanitizeUrlForLogging(discoveredUrl), profileReason);
 
         return new OpenApiBootstrapResult
         {

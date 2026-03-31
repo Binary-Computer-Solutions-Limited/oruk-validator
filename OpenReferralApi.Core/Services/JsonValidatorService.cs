@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Schema;
+using OpenReferralApi.Core.Logging;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
 
 namespace OpenReferralApi.Core.Services;
@@ -88,7 +89,7 @@ public class JsonValidatorService : IJsonValidatorService
 
         try
         {
-            _logger.LogInformation("Starting JSON validation for request");
+            _logger.StartingJsonValidation();
 
             // Create timeout token
             using var timeoutCts = _requestProcessingService.CreateTimeoutToken(request.Options, cancellationToken);
@@ -146,22 +147,21 @@ public class JsonValidatorService : IJsonValidatorService
                 DataSource = !string.IsNullOrEmpty(request.DataUrl) ? request.DataUrl : "direct"
             };
 
-            _logger.LogInformation("JSON validation completed. IsValid: {IsValid}, Errors: {ErrorCount}",
-                result.IsValid, result.Errors.Count);
+            _logger.JsonValidationCompleted(result.IsValid, result.Errors.Count);
         }
         catch (ArgumentException ex)
         {
-            _logger.LogError(ex, "Invalid argument during JSON validation");
+            _logger.InvalidArgumentDuringJsonValidation(ex);
             throw;
         }
         catch (InvalidOperationException ex)
         {
-            _logger.LogError(ex, "Invalid operation during JSON validation");
+            _logger.InvalidOperationDuringJsonValidation(ex);
             throw;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error during JSON validation");
+            _logger.UnexpectedErrorDuringJsonValidation(ex);
             result.IsValid = false;
             result.Errors.Add(new ValidationError
             {
@@ -187,7 +187,7 @@ public class JsonValidatorService : IJsonValidatorService
 
         try
         {
-            _logger.LogInformation("Starting schema validation");
+            _logger.StartingSchemaValidation();
 
             var schemaJson = System.Text.Json.JsonSerializer.Serialize(schema);
             var jsonSchema = await _schemaResolverService.CreateSchemaFromJsonAsync(schemaJson, cancellationToken);
@@ -216,11 +216,11 @@ public class JsonValidatorService : IJsonValidatorService
                 ValidationTimestamp = DateTime.UtcNow
             };
 
-            _logger.LogInformation("Schema validation completed. IsValid: {IsValid}", result.IsValid);
+            _logger.SchemaValidationCompleted(result.IsValid);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during schema validation");
+            _logger.ErrorDuringSchemaValidation(ex);
             result.IsValid = false;
             result.Errors.Add(new ValidationError
             {
@@ -289,7 +289,7 @@ public class JsonValidatorService : IJsonValidatorService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to load schema from URI: {SchemaUri}", schemaUri);
+            _logger.FailedToLoadSchemaFromUri(ex, schemaUri);
             throw new InvalidOperationException($"Failed to load schema from URI: {schemaUri}", ex);
         }
 
@@ -297,7 +297,7 @@ public class JsonValidatorService : IJsonValidatorService
 
         if (TryGetCachedSchemaJson(normalizedSchemaUri, out var cachedSchemaJson))
         {
-            _logger.LogDebug("Using cached schema document for URI: {SchemaUri}", normalizedSchemaUri);
+            _logger.UsingCachedSchemaDocument(normalizedSchemaUri);
             return await _schemaResolverService.CreateSchemaFromJsonAsync(cachedSchemaJson, normalizedSchemaUri, null, cancellationToken);
         }
 
@@ -305,7 +305,7 @@ public class JsonValidatorService : IJsonValidatorService
         {
             try
             {
-                _logger.LogInformation("Loading schema from URI: {SchemaUri}", normalizedSchemaUri);
+                _logger.LoadingSchemaFromUri(normalizedSchemaUri);
 
                 var httpClient = _httpClientFactory.CreateClient();
                 var response = await httpClient.GetAsync(validatedUri, ct);
@@ -324,7 +324,7 @@ public class JsonValidatorService : IJsonValidatorService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to load schema from URI: {SchemaUri}", normalizedSchemaUri);
+                _logger.FailedToLoadSchemaFromUriRetry(ex, normalizedSchemaUri);
                 throw new InvalidOperationException($"Failed to load schema from URI: {normalizedSchemaUri}", ex);
             }
         }, options, cancellationToken);
@@ -365,7 +365,7 @@ public class JsonValidatorService : IJsonValidatorService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to create schema from object");
+            _logger.FailedToCreateSchemaFromObject(ex);
             throw new InvalidOperationException("Failed to create schema from object", ex);
         }
     }
@@ -422,7 +422,7 @@ public class JsonValidatorService : IJsonValidatorService
         {
             try
             {
-                _logger.LogInformation("Fetching JSON data from URL: {DataUrl}", dataUrl);
+                _logger.FetchingJsonDataFromUrl(dataUrl);
                 var validatedUri = await _pathParsingService.ValidateAndParseDataUrlAsync(dataUrl, options);
                 var httpClient = _httpClientFactory.CreateClient();
                 using var request = new HttpRequestMessage(HttpMethod.Get, validatedUri);
@@ -433,12 +433,12 @@ public class JsonValidatorService : IJsonValidatorService
             }
             catch (HttpRequestException ex)
             {
-                _logger.LogError(ex, "HTTP request failed when fetching data from URL: {DataUrl}", dataUrl);
+                _logger.HttpRequestFailedFetchingData(ex, dataUrl);
                 throw new InvalidOperationException($"Failed to fetch data from URL: {dataUrl}", ex);
             }
             catch (JsonException ex)
             {
-                _logger.LogError(ex, "Invalid JSON received from URL: {DataUrl}", dataUrl);
+                _logger.InvalidJsonReceived(ex, dataUrl);
                 throw new InvalidOperationException($"Invalid JSON received from URL: {dataUrl}", ex);
             }
         }, options, cancellationToken);
@@ -460,7 +460,7 @@ public class JsonValidatorService : IJsonValidatorService
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "Failed to extract title from original schema object");
+                _logger.FailedToExtractTitleFromOriginalSchema(ex);
             }
         }
 
@@ -484,7 +484,7 @@ public class JsonValidatorService : IJsonValidatorService
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "Failed to extract description from original schema object");
+                _logger.FailedToExtractDescriptionFromOriginalSchema(ex);
             }
         }
 
@@ -503,7 +503,7 @@ public class JsonValidatorService : IJsonValidatorService
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Failed to extract title from schema object");
+            _logger.FailedToExtractTitleFromSchema(ex);
             return null;
         }
     }
@@ -519,7 +519,7 @@ public class JsonValidatorService : IJsonValidatorService
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Failed to extract description from schema object");
+            _logger.FailedToExtractDescriptionFromSchema(ex);
             return null;
         }
     }
@@ -556,7 +556,7 @@ public class JsonValidatorService : IJsonValidatorService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error detecting additional fields");
+            _logger.ErrorDetectingAdditionalFields(ex);
         }
 
         return warnings;

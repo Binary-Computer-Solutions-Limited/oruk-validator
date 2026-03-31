@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
+using OpenReferralApi.Core.Logging;
 using YamlDotNet.Serialization;
 
 namespace OpenReferralApi.Core.Services;
@@ -50,19 +51,14 @@ public class OpenApiSpecFetcher
         // treat this as non-fatal and simply skip applying any credentials.
         if (!_allowUserSuppliedAuth)
         {
-            _logger.LogWarning(
-                "User-supplied authentication was provided but is disabled by server configuration. " +
-                "Skipping authentication headers for request to {SpecUrl}",
-                safeSpecUrl);
+            _logger.AuthDisabledByServerConfig(safeSpecUrl);
             return null;
         }
 
         // Enforce HTTPS requirement when sending authentication credentials.
         if (!isHttps)
         {
-            _logger.LogError(
-                "Refusing to send authentication credentials over a non-HTTPS connection to {SpecUrl}",
-                safeSpecUrl);
+            _logger.RefusingNonHttpsAuth(safeSpecUrl);
             throw new InvalidOperationException(
                 $"Authentication credentials may only be used with HTTPS endpoints. URL: {safeSpecUrl}");
         }
@@ -89,7 +85,7 @@ public class OpenApiSpecFetcher
         try
         {
             var safeSpecUrl = SchemaResolverService.SanitizeUrlForLogging(specUrl);
-            _logger.LogInformation("Fetching OpenAPI specification from URL: {SpecUrl}", safeSpecUrl);
+            _logger.FetchingOpenApiSpec(safeSpecUrl);
 
             if (!Uri.IsWellFormedUriString(specUrl, UriKind.Absolute))
             {
@@ -116,10 +112,7 @@ public class OpenApiSpecFetcher
             // user-supplied authentication and that the credentials pass strict validation.
             if (!_allowUserSuppliedAuth && auth != null)
             {
-                _logger.LogWarning(
-                    "User-supplied authentication was provided but is disabled by server configuration. " +
-                    "Skipping authentication headers for request to {SpecUrl}",
-                    safeSpecUrl);
+                _logger.AuthDisabledForRequest(safeSpecUrl);
             }
             else if (shouldApplyAuth)
             {
@@ -151,9 +144,9 @@ public class OpenApiSpecFetcher
         }
         catch (Exception ex)
         {
-            var safeSpecUrl = SchemaResolverService.SanitizeUrlForLogging(specUrl);
-            _logger.LogError(ex, "Failed to fetch OpenAPI specification from URL: {SpecUrl}", safeSpecUrl);
-            throw new InvalidOperationException($"Failed to fetch OpenAPI specification from URL: {safeSpecUrl}", ex);
+            var sanitizedSpecUrl = SchemaResolverService.SanitizeUrlForLogging(specUrl);
+            _logger.FailedToFetchOpenApiSpec(ex, sanitizedSpecUrl);
+            throw new InvalidOperationException($"Failed to fetch OpenAPI specification from URL: {sanitizedSpecUrl}", ex);
         }
     }
 
@@ -299,15 +292,14 @@ public class OpenApiSpecFetcher
         if (!string.IsNullOrEmpty(auth.ApiKey))
         {
             request.Headers.Add(auth.ApiKeyHeader, auth.ApiKey);
-            _logger.LogDebug("Applied API Key authentication with header: {Header}",
-                SchemaResolverService.SanitizeStringForLogging(auth.ApiKeyHeader));
+            _logger.AppliedApiKeyAuthentication(SchemaResolverService.SanitizeStringForLogging(auth.ApiKeyHeader));
         }
 
         // Apply Bearer Token authentication
         if (!string.IsNullOrEmpty(auth.BearerToken))
         {
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.BearerToken);
-            _logger.LogDebug("Applied Bearer Token authentication");
+            OpenApiSpecFetcherLog.AppliedBearerTokenAuthentication(_logger);
         }
 
         // Apply Basic authentication
@@ -317,7 +309,7 @@ public class OpenApiSpecFetcher
                 Encoding.ASCII.GetBytes($"{auth.BasicAuth.Username}:{auth.BasicAuth.Password}"));
             request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
             // Intentionally avoid logging user-supplied authentication identifiers
-            _logger.LogDebug("Applied Basic authentication");
+            OpenApiSpecFetcherLog.AppliedBasicAuthentication(_logger);
         }
 
         // Apply custom headers
@@ -326,8 +318,7 @@ public class OpenApiSpecFetcher
             foreach (var header in auth.CustomHeaders)
             {
                 request.Headers.Add(header.Key, header.Value);
-                _logger.LogDebug("Applied custom header: {HeaderName}",
-                    SchemaResolverService.SanitizeStringForLogging(header.Key));
+                OpenApiSpecFetcherLog.AppliedCustomHeader(_logger, SchemaResolverService.SanitizeStringForLogging(header.Key));
             }
         }
     }

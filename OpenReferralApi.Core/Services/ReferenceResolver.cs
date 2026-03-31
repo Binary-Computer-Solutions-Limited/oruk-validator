@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
+using OpenReferralApi.Core.Logging;
 
 namespace OpenReferralApi.Core.Services;
 
@@ -83,7 +84,7 @@ public class ReferenceResolver
                     // where Newtonsoft.Json.Schema cannot handle them
                     if (resolved == null)
                     {
-                        _logger.LogDebug("Could not resolve internal reference {Ref}, keeping as-is", refString);
+                        _logger.CouldNotResolveInternalReference(refString);
                         return obj.DeepClone();
                     }
                 }
@@ -146,7 +147,7 @@ public class ReferenceResolver
     {
         if (_rootDocument == null)
         {
-            _logger.LogWarning("Cannot resolve internal reference without root document: {Ref}", refPointer);
+            _logger.CannotResolveWithoutRootDocument(refPointer);
             return null;
         }
 
@@ -158,7 +159,7 @@ public class ReferenceResolver
         // Check for circular references
         if (visitedRefs.Contains(refPointer))
         {
-            _logger.LogDebug("Circular reference detected: {Ref}", refPointer);
+            _logger.CircularReferenceDetected(refPointer);
             return new JsonObject { ["$ref"] = refPointer };
         }
 
@@ -194,7 +195,7 @@ public class ReferenceResolver
                     {
                         if (!jsonObj.TryGetPropertyValue(unescapedPart, out current) || current == null)
                         {
-                            _logger.LogWarning("Failed to resolve internal reference path: {Ref} at part: {Part}", refPointer, unescapedPart);
+                            _logger.FailedToResolveInternalReferencePath(refPointer, unescapedPart);
                             return null;
                         }
                     }
@@ -206,13 +207,13 @@ public class ReferenceResolver
                         }
                         else
                         {
-                            _logger.LogWarning("Invalid array index in reference: {Ref} at part: {Part}", refPointer, unescapedPart);
+                            _logger.InvalidArrayIndexInReference(refPointer, unescapedPart);
                             return null;
                         }
                     }
                     else
                     {
-                        _logger.LogWarning("Cannot navigate through non-object/non-array in reference: {Ref}", refPointer);
+                        _logger.CannotNavigateThroughNonObject(refPointer);
                         return null;
                     }
                 }
@@ -229,7 +230,7 @@ public class ReferenceResolver
                 current = FindAnchorNode(_rootDocument, anchorName);
                 if (current == null)
                 {
-                    _logger.LogWarning("Failed to resolve internal anchor reference: {Ref}", refPointer);
+                    _logger.FailedToResolveAnchorReference(refPointer);
                     return null;
                 }
             }
@@ -266,7 +267,7 @@ public class ReferenceResolver
         // Check for circular references
         if (visitedRefs.Contains(resolvedRefKey))
         {
-            _logger.LogDebug("Circular reference detected: {Ref}", SchemaResolverService.SanitizeStringForLogging(resolvedRefKey));
+            _logger.CircularExternalReferenceDetected(SchemaResolverService.SanitizeStringForLogging(resolvedRefKey));
             return new JsonObject { ["$ref"] = refUrl };
         }
 
@@ -284,7 +285,7 @@ public class ReferenceResolver
 
             if (schema == null)
             {
-                _logger.LogWarning("Failed to load schema: {Location}", SchemaResolverService.SanitizeStringForLogging(schemaLocation));
+                _logger.FailedToLoadSchema(SchemaResolverService.SanitizeStringForLogging(schemaLocation));
                 return null;
             }
 
@@ -494,7 +495,7 @@ public class ReferenceResolver
 
         if (!File.Exists(localPath))
         {
-            _logger.LogWarning("Schema file not found: {Path}", SchemaResolverService.SanitizeStringForLogging(localPath));
+            _logger.SchemaFileNotFound(SchemaResolverService.SanitizeStringForLogging(localPath));
             return null;
         }
 
@@ -505,7 +506,7 @@ public class ReferenceResolver
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to load local schema file: {Path}", SchemaResolverService.SanitizeStringForLogging(localPath));
+            _logger.FailedToLoadLocalSchemaFile(ex, SchemaResolverService.SanitizeStringForLogging(localPath));
             throw;
         }
     }

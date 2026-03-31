@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OpenReferralApi.Core.Logging;
 
 namespace OpenReferralApi.Core.Services;
 
@@ -71,7 +72,7 @@ public class RemoteSchemaLoader
             var cacheKey = GenerateCacheKey(resolvedUrl);
             if (_memoryCache.TryGetValue<string>(cacheKey, out var cachedContent) && cachedContent != null)
             {
-                _logger.LogDebug("Retrieved schema from cache: {SchemaUrl}", SchemaResolverService.SanitizeUrlForLogging(resolvedUrl));
+                _logger.RetrievedSchemaFromCache(SchemaResolverService.SanitizeUrlForLogging(resolvedUrl));
                 return JsonNode.Parse(cachedContent);
             }
         }
@@ -85,7 +86,7 @@ public class RemoteSchemaLoader
                 throw new ArgumentException($"Invalid schema URL: Only HTTP and HTTPS URLs are allowed", nameof(schemaUrl));
             }
 
-            _logger.LogDebug("Fetching remote schema: {SchemaUrl}", SchemaResolverService.SanitizeUrlForLogging(resolvedUrl));
+            _logger.FetchingRemoteSchema(SchemaResolverService.SanitizeUrlForLogging(resolvedUrl));
 
             using var request = new HttpRequestMessage(HttpMethod.Get, resolvedUrl);
 
@@ -125,16 +126,14 @@ public class RemoteSchemaLoader
                 }
 
         _ = _memoryCache.Set(cacheKey, content, cacheEntryOptions);
-                _logger.LogDebug("Cached schema: {SchemaUrl} (expires in {Minutes} minutes)",
-                    SchemaResolverService.SanitizeUrlForLogging(resolvedUrl), _cacheOptions.ExpirationMinutes);
+                _logger.CachedSchema(SchemaResolverService.SanitizeUrlForLogging(resolvedUrl), _cacheOptions.ExpirationMinutes);
             }
 
             return JsonNode.Parse(content);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to fetch remote schema: {SchemaUrl}",
-                SchemaResolverService.SanitizeUrlForLogging(schemaUrl));
+            _logger.FailedToFetchRemoteSchema(ex, SchemaResolverService.SanitizeUrlForLogging(schemaUrl));
             throw;
         }
     }
@@ -154,18 +153,18 @@ public class RemoteSchemaLoader
             // Validate header name before using it to prevent header injection
             if (!IsValidHeaderName(auth.ApiKeyHeader))
             {
-                _logger.LogWarning("Invalid API key header name provided, skipping API key authentication");
+                _logger.InvalidApiKeyHeaderName();
                 return;
             }
             request.Headers.Add(auth.ApiKeyHeader, auth.ApiKey);
-            _logger.LogDebug("Applied API Key authentication");
+            _logger.AppliedApiKeyAuthentication();
         }
 
         // Apply Bearer Token authentication
         if (!string.IsNullOrEmpty(auth.BearerToken))
         {
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.BearerToken);
-            _logger.LogDebug("Applied Bearer Token authentication");
+            RemoteSchemaLoaderLog.AppliedBearerTokenAuthentication(_logger);
         }
 
         // Apply Basic authentication
@@ -174,7 +173,7 @@ public class RemoteSchemaLoader
             var credentials = Convert.ToBase64String(
                 Encoding.ASCII.GetBytes($"{auth.BasicAuth.Username}:{auth.BasicAuth.Password}"));
             request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
-            _logger.LogDebug("Applied Basic authentication");
+            RemoteSchemaLoaderLog.AppliedBasicAuthentication(_logger);
         }
 
         // Apply custom headers
@@ -185,11 +184,11 @@ public class RemoteSchemaLoader
                 // Validate header name
                 if (!IsValidHeaderName(header.Key))
                 {
-                    _logger.LogWarning("Invalid custom header name provided: {HeaderName}", header.Key);
+                    _logger.InvalidCustomHeaderName(header.Key);
                     continue;
                 }
                 request.Headers.Add(header.Key, header.Value);
-                _logger.LogDebug("Applied custom header: {HeaderName}", header.Key);
+                RemoteSchemaLoaderLog.AppliedCustomHeader(_logger, header.Key);
             }
         }
     }
@@ -253,9 +252,7 @@ public class RemoteSchemaLoader
             IsJsonSchemaDraftUrl(normalized) &&
             _unknownDraftWarnings.Add(normalized))
         {
-            _logger.LogWarning(
-                "Encountered json-schema.org draft URL not present in configured known schema list: {SchemaUrl}",
-                SchemaResolverService.SanitizeUrlForLogging(normalized));
+            _logger.UnknownJsonSchemaDraftUrl(SchemaResolverService.SanitizeUrlForLogging(normalized));
         }
 
         return null;

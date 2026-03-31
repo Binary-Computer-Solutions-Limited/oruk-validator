@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.Extensions.Options;
 using OpenReferralApi.Core.Services;
 using OpenReferralApi.Core.Logging;
+using OpenReferralApi.Logging;
 
 namespace OpenReferralApi.Services;
 
@@ -34,11 +35,11 @@ public class FeedValidationBackgroundService : BackgroundService
     {
         if (!_enabled)
         {
-            _logger.LogInformation("Feed Validation Background Service is disabled. Set FeedValidation:Enabled=true to enable.");
+            _logger.ServiceDisabled();
             return;
         }
 
-        _logger.LogInformation("Feed Validation Background Service started. Interval: {Interval} hours, RunAtMidnight: {RunAtMidnight}", _validationInterval.TotalHours, _runAtMidnight);
+        _logger.ServiceStarted(_validationInterval.TotalHours, _runAtMidnight);
 
         // Wait until first scheduled run
         await WaitForNextScheduledRunAsync(stoppingToken).ConfigureAwait(false);
@@ -72,17 +73,13 @@ public class FeedValidationBackgroundService : BackgroundService
             var nextMidnight = now.Date.AddDays(1);
             delay = nextMidnight - now;
 
-            _logger.LogInformation(
-                "Next validation scheduled for {NextRun} (in {Hours:F1} hours)",
-                nextMidnight, delay.TotalHours);
+            _logger.NextValidationScheduledForMidnight(nextMidnight, delay.TotalHours);
         }
         else
         {
             // Use fixed interval
             delay = _validationInterval;
-            _logger.LogInformation(
-                "Next validation scheduled in {Hours:F1} hours",
-                delay.TotalHours);
+            _logger.NextValidationScheduled(delay.TotalHours);
         }
 
         try
@@ -91,7 +88,7 @@ public class FeedValidationBackgroundService : BackgroundService
         }
         catch (TaskCanceledException)
         {
-            _logger.LogInformation("Feed validation service is stopping");
+            _logger.ServiceStopping();
         }
     }
 
@@ -107,7 +104,7 @@ public class FeedValidationBackgroundService : BackgroundService
             // Get all registered feeds
             var feeds = await feedValidationService.GetAllFeedsAsync(cancellationToken).ConfigureAwait(false);
 
-            _logger.LogInformation("Found {FeedCount} registered feeds to validate", feeds.Count);
+            _logger.FoundFeedsToValidate(feeds.Count);
 
             if (feeds.Count == 0)
             {
@@ -123,19 +120,17 @@ public class FeedValidationBackgroundService : BackgroundService
 
             stopwatch.Stop();
 
-            _logger.LogInformation(
-                "Feed validation summary: Total={Total}, Up={Up}, Valid={Valid}, Down={Down}, Duration={Duration}s",
-                feeds.Count, successCount, validCount, failedCount, stopwatch.Elapsed.TotalSeconds);
+            _logger.FeedValidationSummary(feeds.Count, successCount, validCount, failedCount, stopwatch.Elapsed.TotalSeconds);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error validating feeds");
+            _logger.ErrorValidatingFeeds(ex);
         }
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Feed Validation Background Service is stopping");
+        _logger.BackgroundServiceStopping();
         await base.StopAsync(cancellationToken).ConfigureAwait(false);
     }
 }

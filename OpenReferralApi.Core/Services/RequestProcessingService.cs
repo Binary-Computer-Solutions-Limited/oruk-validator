@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
+using OpenReferralApi.Core.Logging;
 
 namespace OpenReferralApi.Core.Services;
 
@@ -137,8 +138,7 @@ public class RequestProcessingService : IRequestProcessingService, IDisposable
       _ = Interlocked.Increment(ref _activeRequests);
             _lastRequestTime = DateTime.UtcNow;
 
-            _logger.LogDebug("Executing function with concurrency control. Active: {ActiveRequests}, Max: {MaxConcurrent}",
-                _activeRequests, maxConcurrent);
+            _logger.ExecutingWithConcurrencyControl(_activeRequests, maxConcurrent);
 
             var stopwatch = Stopwatch.StartNew();
             var result = await function(cancellationToken);
@@ -150,13 +150,13 @@ public class RequestProcessingService : IRequestProcessingService, IDisposable
 
       _ = Interlocked.Increment(ref _totalRequestsProcessed);
 
-            _logger.LogDebug("Function executed successfully in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+            _logger.FunctionExecutedSuccessfully(stopwatch.ElapsedMilliseconds);
             return result;
         }
         catch (Exception ex)
         {
       _ = Interlocked.Increment(ref _failedRequests);
-            _logger.LogError(ex, "Function execution failed");
+            _logger.FunctionExecutionFailed(ex);
             throw;
         }
         finally
@@ -177,7 +177,7 @@ public class RequestProcessingService : IRequestProcessingService, IDisposable
             return Enumerable.Empty<T>();
         }
 
-        _logger.LogInformation("Executing {FunctionCount} functions concurrently", functionList.Count);
+        _logger.ExecutingFunctionsConcurrently(functionList.Count);
 
         var tasks = functionList.Select(func =>
             ExecuteWithConcurrencyControlAsync(func, options, cancellationToken));
@@ -185,12 +185,12 @@ public class RequestProcessingService : IRequestProcessingService, IDisposable
         try
         {
             var results = await Task.WhenAll(tasks);
-            _logger.LogInformation("Successfully executed {FunctionCount} concurrent functions", functionList.Count);
+            _logger.SuccessfullyExecutedConcurrentFunctions(functionList.Count);
             return results;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error executing multiple concurrent functions");
+            _logger.ErrorExecutingConcurrentFunctions(ex);
             throw;
         }
     }
@@ -211,8 +211,7 @@ public class RequestProcessingService : IRequestProcessingService, IDisposable
             {
                 if (attempt > 0)
                 {
-                    _logger.LogDebug("Retry attempt {Attempt}/{MaxRetries} after {DelayMs}ms",
-                        attempt, maxRetries, retryDelay.TotalMilliseconds);
+                    _logger.RetryAttempt(attempt, maxRetries, retryDelay.TotalMilliseconds);
 
                     await Task.Delay(retryDelay, cancellationToken);
 
@@ -224,7 +223,7 @@ public class RequestProcessingService : IRequestProcessingService, IDisposable
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                _logger.LogWarning("Function execution cancelled during retry attempt {Attempt}", attempt);
+                _logger.FunctionExecutionCancelled(attempt);
                 throw;
             }
             catch (Exception ex)
@@ -233,18 +232,17 @@ public class RequestProcessingService : IRequestProcessingService, IDisposable
 
                 if (attempt == maxRetries)
                 {
-                    _logger.LogError(ex, "Function execution failed after {MaxRetries} retries", maxRetries);
+                    _logger.FunctionExecutionFailedAfterRetries(ex, maxRetries);
                     break;
                 }
 
                 if (IsRetriableException(ex))
                 {
-                    _logger.LogWarning(ex, "Retriable exception on attempt {Attempt}/{MaxRetries}: {ErrorMessage}",
-                        attempt + 1, maxRetries + 1, ex.Message);
+                    _logger.RetriableException(ex, attempt + 1, maxRetries + 1, ex.Message);
                 }
                 else
                 {
-                    _logger.LogError(ex, "Non-retriable exception on attempt {Attempt}, aborting retries", attempt + 1);
+                    _logger.NonRetriableException(ex, attempt + 1);
                     throw;
                 }
             }
@@ -261,7 +259,7 @@ public class RequestProcessingService : IRequestProcessingService, IDisposable
         var cts = CancellationTokenSource.CreateLinkedTokenSource(parentToken);
         cts.CancelAfter(timeout);
 
-        _logger.LogDebug("Created timeout token with {TimeoutSeconds}s timeout", timeoutSeconds);
+        _logger.CreatedTimeoutToken(timeoutSeconds);
         return cts;
     }
 
@@ -353,7 +351,7 @@ public class RequestProcessingService : IRequestProcessingService, IDisposable
             return;
         }
 
-        _logger.LogDebug("Disposing RequestProcessingService");
+        _logger.DisposingService();
 
         _concurrencyLimiter?.Dispose();
 

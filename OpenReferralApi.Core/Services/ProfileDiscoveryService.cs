@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
+using OpenReferralApi.Core.Logging;
 
 namespace OpenReferralApi.Core.Services;
 
@@ -55,14 +56,14 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         {
             using var httpClient = _httpClientFactory.CreateClient("OpenApiValidationService");
             httpClient.Timeout = TimeSpan.FromSeconds(10);
-            _logger.LogInformation("Requesting BaseUrl to discover openapi_url: {BaseUrl}", SchemaResolverService.SanitizeUrlForLogging(baseUrl));
+            _logger.RequestingBaseUrl(SchemaResolverService.SanitizeUrlForLogging(baseUrl));
             using var request = new HttpRequestMessage(HttpMethod.Get, baseUrl);
             ApplyAuthentication(request, authentication);
 
             var resp = await httpClient.SendAsync(request, cancellationToken);
             if (!resp.IsSuccessStatusCode)
             {
-                _logger.LogInformation("BaseUrl request returned {Status}; unable to determine HSDS schema version", resp.StatusCode);
+                _logger.BaseUrlRequestFailed((int)resp.StatusCode);
                 return new ProfileDiscoveryResult
                 {
                     Url = null,
@@ -81,7 +82,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                 var openapiUrl = openapiUrlToken?.ToString();
                 if (!string.IsNullOrEmpty(openapiUrl))
                 {
-                    _logger.LogInformation("Discovered openapi_url: {OpenApiUrl}", SchemaResolverService.SanitizeUrlForLogging(openapiUrl));
+                    _logger.DiscoveredOpenApiUrl(SchemaResolverService.SanitizeUrlForLogging(openapiUrl));
                     return new ProfileDiscoveryResult
                     {
                         Url = openapiUrl,
@@ -100,7 +101,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                     var versionedSpec = ResolveSpecificationUrl(version);
                     if (!string.IsNullOrWhiteSpace(versionedSpec))
                     {
-                        _logger.LogInformation("Detected version '{Version}'; resolved spec: {OpenApiUrl}", SchemaResolverService.SanitizeStringForLogging(version), versionedSpec);
+                        _logger.DetectedVersionResolvedSpec(SchemaResolverService.SanitizeStringForLogging(version), versionedSpec);
                         return new ProfileDiscoveryResult
                         {
                             Url = versionedSpec,
@@ -111,7 +112,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                     }
                 }
 
-                _logger.LogInformation("No openapi_url or version in BaseUrl response; unable to determine HSDS schema version");
+                _logger.NoOpenApiUrlOrVersionFound();
                 return new ProfileDiscoveryResult
                 {
                     Url = null,
@@ -122,7 +123,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             }
             catch (Exception jex)
             {
-                _logger.LogWarning(jex, "Failed to parse JSON from BaseUrl response; unable to determine HSDS schema version");
+                _logger.FailedToParseBaseUrlJson(jex);
 
                 return new ProfileDiscoveryResult
                 {
@@ -139,7 +140,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error requesting BaseUrl to discover openapi_url; unable to determine HSDS schema version");
+            _logger.ErrorRequestingBaseUrl(ex);
             return new ProfileDiscoveryResult
             {
                 Url = null,
