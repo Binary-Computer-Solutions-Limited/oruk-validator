@@ -10,7 +10,7 @@ namespace OpenReferralApi.Controllers;
 [Produces("application/json")]
 [EnableRateLimiting("fixed")]
 [ApiExplorerSettings(GroupName = "v1")]
-public class OpenReferralController : BaseOpenApiController
+public partial class OpenReferralController : BaseOpenApiController
 {
     private readonly IOpenApiValidationService _openApiValidationService;
     private readonly ILogger<OpenReferralController> _logger;
@@ -42,8 +42,7 @@ public class OpenReferralController : BaseOpenApiController
         [FromBody] OpenApiValidationRequest request,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation(
-            "Received OpenAPI validation request for BaseUrl: {BaseUrl}",
+        LogReceivedValidationRequest(
             SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty));
 
         var validationError = ValidateRequestAndReturnErrorIfInvalid(request);
@@ -54,10 +53,15 @@ public class OpenReferralController : BaseOpenApiController
 
         var result = await _openApiValidationService.ValidateOpenApiSpecificationAsync(request, cancellationToken);
         
-        _logger.LogInformation(
-            "Validation completed for BaseUrl: {BaseUrl}",
+        LogValidationCompleted(
             SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty));
 
         return Ok(result);
     }
+
+    [LoggerMessage(EventId = 1, Level = LogLevel.Information, Message = "Received OpenAPI validation request for BaseUrl: {BaseUrl}")]
+    private partial void LogReceivedValidationRequest(string baseUrl);
+
+    [LoggerMessage(EventId = 2, Level = LogLevel.Information, Message = "Validation completed for BaseUrl: {BaseUrl}")]
+    private partial void LogValidationCompleted(string baseUrl);
 }

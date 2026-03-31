@@ -11,7 +11,7 @@ namespace OpenReferralApi.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [EnableRateLimiting("fixed")]
-public class FeedValidationController : ControllerBase
+public partial class FeedValidationController : ControllerBase
 {
   private readonly IFeedValidationService _feedValidationService;
   private readonly ILogger<FeedValidationController> _logger;
@@ -44,8 +44,7 @@ public class FeedValidationController : ControllerBase
   [ProducesResponseType(typeof(FeedValidationSummary), StatusCodes.Status200OK)]
   public async Task<ActionResult<FeedValidationSummary>> ValidateAllFeeds(CancellationToken cancellationToken)
   {
-    _logger.LogInformation("Manual validation triggered for all feeds");
-
+    LogManualValidationTriggeredAll();
     var feeds = await _feedValidationService.GetAllFeedsAsync(cancellationToken);
 
     if (feeds.Count == 0)
@@ -82,7 +81,7 @@ public class FeedValidationController : ControllerBase
       }
       catch (Exception ex)
       {
-        _logger.LogError(ex, "Failed to validate feed {FeedId}", feed.Id);
+        LogFeedValidationFailed(ex, feed.Id);
         return new FeedValidationResult
         {
           FeedId = feed.Id ?? string.Empty,
@@ -113,9 +112,7 @@ public class FeedValidationController : ControllerBase
       Results = results.ToList()
     };
 
-    _logger.LogInformation(
-        "Manual validation completed: {Total} feeds, {Up} up, {Valid} valid",
-        summary.TotalFeeds, summary.UpFeeds, summary.ValidFeeds);
+    LogManualValidationCompleted(summary.TotalFeeds, summary.UpFeeds, summary.ValidFeeds);
 
     return Ok(summary);
   }
@@ -142,7 +139,7 @@ public class FeedValidationController : ControllerBase
     }
 
     var safeFeedId = feedId?.Replace("\r", string.Empty).Replace("\n", string.Empty);
-    _logger.LogInformation("Manual validation triggered for feed {FeedId}", safeFeedId);
+    LogManualValidationTriggeredFeed(safeFeedId);
 
     var result = await _feedValidationService.ValidateSingleFeedAsync(feed, cancellationToken);
 
@@ -157,6 +154,18 @@ public class FeedValidationController : ControllerBase
 
     return Ok(result);
   }
+
+  [LoggerMessage(EventId = 1, Level = LogLevel.Information, Message = "Manual validation triggered for all feeds")]
+  private partial void LogManualValidationTriggeredAll();
+
+  [LoggerMessage(EventId = 2, Level = LogLevel.Error, Message = "Failed to validate feed {FeedId}")]
+  private partial void LogFeedValidationFailed(Exception ex, string? feedId);
+
+  [LoggerMessage(EventId = 3, Level = LogLevel.Information, Message = "Manual validation completed: {Total} feeds, {Up} up, {Valid} valid")]
+  private partial void LogManualValidationCompleted(int total, int up, int valid);
+
+  [LoggerMessage(EventId = 4, Level = LogLevel.Information, Message = "Manual validation triggered for feed {FeedId}")]
+  private partial void LogManualValidationTriggeredFeed(string? feedId);
 }
 
 /// <summary>

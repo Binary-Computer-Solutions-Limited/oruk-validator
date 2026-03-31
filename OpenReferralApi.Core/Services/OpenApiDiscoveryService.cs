@@ -1,3 +1,4 @@
+using System.Net;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
@@ -14,7 +15,7 @@ public interface IOpenApiDiscoveryService
     Task<(string? url, string? reason)> DiscoverOpenApiUrlAsync(string baseUrl, CancellationToken cancellationToken = default);
 }
 
-public class OpenApiDiscoveryService : IOpenApiDiscoveryService
+public partial class OpenApiDiscoveryService : IOpenApiDiscoveryService
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<OpenApiDiscoveryService> _logger;
@@ -37,11 +38,11 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
         {
             using var httpClient = _httpClientFactory?.CreateClient("OpenApiValidationService") ?? new HttpClient();
             httpClient.Timeout = TimeSpan.FromSeconds(10);
-            _logger.LogInformation("Requesting BaseUrl to discover openapi_url: {BaseUrl}", SchemaResolverService.SanitizeUrlForLogging(baseUrl));
+            LogRequestingBaseUrl(SchemaResolverService.SanitizeUrlForLogging(baseUrl));
             var resp = await httpClient.GetAsync(baseUrl, cancellationToken);
             if (!resp.IsSuccessStatusCode)
             {
-                _logger.LogInformation("BaseUrl request returned {Status}; defaulting to HSDS-UK 1.0 spec: {DefaultSpec}", resp.StatusCode, defaultSpec);
+                LogBaseUrlRequestFailed(resp.StatusCode, defaultSpec);
                 return (defaultSpec, "Defaulted to HSDS-UK 1.0 (base URL request failed)");
             }
 
@@ -59,7 +60,7 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
                     if (extractedVersion.HasValue)
                     {
                         var versionedSpec = $"{_baseSpecificationUrl}{extractedVersion.Value:0.0}/openapi.json";
-                        _logger.LogInformation("Detected version '{Version}'; using HSDS-UK {ExtractedVersion:0.0} spec: {OpenApiUrl}", SchemaResolverService.SanitizeStringForLogging(version), extractedVersion.Value, versionedSpec);
+                        LogDetectedVersion(SchemaResolverService.SanitizeStringForLogging(version), extractedVersion.Value, versionedSpec);
                         return (versionedSpec, $"Standard version {SchemaResolverService.SanitizeStringForLogging(version)} read from '/' endpoint");
                     }
                 }
@@ -69,28 +70,27 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
                 var openapiUrl = openapiUrlToken?.ToString();
                 if (!string.IsNullOrEmpty(openapiUrl))
                 {
-                    _logger.LogInformation("Discovered openapi_url: {OpenApiUrl}", SchemaResolverService.SanitizeUrlForLogging(openapiUrl));
+                    LogDiscoveredOpenApiUrl(SchemaResolverService.SanitizeUrlForLogging(openapiUrl));
                     return (openapiUrl, "OpenAPI URL read from '/' endpoint (openapi_url field)");
                 }
 
-                _logger.LogInformation("No openapi_url or version in BaseUrl response; defaulting to HSDS-UK 1.0 spec: {DefaultSpec}", defaultSpec);
+                LogNoOpenApiUrlOrVersion(defaultSpec);
                 return (defaultSpec, "Defaulted to HSDS-UK 1.0 (no version or openapi_url found)");
             }
             catch (Exception jex)
             {
-                _logger.LogWarning(jex, "Failed to parse JSON from BaseUrl response; defaulting to HSDS-UK 1.0 spec: {DefaultSpec}", defaultSpec);
+                LogJsonParseFailed(jex, defaultSpec);
                 return (defaultSpec, "Defaulted to HSDS-UK 1.0 (failed to parse base URL response)");
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error requesting BaseUrl to discover openapi_url; defaulting to HSDS-UK 1.0 spec: {DefaultSpec}", defaultSpec);
+            LogBaseUrlRequestError(ex, defaultSpec);
             return (defaultSpec, "Defaulted to HSDS-UK 1.0 (error requesting base URL)");
         }
     }
 
-    private static float? ExtractVersionNumber(string version)
-    {
+    private static float? ExtractVersionNumber(string version)    {
         // Try to extract version number from formats like "HSDS-UK-3.0", "V3", "3.0", "3.1", etc.
         var versionString = version
             .Replace("HSDS-UK-", "", StringComparison.OrdinalIgnoreCase)
@@ -105,4 +105,25 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
 
         return null;
     }
+
+    [LoggerMessage(EventId = 1, Level = LogLevel.Information, Message = "Requesting BaseUrl to discover openapi_url: {BaseUrl}")]
+    private partial void LogRequestingBaseUrl(string baseUrl);
+
+    [LoggerMessage(EventId = 2, Level = LogLevel.Information, Message = "BaseUrl request returned {Status}; defaulting to HSDS-UK 1.0 spec: {DefaultSpec}")]
+    private partial void LogBaseUrlRequestFailed(HttpStatusCode status, string defaultSpec);
+
+    [LoggerMessage(EventId = 3, Level = LogLevel.Information, Message = "Detected version '{Version}'; using HSDS-UK {ExtractedVersion:0.0} spec: {OpenApiUrl}")]
+    private partial void LogDetectedVersion(string version, float extractedVersion, string openApiUrl);
+
+    [LoggerMessage(EventId = 4, Level = LogLevel.Information, Message = "Discovered openapi_url: {OpenApiUrl}")]
+    private partial void LogDiscoveredOpenApiUrl(string openApiUrl);
+
+    [LoggerMessage(EventId = 5, Level = LogLevel.Information, Message = "No openapi_url or version in BaseUrl response; defaulting to HSDS-UK 1.0 spec: {DefaultSpec}")]
+    private partial void LogNoOpenApiUrlOrVersion(string defaultSpec);
+
+    [LoggerMessage(EventId = 6, Level = LogLevel.Warning, Message = "Failed to parse JSON from BaseUrl response; defaulting to HSDS-UK 1.0 spec: {DefaultSpec}")]
+    private partial void LogJsonParseFailed(Exception jex, string defaultSpec);
+
+    [LoggerMessage(EventId = 7, Level = LogLevel.Warning, Message = "Error requesting BaseUrl to discover openapi_url; defaulting to HSDS-UK 1.0 spec: {DefaultSpec}")]
+    private partial void LogBaseUrlRequestError(Exception ex, string defaultSpec);
 }

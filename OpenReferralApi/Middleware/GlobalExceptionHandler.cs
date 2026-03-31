@@ -6,7 +6,7 @@ namespace OpenReferralApi.Middleware;
 /// <summary>
 /// Global exception handler middleware for centralized error handling
 /// </summary>
-public class GlobalExceptionHandler : IExceptionHandler
+public partial class GlobalExceptionHandler : IExceptionHandler
 {
     private readonly ILogger<GlobalExceptionHandler> _logger;
     private readonly IHostEnvironment _environment;
@@ -22,10 +22,7 @@ public class GlobalExceptionHandler : IExceptionHandler
         Exception exception,
         CancellationToken cancellationToken)
     {
-        _logger.LogError(
-            exception,
-            "An unhandled exception occurred. TraceId: {TraceId}",
-            httpContext.TraceIdentifier);
+        LogUnhandledException(exception, httpContext.TraceIdentifier);
 
         var problemDetails = new ProblemDetails
         {
@@ -75,6 +72,9 @@ public class GlobalExceptionHandler : IExceptionHandler
         TimeoutException => "Request Timeout",
         _ => "Internal Server Error"
     };
+
+    [LoggerMessage(EventId = 1, Level = LogLevel.Error, Message = "An unhandled exception occurred. TraceId: {TraceId}")]
+    private partial void LogUnhandledException(Exception exception, string traceId);
 }
 
 /// <summary>

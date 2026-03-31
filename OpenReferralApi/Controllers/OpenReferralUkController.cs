@@ -11,7 +11,7 @@ namespace OpenReferralApi.Controllers;
 [Produces("application/json")]
 [EnableRateLimiting("fixed")]
 [ApiExplorerSettings(GroupName = "v1")]
-public class OpenReferralUkController : BaseOpenApiController
+public partial class OpenReferralUkController : BaseOpenApiController
 {
     private readonly IOpenApiValidationService _openApiValidationService;
     private readonly ILogger<OpenReferralUkController> _logger;
@@ -46,8 +46,7 @@ public class OpenReferralUkController : BaseOpenApiController
         [FromBody] OpenApiValidationRequest request,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation(
-            "Received OpenAPI validation request (Open Referral UK format) for BaseUrl: {BaseUrl}",
+        LogReceivedValidationRequestUk(
             SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty));
 
         var validationError = ValidateRequestAndReturnErrorIfInvalid(request);
@@ -58,11 +57,16 @@ public class OpenReferralUkController : BaseOpenApiController
 
         var result = await _openApiValidationService.ValidateOpenApiSpecificationAsync(request, cancellationToken);
         
-        _logger.LogInformation(
-            "Validation completed (Open Referral UK format) for BaseUrl: {BaseUrl}",
+        LogValidationCompletedUk(
             SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty));
 
         var mappedResult = _mapper.MapToOpenReferralUKValidationResponse(result);
         return Ok(mappedResult);
     }
+
+    [LoggerMessage(EventId = 1, Level = LogLevel.Information, Message = "Received OpenAPI validation request (Open Referral UK format) for BaseUrl: {BaseUrl}")]
+    private partial void LogReceivedValidationRequestUk(string baseUrl);
+
+    [LoggerMessage(EventId = 2, Level = LogLevel.Information, Message = "Validation completed (Open Referral UK format) for BaseUrl: {BaseUrl}")]
+    private partial void LogValidationCompletedUk(string baseUrl);
 }

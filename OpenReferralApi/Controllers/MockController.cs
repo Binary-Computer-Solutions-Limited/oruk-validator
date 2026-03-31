@@ -6,7 +6,7 @@ namespace OpenReferralApi.Controllers;
 
 [ApiController]
 [Route("api/[Controller]")]
-public class MockController : ControllerBase
+public partial class MockController : ControllerBase
 {
     private const string MockPath = "Mocks/V3.0-UK-";
     private readonly ILogger<MockController> _logger;
@@ -238,7 +238,7 @@ public class MockController : ControllerBase
     {
         try
         {
-            _logger.LogDebug("Reading mock JSON file: {FilePath}", filePath);
+            LogReadingMockFile(filePath);
 
             // Open the text file using a stream reader.
             using StreamReader reader = new(filePath);
@@ -252,18 +252,30 @@ public class MockController : ControllerBase
         }
         catch (FileNotFoundException ex)
         {
-            _logger.LogError(ex, "Mock file not found: {FilePath}", filePath);
+            LogMockFileNotFound(ex, filePath);
             return NotFound(new { error = "Mock file not found", file = filePath });
         }
         catch (IOException ex)
         {
-            _logger.LogError(ex, "Error reading mock file: {FilePath}", filePath);
+            LogErrorReadingMockFile(ex, filePath);
             return StatusCode(500, new { error = "Error reading mock file", message = ex.Message });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error reading mock file: {FilePath}", filePath);
+            LogUnexpectedErrorReadingMockFile(ex, filePath);
             return StatusCode(500, new { error = "An unexpected error occurred", message = ex.Message });
         }
     }
+
+    [LoggerMessage(EventId = 1, Level = LogLevel.Debug, Message = "Reading mock JSON file: {FilePath}")]
+    private partial void LogReadingMockFile(string filePath);
+
+    [LoggerMessage(EventId = 2, Level = LogLevel.Error, Message = "Mock file not found: {FilePath}")]
+    private partial void LogMockFileNotFound(Exception ex, string filePath);
+
+    [LoggerMessage(EventId = 3, Level = LogLevel.Error, Message = "Error reading mock file: {FilePath}")]
+    private partial void LogErrorReadingMockFile(Exception ex, string filePath);
+
+    [LoggerMessage(EventId = 4, Level = LogLevel.Error, Message = "Unexpected error reading mock file: {FilePath}")]
+    private partial void LogUnexpectedErrorReadingMockFile(Exception ex, string filePath);
 }
