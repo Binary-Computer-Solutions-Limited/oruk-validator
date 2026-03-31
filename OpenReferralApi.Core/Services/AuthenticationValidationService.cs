@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Logging;
+
 using Microsoft.Extensions.Options;
+using OpenReferralApi.Core.Logging;
 
 namespace OpenReferralApi.Core.Services;
 
@@ -27,22 +29,16 @@ public class AuthenticationValidationService : IAuthenticationValidationService
         {
             if (auth != null)
             {
-                _logger.LogWarning(
-                    "User-supplied authentication was provided for {Context} but is disabled by server configuration",
-                    TextSanitizer.SanitizeForLogging(context));
+                _logger.AuthenticationFailed("User-supplied authentication was provided for context '" + TextSanitizer.SanitizeForLogging(context) + "' but is disabled by server configuration");
             }
-
             return null;
         }
 
         var validated = ValidateAuthentication(auth);
         if (validated == null && auth != null)
         {
-            _logger.LogWarning(
-                "Rejected invalid user-supplied authentication for {Context}",
-                TextSanitizer.SanitizeForLogging(context));
+            _logger.AuthenticationFailed("Rejected invalid user-supplied authentication for context '" + TextSanitizer.SanitizeForLogging(context) + "'");
         }
-
         return validated;
     }
 
