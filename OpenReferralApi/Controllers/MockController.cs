@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OutputCaching;
 using OpenReferralApi.Models;
+using OpenReferralApi.Core.Logging;
 
 namespace OpenReferralApi.Controllers;
 
@@ -239,7 +240,7 @@ public class MockController : ControllerBase
     {
         try
         {
-            _logger.LogDebug("Reading mock JSON file: {FilePath}", filePath);
+            _logger.ReadingMockJsonFile(filePath);
 
             // Open the text file using a stream reader.
             using StreamReader reader = new(filePath);
@@ -253,7 +254,7 @@ public class MockController : ControllerBase
         }
         catch (FileNotFoundException ex)
         {
-            _logger.LogError(ex, "Mock file not found: {FilePath}", filePath);
+            _logger.MockFileNotFound(ex, filePath);
             return NotFound(new ApiErrorResponse
             {
                 Error = "Mock file not found",
@@ -262,7 +263,7 @@ public class MockController : ControllerBase
         }
         catch (IOException ex)
         {
-            _logger.LogError(ex, "Error reading mock file: {FilePath}", filePath);
+            _logger.ErrorReadingMockFile(ex, filePath);
             return StatusCode(500, new ApiErrorResponse
             {
                 Error = "Error reading mock file",
@@ -271,7 +272,7 @@ public class MockController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error reading mock file: {FilePath}", filePath);
+            _logger.UnexpectedErrorReadingMockFile(ex, filePath);
             return StatusCode(500, new ApiErrorResponse
             {
                 Error = "An unexpected error occurred",
