@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using OpenReferralApi.Core.Services;
+using OpenReferralApi.Core.Logging;
 
 namespace OpenReferralApi.Services;
 
@@ -33,14 +34,14 @@ public class SchemaWarmupBackgroundService : BackgroundService
         if (!_options.WarmupEnabled)
         {
             _statusTracker.MarkSkipped("disabled");
-            _logger.LogInformation("Schema warmup is disabled.");
+            _logger.WarmupDisabled();
             return;
         }
 
         if (!_cacheOptions.Enabled)
         {
             _statusTracker.MarkSkipped("cache-disabled");
-            _logger.LogInformation("Schema warmup is skipped because cache is disabled.");
+            _logger.WarmupSkippedCacheDisabled();
             return;
         }
 
@@ -54,7 +55,7 @@ public class SchemaWarmupBackgroundService : BackgroundService
         if (urls.Count == 0)
         {
             _statusTracker.MarkSkipped("no-urls");
-            _logger.LogInformation("Schema warmup is enabled but no URLs are configured.");
+            _logger.WarmupNoUrlsConfigured();
             return;
         }
 
@@ -63,14 +64,14 @@ public class SchemaWarmupBackgroundService : BackgroundService
         var delaySeconds = Math.Max(0, _options.WarmupStartupDelaySeconds);
         if (delaySeconds > 0)
         {
-            _logger.LogInformation("Schema warmup starting in {DelaySeconds}s.", delaySeconds);
+            _logger.WarmupStartingIn(delaySeconds);
             await Task.Delay(TimeSpan.FromSeconds(delaySeconds), stoppingToken).ConfigureAwait(false);
         }
 
         using var scope = _serviceProvider.CreateScope();
         var resolver = scope.ServiceProvider.GetRequiredService<ISchemaResolverService>();
 
-        _logger.LogInformation("Starting schema warmup for {Count} URL(s).", urls.Count);
+        _logger.WarmupStartingForUrls(urls.Count);
 
         foreach (var url in urls)
         {
@@ -90,16 +91,16 @@ public class SchemaWarmupBackgroundService : BackgroundService
 
                 _ = await resolver.ResolveAsync(warmupSchema, url, auth: null).ConfigureAwait(false);
                 _statusTracker.MarkSuccess();
-                _logger.LogInformation("Schema warmup succeeded: {SchemaUrl}", SchemaResolverService.SanitizeUrlForLogging(url));
+                _logger.WarmupSucceeded(SchemaResolverService.SanitizeUrlForLogging(url));
             }
             catch (Exception ex)
             {
                 _statusTracker.MarkFailure(url);
-                _logger.LogWarning(ex, "Schema warmup failed: {SchemaUrl}", SchemaResolverService.SanitizeUrlForLogging(url));
+                _logger.WarmupFailed(ex, SchemaResolverService.SanitizeUrlForLogging(url));
             }
         }
 
         _statusTracker.MarkCompleted(stoppingToken.IsCancellationRequested);
-        _logger.LogInformation("Schema warmup completed.");
+        _logger.WarmupCompleted();
     }
 }
