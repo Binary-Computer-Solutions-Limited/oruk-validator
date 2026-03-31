@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Options;
 using OpenReferralApi.Core.Services;
+using OpenReferralApi.Core.Logging;
 
 namespace OpenReferralApi.Services;
 
@@ -33,14 +34,11 @@ public class FeedValidationBackgroundService : BackgroundService
     {
         if (!_enabled)
         {
-            _logger.LogInformation(
-                "Feed Validation Background Service is disabled. Set FeedValidation:Enabled=true to enable.");
+            _logger.LogInformation("Feed Validation Background Service is disabled. Set FeedValidation:Enabled=true to enable.");
             return;
         }
 
-        _logger.LogInformation(
-            "Feed Validation Background Service started. Interval: {Interval} hours, RunAtMidnight: {RunAtMidnight}",
-            _validationInterval.TotalHours, _runAtMidnight);
+        _logger.LogInformation("Feed Validation Background Service started. Interval: {Interval} hours, RunAtMidnight: {RunAtMidnight}", _validationInterval.TotalHours, _runAtMidnight);
 
         // Wait until first scheduled run
         await WaitForNextScheduledRunAsync(stoppingToken).ConfigureAwait(false);
@@ -49,13 +47,13 @@ public class FeedValidationBackgroundService : BackgroundService
         {
             try
             {
-                _logger.LogInformation("Starting scheduled feed validation run at {Time}", DateTime.UtcNow);
+                _logger.ScheduledValidationStarted(DateTime.UtcNow);
                 await ValidateAllFeedsAsync(stoppingToken).ConfigureAwait(false);
-                _logger.LogInformation("Completed scheduled feed validation run at {Time}", DateTime.UtcNow);
+                _logger.ScheduledValidationCompleted(DateTime.UtcNow);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during scheduled feed validation");
+                _logger.ScheduledValidationError(ex);
             }
 
             // Wait for next scheduled run
@@ -113,7 +111,7 @@ public class FeedValidationBackgroundService : BackgroundService
 
             if (feeds.Count == 0)
             {
-                _logger.LogWarning("No feeds found in database");
+                _logger.NoFeedsFound();
                 return;
             }
             var results = await feedValidationService.ValidateAndUpdateFeedsAsync(feeds, cancellationToken: cancellationToken).ConfigureAwait(false);
