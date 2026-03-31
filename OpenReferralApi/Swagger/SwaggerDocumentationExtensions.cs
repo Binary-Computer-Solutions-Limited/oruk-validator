@@ -40,9 +40,9 @@ internal static class SwaggerDocumentationExtensions
                 var action = apiDescription.ActionDescriptor.RouteValues["action"];
                 var method = apiDescription.HttpMethod?.ToUpperInvariant();
                 var relativePath = apiDescription.RelativePath
-                    ?.Replace("/", "_")
-                    ?.Replace("{", string.Empty)
-                    .Replace("}", string.Empty);
+                    ?.Replace("/", "_", StringComparison.Ordinal)
+                    ?.Replace("{", string.Empty, StringComparison.Ordinal)
+                    .Replace("}", string.Empty, StringComparison.Ordinal);
 
                 return $"{controller}_{action}_{method}_{relativePath}";
             });
