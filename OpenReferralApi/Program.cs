@@ -16,6 +16,13 @@ using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Just declare it here!
+string[] databaseHealthTags = ["ready", "db"];
+
+string[] selfHealthTags = ["ready"];
+
+string[] serviceHealthTags = ["ready", "service"];
+
 builder.Configuration.AddEnvironmentVariables("ORUK_API_");
 
 // Configure Serilog
@@ -132,7 +139,7 @@ builder.Services.AddOutputCache(options =>
 
 // Health Checks
 var healthChecksBuilder = builder.Services.AddHealthChecks()
-    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: new[] { "ready" });
+    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: selfHealthTags);
 
 var databaseOptions = builder.Configuration.GetSection(DatabaseOptions.SectionName).Get<DatabaseOptions>() ?? new DatabaseOptions();
 if (!string.IsNullOrEmpty(databaseOptions.ConnectionString))
@@ -145,7 +152,7 @@ if (!string.IsNullOrEmpty(databaseOptions.ConnectionString))
 
     _ = healthChecksBuilder.AddMongoDb(
         name: "mongodb",
-        tags: new[] { "ready", "db" });
+        tags: databaseHealthTags);
 
     // Feed validation services - only register if MongoDB is configured
     _ = builder.Services.AddScoped<IFeedValidationService, FeedValidationService>();
@@ -159,7 +166,7 @@ else
 
 healthChecksBuilder.AddCheck<FeedValidationHealthCheck>(
     "feed-validation",
-    tags: new[] { "ready", "service" });
+    tags: serviceHealthTags);
 
 // Services
 builder.Services.AddScoped<IPathParsingService, PathParsingService>();
@@ -203,9 +210,7 @@ var openApiValidationSettings = app.Configuration
     .GetSection(OpenApiValidationServerOptions.SectionName)
     .Get<OpenApiValidationServerOptions>() ?? new OpenApiValidationServerOptions();
 
-app.Logger.LogInformation(
-    "OpenApiValidation settings at startup: {@OpenApiValidationSettings}",
-    openApiValidationSettings);
+StartupLogger.LogSettings(app.Logger, openApiValidationSettings);
 
 // Configure the HTTP request pipeline
 app.UseExceptionHandler();
@@ -276,7 +281,3 @@ app.Run();
 
 // Ensure logs are flushed on shutdown
 Log.CloseAndFlush();
-
-public partial class Program
-{
-}
