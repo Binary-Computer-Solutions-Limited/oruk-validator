@@ -16,7 +16,7 @@ public interface IFeedValidationService
   Task<FeedValidationResult> ValidateSingleFeedAsync(ServiceFeed feed, CancellationToken cancellationToken = default);
 }
 
-public class FeedValidationService : IFeedValidationService
+public partial class FeedValidationService : IFeedValidationService
 {
   private readonly IMongoCollection<ServiceFeed> _servicesCollection;
   private readonly IOpenApiValidationService _validationService;
@@ -51,7 +51,7 @@ public class FeedValidationService : IFeedValidationService
     }
     catch (Exception ex)
     {
-      _logger.LogError(ex, "Failed to retrieve feeds from database");
+      LogRetrieveFeedsFailed(ex);
       return new List<ServiceFeed>();
     }
   }
@@ -73,7 +73,7 @@ public class FeedValidationService : IFeedValidationService
       var currentFeed = await _servicesCollection.Find(filter).FirstOrDefaultAsync(cancellationToken);
       if (currentFeed == null)
       {
-        _logger.LogWarning("Feed {FeedId} not found for update", feedId);
+        LogFeedNotFoundForUpdate(feedId);
         return;
       }
 
@@ -125,13 +125,11 @@ public class FeedValidationService : IFeedValidationService
       var combinedUpdate = updateBuilder.Combine(updates);
       await _servicesCollection.UpdateOneAsync(filter, combinedUpdate, cancellationToken: cancellationToken);
 
-      _logger.LogInformation(
-          "Updated feed {FeedId}: IsUp={IsUp}, IsValid={IsValid}, ResponseTime={ResponseTime}ms, Errors={ErrorCount}",
-          feedId, isUp, isValid, responseTimeMs, validationErrorCount);
+      LogFeedStatusUpdated(feedId, isUp, isValid, responseTimeMs, validationErrorCount);
     }
     catch (Exception ex)
     {
-      _logger.LogError(ex, "Failed to update feed status for feed {FeedId}", feedId);
+      LogUpdateFeedStatusFailed(ex, feedId);
     }
   }
 
@@ -148,7 +146,7 @@ public class FeedValidationService : IFeedValidationService
 
     try
     {
-      _logger.LogInformation("Validating feed: {FeedName} ({FeedUrl})", feed.NameAsString ?? "Unnamed", feed.Url);
+      LogValidatingFeed(feed.NameAsString ?? "Unnamed", feed.Url);
 
       var validationRequest = new OpenApiValidationRequest
       {
@@ -194,27 +192,25 @@ public class FeedValidationService : IFeedValidationService
             : "Validation failed with no specific errors";
       }
 
-      _logger.LogInformation(
-          "Feed validation completed: {FeedName} - IsUp={IsUp}, IsValid={IsValid}, Errors={ErrorCount}",
-          feed.NameAsString ?? "Unnamed", result.IsUp, result.IsValid, result.ValidationErrorCount);
+      LogFeedValidationCompleted(feed.NameAsString ?? "Unnamed", result.IsUp, result.IsValid, result.ValidationErrorCount);
     }
     catch (HttpRequestException ex)
     {
-      _logger.LogWarning(ex, "Feed is not accessible: {FeedUrl}", feed.Url);
+      LogFeedNotAccessible(ex, feed.Url);
       result.IsUp = false;
       result.IsValid = false;
       result.ErrorMessage = $"HTTP error: {SanitizeExceptionMessage(ex.Message)}";
     }
     catch (TaskCanceledException ex)
     {
-      _logger.LogWarning(ex, "Feed validation timed out: {FeedUrl}", feed.Url);
+      LogFeedValidationTimedOut(ex, feed.Url);
       result.IsUp = false;
       result.IsValid = false;
       result.ErrorMessage = "Request timed out";
     }
     catch (Exception ex)
     {
-      _logger.LogError(ex, "Unexpected error validating feed: {FeedUrl}", feed.Url);
+      LogFeedValidationUnexpectedError(ex, feed.Url);
       result.IsUp = false;
       result.IsValid = false;
       result.ErrorMessage = $"Unexpected error: {SanitizeExceptionMessage(ex.Message)}";
@@ -243,12 +239,39 @@ public class FeedValidationService : IFeedValidationService
 
     return sanitized;
   }
+
+  [LoggerMessage(EventId = 1, Level = LogLevel.Error, Message = "Failed to retrieve feeds from database")]
+  private partial void LogRetrieveFeedsFailed(Exception ex);
+
+  [LoggerMessage(EventId = 2, Level = LogLevel.Warning, Message = "Feed {FeedId} not found for update")]
+  private partial void LogFeedNotFoundForUpdate(string feedId);
+
+  [LoggerMessage(EventId = 3, Level = LogLevel.Information, Message = "Updated feed {FeedId}: IsUp={IsUp}, IsValid={IsValid}, ResponseTime={ResponseTime}ms, Errors={ErrorCount}")]
+  private partial void LogFeedStatusUpdated(string feedId, bool isUp, bool isValid, double? responseTime, int? errorCount);
+
+  [LoggerMessage(EventId = 4, Level = LogLevel.Error, Message = "Failed to update feed status for feed {FeedId}")]
+  private partial void LogUpdateFeedStatusFailed(Exception ex, string feedId);
+
+  [LoggerMessage(EventId = 5, Level = LogLevel.Information, Message = "Validating feed: {FeedName} ({FeedUrl})")]
+  private partial void LogValidatingFeed(string feedName, string feedUrl);
+
+  [LoggerMessage(EventId = 6, Level = LogLevel.Information, Message = "Feed validation completed: {FeedName} - IsUp={IsUp}, IsValid={IsValid}, Errors={ErrorCount}")]
+  private partial void LogFeedValidationCompleted(string feedName, bool isUp, bool isValid, int errorCount);
+
+  [LoggerMessage(EventId = 7, Level = LogLevel.Warning, Message = "Feed is not accessible: {FeedUrl}")]
+  private partial void LogFeedNotAccessible(Exception ex, string feedUrl);
+
+  [LoggerMessage(EventId = 8, Level = LogLevel.Warning, Message = "Feed validation timed out: {FeedUrl}")]
+  private partial void LogFeedValidationTimedOut(Exception ex, string feedUrl);
+
+  [LoggerMessage(EventId = 9, Level = LogLevel.Error, Message = "Unexpected error validating feed: {FeedUrl}")]
+  private partial void LogFeedValidationUnexpectedError(Exception ex, string feedUrl);
 }
 
 /// <summary>
 /// Null implementation when MongoDB is not configured
 /// </summary>
-public class NullFeedValidationService : IFeedValidationService
+public partial class NullFeedValidationService : IFeedValidationService
 {
   private readonly ILogger<NullFeedValidationService> _logger;
 
@@ -259,19 +282,19 @@ public class NullFeedValidationService : IFeedValidationService
 
   public Task<List<ServiceFeed>> GetAllFeedsAsync(CancellationToken cancellationToken = default)
   {
-    _logger.LogWarning("Feed validation service is not available. MongoDB is not configured.");
+    LogServiceNotAvailable();
     return Task.FromResult(new List<ServiceFeed>());
   }
 
   public Task UpdateFeedStatusAsync(string feedId, bool isUp, bool isValid, string? error, double? responseTimeMs, int? validationErrorCount, CancellationToken cancellationToken = default)
   {
-    _logger.LogWarning("Feed validation service is not available. MongoDB is not configured.");
+    LogServiceNotAvailable();
     return Task.CompletedTask;
   }
 
   public Task<FeedValidationResult> ValidateSingleFeedAsync(ServiceFeed feed, CancellationToken cancellationToken = default)
   {
-    _logger.LogWarning("Feed validation service is not available. MongoDB is not configured.");
+    LogServiceNotAvailable();
     return Task.FromResult(new FeedValidationResult
     {
       FeedId = feed.Id ?? string.Empty,
@@ -282,6 +305,9 @@ public class NullFeedValidationService : IFeedValidationService
       ErrorMessage = "Feed validation service is not available. MongoDB is not configured."
     });
   }
+
+  [LoggerMessage(EventId = 1, Level = LogLevel.Warning, Message = "Feed validation service is not available. MongoDB is not configured.")]
+  private partial void LogServiceNotAvailable();
 }
 
 /// <summary>
