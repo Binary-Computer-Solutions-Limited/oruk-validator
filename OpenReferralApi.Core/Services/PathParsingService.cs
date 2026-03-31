@@ -70,7 +70,7 @@ public class UriAccessibilityResult
 /// <summary>
 /// Service for parsing and validating URIs and URLs consistently across the application
 /// </summary>
-public class PathParsingService : IPathParsingService
+public partial class PathParsingService : IPathParsingService
 {
     private readonly ILogger<PathParsingService> _logger;
     private readonly HttpClient _httpClient;
@@ -106,7 +106,7 @@ public class PathParsingService : IPathParsingService
 
         try
         {
-            _logger.LogDebug("Checking accessibility of URI: {Uri}", uri);
+            LogCheckingUriAccessibility(uri);
 
             if (uri.Scheme == "file")
             {
@@ -157,14 +157,14 @@ public class PathParsingService : IPathParsingService
                     result.IsAccessible = false;
                     result.StatusCode = 0;
                     result.ErrorMessage = SanitizeExceptionMessage(ex.Message);
-                    _logger.LogWarning(ex, "HTTP request failed for URI: {Uri}", uri);
+                    LogHttpRequestFailed(ex, uri);
                 }
                 catch (TaskCanceledException ex) when (ex.CancellationToken.IsCancellationRequested)
                 {
                     result.IsAccessible = false;
                     result.StatusCode = 408; // Request Timeout
                     result.ErrorMessage = "Request timeout";
-                    _logger.LogWarning("Request timeout for URI: {Uri}", uri);
+                    LogRequestTimeout(uri);
                 }
             }
             else
@@ -177,7 +177,7 @@ public class PathParsingService : IPathParsingService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error checking accessibility of URI: {Uri}", uri);
+            LogErrorCheckingUriAccessibility(ex, uri);
             result.IsAccessible = false;
             result.StatusCode = 0;
             result.ErrorMessage = SanitizeExceptionMessage(ex.Message);
@@ -211,7 +211,7 @@ public class PathParsingService : IPathParsingService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error resolving relative URI '{RelativeUri}' against base '{baseUrl}'", relativeUri, baseUrl);
+            LogErrorResolvingRelativeUri(ex, relativeUri, baseUrl);
             throw new ArgumentException($"Failed to resolve relative URI '{relativeUri}' against base '{baseUrl}': {SanitizeExceptionMessage(ex.Message)}", ex);
         }
     }
@@ -225,7 +225,7 @@ public class PathParsingService : IPathParsingService
                 throw new ArgumentException($"{uriType} cannot be null or empty", nameof(uriString));
             }
 
-            _logger.LogDebug("Validating {UriType}: {Uri}", uriType, uriString);
+            LogValidatingUri(uriType, uriString);
 
             // Basic URI validation
             if (!Uri.IsWellFormedUriString(uriString, UriKind.Absolute))
@@ -250,17 +250,17 @@ public class PathParsingService : IPathParsingService
             // Security validation
             ValidateUriSecurity(uri, uriType, options);
 
-            _logger.LogDebug("Successfully validated {UriType}: {Uri}", uriType, uri);
+            LogSuccessfullyValidatedUri(uriType, uri.ToString());
             return uri;
         }
         catch (UriFormatException ex)
         {
-            _logger.LogError(ex, "URI format error for {UriType}: {Uri}", uriType, uriString);
+            LogUriFormatError(ex, uriType, uriString);
             throw new ArgumentException($"Invalid {uriType.ToLower()} format: {uriString}", ex);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error validating {UriType}: {Uri}", uriType, uriString);
+            LogErrorValidatingUri(ex, uriType, uriString);
             throw;
         }
     }
@@ -271,7 +271,7 @@ public class PathParsingService : IPathParsingService
         if (uri.Scheme == "https" && options.ValidateSslCertificate)
         {
             // This would be implemented with actual SSL certificate validation
-            _logger.LogDebug("SSL certificate validation enabled for {UriType}: {Uri}", uriType, uri);
+            LogSslCertValidationEnabled(uriType, uri);
         }
 
         // Accessibility check if required
@@ -289,7 +289,7 @@ public class PathParsingService : IPathParsingService
         // Prevent localhost/private IP access unless explicitly allowed
         if (IsPrivateOrLocalhost(uri))
         {
-            _logger.LogWarning("Potentially unsafe {UriType} accessing private/localhost: {Uri}", uriType, uri);
+            LogPotentiallyUnsafeUri(uriType, uri);
             // Could throw exception here based on security policy
         }
 
@@ -379,4 +379,37 @@ public class PathParsingService : IPathParsingService
 
         return sanitized;
     }
+
+    [LoggerMessage(EventId = 1, Level = LogLevel.Debug, Message = "Checking accessibility of URI: {Uri}")]
+    private partial void LogCheckingUriAccessibility(Uri uri);
+
+    [LoggerMessage(EventId = 2, Level = LogLevel.Warning, Message = "HTTP request failed for URI: {Uri}")]
+    private partial void LogHttpRequestFailed(Exception ex, Uri uri);
+
+    [LoggerMessage(EventId = 3, Level = LogLevel.Warning, Message = "Request timeout for URI: {Uri}")]
+    private partial void LogRequestTimeout(Uri uri);
+
+    [LoggerMessage(EventId = 4, Level = LogLevel.Error, Message = "Error checking accessibility of URI: {Uri}")]
+    private partial void LogErrorCheckingUriAccessibility(Exception ex, Uri uri);
+
+    [LoggerMessage(EventId = 5, Level = LogLevel.Error, Message = "Error resolving relative URI '{RelativeUri}' against base '{BaseUrl}'")]
+    private partial void LogErrorResolvingRelativeUri(Exception ex, string relativeUri, Uri baseUrl);
+
+    [LoggerMessage(EventId = 6, Level = LogLevel.Debug, Message = "Validating {UriType}: {Uri}")]
+    private partial void LogValidatingUri(string uriType, string uri);
+
+    [LoggerMessage(EventId = 7, Level = LogLevel.Debug, Message = "Successfully validated {UriType}: {Uri}")]
+    private partial void LogSuccessfullyValidatedUri(string uriType, string uri);
+
+    [LoggerMessage(EventId = 8, Level = LogLevel.Error, Message = "URI format error for {UriType}: {Uri}")]
+    private partial void LogUriFormatError(Exception ex, string uriType, string uri);
+
+    [LoggerMessage(EventId = 9, Level = LogLevel.Error, Message = "Error validating {UriType}: {Uri}")]
+    private partial void LogErrorValidatingUri(Exception ex, string uriType, string uri);
+
+    [LoggerMessage(EventId = 10, Level = LogLevel.Debug, Message = "SSL certificate validation enabled for {UriType}: {Uri}")]
+    private partial void LogSslCertValidationEnabled(string uriType, Uri uri);
+
+    [LoggerMessage(EventId = 11, Level = LogLevel.Warning, Message = "Potentially unsafe {UriType} accessing private/localhost: {Uri}")]
+    private partial void LogPotentiallyUnsafeUri(string uriType, Uri uri);
 }

@@ -8,7 +8,7 @@ namespace OpenReferralApi.Core.Services;
 /// Internal helper class for resolving JSON Schema $ref references.
 /// Handles both external and internal reference resolution with circular reference detection.
 /// </summary>
-internal class ReferenceResolver
+internal partial class ReferenceResolver
 {
     private readonly ILogger _logger;
     private readonly RemoteSchemaLoader _remoteSchemaLoader;
@@ -84,7 +84,7 @@ internal class ReferenceResolver
                     // where Newtonsoft.Json.Schema cannot handle them
                     if (resolved == null)
                     {
-                        _logger.LogDebug("Could not resolve internal reference {Ref}, keeping as-is", refString);
+                        LogCouldNotResolveInternalRef(_logger, refString);
                         return obj.DeepClone();
                     }
                 }
@@ -147,7 +147,7 @@ internal class ReferenceResolver
     {
         if (_rootDocument == null)
         {
-            _logger.LogWarning("Cannot resolve internal reference without root document: {Ref}", refPointer);
+            LogCannotResolveInternalRefNoRoot(_logger, refPointer);
             return null;
         }
 
@@ -159,7 +159,7 @@ internal class ReferenceResolver
         // Check for circular references
         if (visitedRefs.Contains(refPointer))
         {
-            _logger.LogDebug("Circular reference detected: {Ref}", refPointer);
+            LogCircularReferenceDetected(_logger, refPointer);
             return new JsonObject { ["$ref"] = refPointer };
         }
 
@@ -195,7 +195,7 @@ internal class ReferenceResolver
                     {
                         if (!jsonObj.TryGetPropertyValue(unescapedPart, out current) || current == null)
                         {
-                            _logger.LogWarning("Failed to resolve internal reference path: {Ref} at part: {Part}", refPointer, unescapedPart);
+                            LogFailedToResolveRefPath(_logger, refPointer, unescapedPart);
                             return null;
                         }
                     }
@@ -207,13 +207,13 @@ internal class ReferenceResolver
                         }
                         else
                         {
-                            _logger.LogWarning("Invalid array index in reference: {Ref} at part: {Part}", refPointer, unescapedPart);
+                            LogInvalidArrayIndexInRef(_logger, refPointer, unescapedPart);
                             return null;
                         }
                     }
                     else
                     {
-                        _logger.LogWarning("Cannot navigate through non-object/non-array in reference: {Ref}", refPointer);
+                        LogCannotNavigateThroughNonObject(_logger, refPointer);
                         return null;
                     }
                 }
@@ -230,7 +230,7 @@ internal class ReferenceResolver
                 current = FindAnchorNode(_rootDocument, anchorName);
                 if (current == null)
                 {
-                    _logger.LogWarning("Failed to resolve internal anchor reference: {Ref}", refPointer);
+                    LogFailedToResolveAnchorRef(_logger, refPointer);
                     return null;
                 }
             }
@@ -267,7 +267,7 @@ internal class ReferenceResolver
         // Check for circular references
         if (visitedRefs.Contains(resolvedRefKey))
         {
-            _logger.LogDebug("Circular reference detected: {Ref}", SchemaResolverService.SanitizeStringForLogging(resolvedRefKey));
+            LogCircularReferenceDetected(_logger, SchemaResolverService.SanitizeStringForLogging(resolvedRefKey));
             return new JsonObject { ["$ref"] = refUrl };
         }
 
@@ -285,7 +285,7 @@ internal class ReferenceResolver
 
             if (schema == null)
             {
-                _logger.LogWarning("Failed to load schema: {Location}", SchemaResolverService.SanitizeStringForLogging(schemaLocation));
+                LogFailedToLoadSchema(_logger, SchemaResolverService.SanitizeStringForLogging(schemaLocation));
                 return null;
             }
 
@@ -495,7 +495,7 @@ internal class ReferenceResolver
 
         if (!File.Exists(localPath))
         {
-            _logger.LogWarning("Schema file not found: {Path}", SchemaResolverService.SanitizeStringForLogging(localPath));
+            LogSchemaFileNotFound(_logger, SchemaResolverService.SanitizeStringForLogging(localPath));
             return null;
         }
 
@@ -506,7 +506,7 @@ internal class ReferenceResolver
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to load local schema file: {Path}", SchemaResolverService.SanitizeStringForLogging(localPath));
+            LogFailedToLoadLocalSchemaFile(_logger, ex, SchemaResolverService.SanitizeStringForLogging(localPath));
             throw;
         }
     }
@@ -597,4 +597,34 @@ internal class ReferenceResolver
             target["required"] = targetRequired;
         }
     }
+
+    [LoggerMessage(EventId = 1, Level = LogLevel.Debug, Message = "Could not resolve internal reference {Ref}, keeping as-is")]
+    private static partial void LogCouldNotResolveInternalRef(ILogger logger, string @ref);
+
+    [LoggerMessage(EventId = 2, Level = LogLevel.Warning, Message = "Cannot resolve internal reference without root document: {Ref}")]
+    private static partial void LogCannotResolveInternalRefNoRoot(ILogger logger, string @ref);
+
+    [LoggerMessage(EventId = 3, Level = LogLevel.Debug, Message = "Circular reference detected: {Ref}")]
+    private static partial void LogCircularReferenceDetected(ILogger logger, string @ref);
+
+    [LoggerMessage(EventId = 4, Level = LogLevel.Warning, Message = "Failed to resolve internal reference path: {Ref} at part: {Part}")]
+    private static partial void LogFailedToResolveRefPath(ILogger logger, string @ref, string part);
+
+    [LoggerMessage(EventId = 5, Level = LogLevel.Warning, Message = "Invalid array index in reference: {Ref} at part: {Part}")]
+    private static partial void LogInvalidArrayIndexInRef(ILogger logger, string @ref, string part);
+
+    [LoggerMessage(EventId = 6, Level = LogLevel.Warning, Message = "Cannot navigate through non-object/non-array in reference: {Ref}")]
+    private static partial void LogCannotNavigateThroughNonObject(ILogger logger, string @ref);
+
+    [LoggerMessage(EventId = 7, Level = LogLevel.Warning, Message = "Failed to resolve internal anchor reference: {Ref}")]
+    private static partial void LogFailedToResolveAnchorRef(ILogger logger, string @ref);
+
+    [LoggerMessage(EventId = 8, Level = LogLevel.Warning, Message = "Failed to load schema: {Location}")]
+    private static partial void LogFailedToLoadSchema(ILogger logger, string location);
+
+    [LoggerMessage(EventId = 9, Level = LogLevel.Warning, Message = "Schema file not found: {Path}")]
+    private static partial void LogSchemaFileNotFound(ILogger logger, string path);
+
+    [LoggerMessage(EventId = 10, Level = LogLevel.Error, Message = "Failed to load local schema file: {Path}")]
+    private static partial void LogFailedToLoadLocalSchemaFile(ILogger logger, Exception ex, string path);
 }

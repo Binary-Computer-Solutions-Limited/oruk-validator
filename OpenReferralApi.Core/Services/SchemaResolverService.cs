@@ -60,7 +60,7 @@ public interface ISchemaResolverService
 /// This is a C# port of the TypeScript SchemaResolver used in the OpenReferral UK website.
 /// Compatible with .NET 10 and uses System.Text.Json for JSON manipulation.
 /// </remarks>
-public class SchemaResolverService : ISchemaResolverService
+public partial class SchemaResolverService : ISchemaResolverService
 {
   private readonly HttpClient _httpClient;
   private readonly ILogger<SchemaResolverService> _logger;
@@ -298,19 +298,19 @@ public class SchemaResolverService : ISchemaResolverService
   {
     try
     {
-      _logger.LogDebug("Creating JSON schema from JSON string with resolver. DocumentUri: {DocumentUri}", documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
+      LogCreatingJsonSchema(documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
 
       // Pre-resolve all external and internal references using System.Text.Json based resolution
       string resolvedSchemaJson = schemaJson;
       try
       {
-        _logger.LogDebug("Pre-resolving all schema references with base URI: {DocumentUri}", documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
+        LogPreResolvingSchemaReferences(documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
         resolvedSchemaJson = await ResolveAsync(schemaJson, documentUri, auth);
-        _logger.LogDebug("Successfully pre-resolved all schema references");
+        LogPreResolvedSchemaReferences();
       }
       catch (Exception ex)
       {
-        _logger.LogWarning(ex, "Failed to pre-resolve schema, continuing with original schema");
+        LogFailedToPreResolveSchema(ex);
         // Continue with original schema if resolution fails
         resolvedSchemaJson = schemaJson;
       }
@@ -335,7 +335,7 @@ public class SchemaResolverService : ISchemaResolverService
       // Set base URI for any remaining reference resolution if provided
       if (!string.IsNullOrEmpty(documentUri))
       {
-        _logger.LogDebug("Loading schema with base URI: {DocumentUri}", SanitizeUrlForLogging(documentUri));
+        LogLoadingSchemaWithBaseUri(SanitizeUrlForLogging(documentUri));
         settings.BaseUri = new Uri(documentUri);
       }
 
@@ -343,16 +343,16 @@ public class SchemaResolverService : ISchemaResolverService
       try
       {
         schema = await Task.Run(() => JSchema.Parse(resolvedSchemaJson, settings), cancellationToken);
-        _logger.LogDebug("Successfully created schema with reference resolution");
+        LogCreatedSchemaWithResolution();
       }
       catch (Exception ex)
       {
-        _logger.LogWarning(ex, "Failed to parse schema with resolver, attempting to parse without resolver. DocumentUri: {DocumentUri}", documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
+        LogFailedToParseSchemaWithResolver(ex, documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
         try
         {
           // Fallback: parse original schema with the same relaxed settings.
           schema = await Task.Run(() => JSchema.Parse(schemaJson, settings), cancellationToken);
-          _logger.LogDebug("Successfully created schema without resolver");
+          LogCreatedSchemaWithoutResolver();
         }
         catch (Exception fallbackEx)
         {
@@ -361,9 +361,8 @@ public class SchemaResolverService : ISchemaResolverService
           var originalSchemaId = ExtractTopLevelSchemaId(schemaJson);
           var resolvedSchemaId = ExtractTopLevelSchemaId(resolvedSchemaJson);
 
-          _logger.LogError(
+          LogFailedToParseSchemaEvenWithoutResolver(
             fallbackEx,
-            "Failed to parse schema even without resolver. DocumentUri: {DocumentUri}. ReaderError: {ReaderError}. OriginalFingerprint: {OriginalFingerprint}. ResolvedFingerprint: {ResolvedFingerprint}. OriginalSchemaId: {OriginalSchemaId}. ResolvedSchemaId: {ResolvedSchemaId}",
             documentUri != null ? SanitizeUrlForLogging(documentUri) : "none",
             SanitizeStringForLogging(fallbackEx.Message),
             originalFingerprint,
@@ -379,10 +378,40 @@ public class SchemaResolverService : ISchemaResolverService
     }
     catch (Exception ex)
     {
-      _logger.LogError(ex, "Failed to create JSON schema from JSON with resolver. DocumentUri: {DocumentUri}", documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
+      LogFailedToCreateJsonSchema(ex, documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
       throw;
     }
   }
+
+  [LoggerMessage(EventId = 1, Level = LogLevel.Debug, Message = "Creating JSON schema from JSON string with resolver. DocumentUri: {DocumentUri}")]
+  private partial void LogCreatingJsonSchema(string documentUri);
+
+  [LoggerMessage(EventId = 2, Level = LogLevel.Debug, Message = "Pre-resolving all schema references with base URI: {DocumentUri}")]
+  private partial void LogPreResolvingSchemaReferences(string documentUri);
+
+  [LoggerMessage(EventId = 3, Level = LogLevel.Debug, Message = "Successfully pre-resolved all schema references")]
+  private partial void LogPreResolvedSchemaReferences();
+
+  [LoggerMessage(EventId = 4, Level = LogLevel.Warning, Message = "Failed to pre-resolve schema, continuing with original schema")]
+  private partial void LogFailedToPreResolveSchema(Exception ex);
+
+  [LoggerMessage(EventId = 5, Level = LogLevel.Debug, Message = "Loading schema with base URI: {DocumentUri}")]
+  private partial void LogLoadingSchemaWithBaseUri(string documentUri);
+
+  [LoggerMessage(EventId = 6, Level = LogLevel.Debug, Message = "Successfully created schema with reference resolution")]
+  private partial void LogCreatedSchemaWithResolution();
+
+  [LoggerMessage(EventId = 7, Level = LogLevel.Warning, Message = "Failed to parse schema with resolver, attempting to parse without resolver. DocumentUri: {DocumentUri}")]
+  private partial void LogFailedToParseSchemaWithResolver(Exception ex, string documentUri);
+
+  [LoggerMessage(EventId = 8, Level = LogLevel.Debug, Message = "Successfully created schema without resolver")]
+  private partial void LogCreatedSchemaWithoutResolver();
+
+  [LoggerMessage(EventId = 9, Level = LogLevel.Error, Message = "Failed to parse schema even without resolver. DocumentUri: {DocumentUri}. ReaderError: {ReaderError}. OriginalFingerprint: {OriginalFingerprint}. ResolvedFingerprint: {ResolvedFingerprint}. OriginalSchemaId: {OriginalSchemaId}. ResolvedSchemaId: {ResolvedSchemaId}")]
+  private partial void LogFailedToParseSchemaEvenWithoutResolver(Exception ex, string documentUri, string readerError, string originalFingerprint, string resolvedFingerprint, string originalSchemaId, string resolvedSchemaId);
+
+  [LoggerMessage(EventId = 10, Level = LogLevel.Error, Message = "Failed to create JSON schema from JSON with resolver. DocumentUri: {DocumentUri}")]
+  private partial void LogFailedToCreateJsonSchema(Exception ex, string documentUri);
 
   private static string CreateSchemaFingerprint(string schemaJson)
   {
