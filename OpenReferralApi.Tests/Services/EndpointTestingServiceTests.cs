@@ -170,9 +170,9 @@ public class EndpointTestingServiceTests
             Has.Some.Matches<ValidationError>(e => e.ErrorCode == "REQUIRED_ENDPOINT_FAILED"));
     }
 
-      [Test]
-      public async Task TestEndpointsAsync_ResponseSchemaWithComponentsRef_WrapsSchemaWithComponentsContext()
-      {
+    [Test]
+    public async Task TestEndpointsAsync_ResponseSchemaWithComponentsRef_WrapsSchemaWithComponentsContext()
+    {
         ValidationRequest? capturedValidationRequest = null;
 
         _jsonValidatorServiceMock
@@ -180,10 +180,10 @@ public class EndpointTestingServiceTests
           .Callback<ValidationRequest, CancellationToken>((request, _) => capturedValidationRequest = request)
           .ReturnsAsync(new ValidationResult
           {
-            IsValid = true,
-            Errors = new List<ValidationError>(),
-            SchemaVersion = "test",
-            Duration = TimeSpan.Zero
+              IsValid = true,
+              Errors = new List<ValidationError>(),
+              SchemaVersion = "test",
+              Duration = TimeSpan.Zero
           });
 
         var results = await _service.TestEndpointsAsync(
@@ -202,7 +202,7 @@ public class EndpointTestingServiceTests
         Assert.That(schema["components"], Is.TypeOf<JObject>());
         Assert.That(schema["x-validation-schema"], Is.Not.Null);
         Assert.That(schema["$ref"]?.ToString(), Is.EqualTo("#/x-validation-schema"));
-      }
+    }
 
     [Test]
     public async Task TestEndpointsAsync_PaginatedEndpointEmptyFeed_ReturnsWarning()
@@ -238,28 +238,28 @@ public class EndpointTestingServiceTests
             Has.Some.Matches<ValidationError>(e => e.ErrorCode == "EMPTY_FEED_WARNING"));
     }
 
-      [Test]
-      public async Task TestEndpointsAsync_CollectionWithMoreThanTenIds_TestsAtMostTenParameterizedRequests()
-      {
+    [Test]
+    public async Task TestEndpointsAsync_CollectionWithMoreThanTenIds_TestsAtMostTenParameterizedRequests()
+    {
         var ids = Enumerable.Range(1, 11)
           .Select(i => $"{{\"id\":\"{i}\"}}")
           .ToArray();
 
         SetupService((request, _) =>
         {
-          var uri = request.RequestUri!.ToString();
-          if (uri.EndsWith("/services", StringComparison.OrdinalIgnoreCase))
-          {
+            var uri = request.RequestUri!.ToString();
+            if (uri.EndsWith("/services", StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent($"{{\"data\":[{string.Join(",", ids)}]}}")
+                };
+            }
+
             return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
             {
-              Content = new StringContent($"{{\"data\":[{string.Join(",", ids)}]}}")
+                Content = new StringContent("{\"id\":\"ok\"}")
             };
-          }
-
-          return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
-          {
-            Content = new StringContent("{\"id\":\"ok\"}")
-          };
         });
 
         var results = await _service.TestEndpointsAsync(
@@ -272,26 +272,26 @@ public class EndpointTestingServiceTests
 
         var parameterized = results.Single(r => r.Path == "/services/{id}");
         Assert.That(parameterized.TestResults, Has.Count.EqualTo(10));
-      }
+    }
 
-      [Test]
-      public async Task TestEndpointsAsync_OptionalParameterizedEndpoint_WhenDisabled_IsSkipped()
-      {
+    [Test]
+    public async Task TestEndpointsAsync_OptionalParameterizedEndpoint_WhenDisabled_IsSkipped()
+    {
         SetupService((request, _) =>
         {
-          var uri = request.RequestUri!.ToString();
-          if (uri.EndsWith("/services", StringComparison.OrdinalIgnoreCase))
-          {
+            var uri = request.RequestUri!.ToString();
+            if (uri.EndsWith("/services", StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent("{\"data\":[{\"id\":\"1\"}]}")
+                };
+            }
+
             return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
             {
-              Content = new StringContent("{\"data\":[{\"id\":\"1\"}]}")
+                Content = new StringContent("{\"id\":\"1\"}")
             };
-          }
-
-          return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
-          {
-            Content = new StringContent("{\"id\":\"1\"}")
-          };
         });
 
         // TestOptionalEndpoints is now server-configurable; create a service with it disabled
@@ -314,25 +314,25 @@ public class EndpointTestingServiceTests
         var parameterized = results.Single(r => r.Path == "/services/{id}");
         Assert.That(parameterized.Status, Is.EqualTo(EndpointTestStatus.Skipped));
         Assert.That(parameterized.TestResults, Is.Empty);
-      }
+    }
 
-      [Test]
-      public async Task TestEndpointsAsync_AuthProvidedOnHttp_DoesNotSendAuthHeaders()
-      {
+    [Test]
+    public async Task TestEndpointsAsync_AuthProvidedOnHttp_DoesNotSendAuthHeaders()
+    {
         var sawApiKeyHeader = false;
         SetupService((request, _) =>
         {
-          sawApiKeyHeader = request.Headers.Contains("X-API-Key");
-          return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
-          {
-            Content = new StringContent("{}")
-          };
+            sawApiKeyHeader = request.Headers.Contains("X-API-Key");
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent("{}")
+            };
         });
 
         var auth = new DataSourceAuthentication
         {
-          ApiKey = "secret",
-          ApiKeyHeader = "X-API-Key"
+            ApiKey = "secret",
+            ApiKeyHeader = "X-API-Key"
         };
 
         await _service.TestEndpointsAsync(
@@ -344,30 +344,30 @@ public class EndpointTestingServiceTests
           CancellationToken.None);
 
         Assert.That(sawApiKeyHeader, Is.False);
-      }
+    }
 
-      [Test]
-      public async Task TestEndpointsAsync_PaginatedEndpointWithMultiplePages_RequestsMiddleAndLastPage()
-      {
+    [Test]
+    public async Task TestEndpointsAsync_PaginatedEndpointWithMultiplePages_RequestsMiddleAndLastPage()
+    {
         var requestedUris = new List<string>();
 
         SetupService((request, _) =>
         {
-          var uri = request.RequestUri!.ToString();
-          requestedUris.Add(uri);
+            var uri = request.RequestUri!.ToString();
+            requestedUris.Add(uri);
 
-          if (uri.Contains("page=1", StringComparison.OrdinalIgnoreCase))
-          {
+            if (uri.Contains("page=1", StringComparison.OrdinalIgnoreCase))
+            {
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent("{\"total_pages\":4,\"data\":[{\"id\":\"1\"}]}")
+                };
+            }
+
             return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
             {
-              Content = new StringContent("{\"total_pages\":4,\"data\":[{\"id\":\"1\"}]}")
+                Content = new StringContent("{\"data\":[{\"id\":\"1\"}]}")
             };
-          }
-
-          return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
-          {
-            Content = new StringContent("{\"data\":[{\"id\":\"1\"}]}")
-          };
         });
 
         var results = await _service.TestEndpointsAsync(
@@ -382,11 +382,11 @@ public class EndpointTestingServiceTests
         Assert.That(requestedUris.Count, Is.EqualTo(3));
         Assert.That(requestedUris.Any(u => u.Contains("page=2", StringComparison.OrdinalIgnoreCase)), Is.True);
         Assert.That(requestedUris.Any(u => u.Contains("page=4", StringComparison.OrdinalIgnoreCase)), Is.True);
-      }
+    }
 
-      [Test]
-      public async Task TestEndpointsAsync_WhenHttpRequestThrows_ReturnsErrorStatus()
-      {
+    [Test]
+    public async Task TestEndpointsAsync_WhenHttpRequestThrows_ReturnsErrorStatus()
+    {
         SetupService((_, __) => throw new HttpRequestException("boom"));
 
         var results = await _service.TestEndpointsAsync(
@@ -403,25 +403,25 @@ public class EndpointTestingServiceTests
         Assert.That(endpoint.TestResults, Has.Count.EqualTo(1));
         Assert.That(endpoint.TestResults[0].IsSuccessStatusCode, Is.False);
         Assert.That(endpoint.TestResults[0].ErrorMessage, Does.Contain("boom"));
-      }
+    }
 
-      [Test]
-      public async Task TestEndpointsAsync_AuthProvidedOnHttps_SendsApiKeyHeader()
-      {
+    [Test]
+    public async Task TestEndpointsAsync_AuthProvidedOnHttps_SendsApiKeyHeader()
+    {
         var sawApiKeyHeader = false;
         SetupService((request, _) =>
         {
-          sawApiKeyHeader = request.Headers.Contains("X-API-Key");
-          return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
-          {
-            Content = new StringContent("{}")
-          };
+            sawApiKeyHeader = request.Headers.Contains("X-API-Key");
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent("{}")
+            };
         });
 
         var auth = new DataSourceAuthentication
         {
-          ApiKey = "secret",
-          ApiKeyHeader = "X-API-Key"
+            ApiKey = "secret",
+            ApiKeyHeader = "X-API-Key"
         };
 
         await _service.TestEndpointsAsync(
@@ -433,11 +433,11 @@ public class EndpointTestingServiceTests
           CancellationToken.None);
 
         Assert.That(sawApiKeyHeader, Is.True);
-      }
+    }
 
-      [Test]
-      public async Task TestEndpointsAsync_WhenPathsMissing_ReturnsEmptyResults()
-      {
+    [Test]
+    public async Task TestEndpointsAsync_WhenPathsMissing_ReturnsEmptyResults()
+    {
         var spec = JObject.Parse("""
         {
           "openapi": "3.0.0",
@@ -454,7 +454,7 @@ public class EndpointTestingServiceTests
           CancellationToken.None);
 
         Assert.That(results, Is.Empty);
-      }
+    }
 
     private void SetupService(Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> responder)
     {

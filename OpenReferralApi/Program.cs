@@ -247,7 +247,7 @@ app.MapHealthChecks("/health-check/live", new HealthCheckOptions
             status = "Healthy",
             timestamp = DateTime.UtcNow,
             schemaWarmup = warmupStatus
-        }));
+        })).ConfigureAwait(false);
     }
 });
 

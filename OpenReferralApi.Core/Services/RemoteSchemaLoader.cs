@@ -10,7 +10,7 @@ namespace OpenReferralApi.Core.Services;
 /// <summary>
 /// Internal helper class for loading remote JSON schemas with caching and authentication support.
 /// </summary>
-internal class RemoteSchemaLoader
+public class RemoteSchemaLoader
 {
     private readonly HashSet<string> _knownJsonSchemaUrls;
     private readonly HashSet<string> _unknownDraftWarnings = new(StringComparer.OrdinalIgnoreCase);
@@ -62,7 +62,7 @@ internal class RemoteSchemaLoader
     public async Task<JsonNode?> LoadRemoteSchemaAsync(string schemaUrl)
     {
         var resolvedUrl = NormalizeKnownSchemaUrl(schemaUrl) ?? schemaUrl;
-        
+
         // Check persistent cache first if caching is enabled
         if (_cacheOptions.Enabled)
         {

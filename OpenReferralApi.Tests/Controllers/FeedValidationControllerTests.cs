@@ -57,7 +57,7 @@ public class FeedValidationControllerTests
             .ThrowsAsync(new Exception("Database error"));
 
         // Act & Assert - Exception should propagate to GlobalExceptionHandler
-        Assert.ThrowsAsync<Exception>(async () => 
+        Assert.ThrowsAsync<Exception>(async () =>
             await _controller.GetAllFeeds(CancellationToken.None));
     }
 
@@ -126,7 +126,7 @@ public class FeedValidationControllerTests
             .ThrowsAsync(new Exception("Validation error"));
 
         // Act & Assert - Exception should propagate to GlobalExceptionHandler
-        Assert.ThrowsAsync<Exception>(async () => 
+        Assert.ThrowsAsync<Exception>(async () =>
             await _controller.ValidateAllFeeds(CancellationToken.None));
     }
 
@@ -199,7 +199,7 @@ public class FeedValidationControllerTests
             .ThrowsAsync(new Exception("Validation error"));
 
         // Act & Assert - Exception should propagate to GlobalExceptionHandler
-        Assert.ThrowsAsync<Exception>(async () => 
+        Assert.ThrowsAsync<Exception>(async () =>
             await _controller.ValidateFeed(feedId, CancellationToken.None));
     }
 }

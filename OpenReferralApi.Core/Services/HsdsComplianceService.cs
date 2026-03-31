@@ -449,7 +449,7 @@ public class HsdsComplianceService : IHsdsComplianceService
             }
 
             return;
-            }
+        }
 
         var hsdsRequiredFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         ExtractRequiredFieldPaths(hsdsSchema, string.Empty, hsdsRequiredFields);

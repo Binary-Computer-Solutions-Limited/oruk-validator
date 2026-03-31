@@ -304,7 +304,7 @@ public class OpenApiValidationServiceTests
             AllowUserSuppliedAuth = true,
             ValidateSpecification = false
         });
-        
+
         var serviceWithDisabledValidation = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
@@ -419,7 +419,8 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = "https://example.com/openapi.json",
-            Options = new OpenApiValidationOptions {
+            Options = new OpenApiValidationOptions
+            {
                 //ValidateSpecification = true
             }
         };
@@ -549,8 +550,9 @@ public class OpenApiValidationServiceTests
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = feedSpecUrl ,
-            Options = new OpenApiValidationOptions { 
+            OwnSchemaUrl = feedSpecUrl,
+            Options = new OpenApiValidationOptions
+            {
                 // ValidateSpecification = true 
                 ReportAdditionalFields = true
             },
@@ -597,8 +599,9 @@ public class OpenApiValidationServiceTests
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = feedSpecUrl ,
-            Options = new OpenApiValidationOptions { 
+            OwnSchemaUrl = feedSpecUrl,
+            Options = new OpenApiValidationOptions
+            {
                 // ValidateSpecification = true 
                 ReportAdditionalFields = true
             },
@@ -647,8 +650,9 @@ public class OpenApiValidationServiceTests
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = feedSpecUrl ,
-            Options = new OpenApiValidationOptions { 
+            OwnSchemaUrl = feedSpecUrl,
+            Options = new OpenApiValidationOptions
+            {
                 // ValidateSpecification = true 
                 ReportAdditionalFields = true
             },
@@ -693,7 +697,7 @@ public class OpenApiValidationServiceTests
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = feedSpecUrl ,
+            OwnSchemaUrl = feedSpecUrl,
             Options = new OpenApiValidationOptions
             {
                 ReportAdditionalFields = false
@@ -738,8 +742,9 @@ public class OpenApiValidationServiceTests
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = feedSpecUrl ,
-            Options = new OpenApiValidationOptions { 
+            OwnSchemaUrl = feedSpecUrl,
+            Options = new OpenApiValidationOptions
+            {
                 // ValidateSpecification = true 
                 ReportAdditionalFields = true
             },
@@ -840,7 +845,7 @@ public class OpenApiValidationServiceTests
         var defaultProfileSpecUrl = $"https://default-{Guid.NewGuid():N}.example.com/specifications/1.0/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = feedSpecUrl ,
+            OwnSchemaUrl = feedSpecUrl,
             Options = new OpenApiValidationOptions()
         };
 
@@ -1083,8 +1088,9 @@ public class OpenApiValidationServiceTests
         var feedSpecUrl = "https://feed.example.com/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = feedSpecUrl ,
-            Options = new OpenApiValidationOptions { 
+            OwnSchemaUrl = feedSpecUrl,
+            Options = new OpenApiValidationOptions
+            {
                 // ValidateSpecification = true 
             },
             ProfileReason = "Standard version [user: 9.9] read from '/' endpoint"
@@ -1110,8 +1116,9 @@ public class OpenApiValidationServiceTests
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = feedSpecUrl ,
-            Options = new OpenApiValidationOptions { 
+            OwnSchemaUrl = feedSpecUrl,
+            Options = new OpenApiValidationOptions
+            {
                 // ValidateSpecification = true 
             }
         };
@@ -1156,8 +1163,9 @@ public class OpenApiValidationServiceTests
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = feedSpecUrl ,
-            Options = new OpenApiValidationOptions { 
+            OwnSchemaUrl = feedSpecUrl,
+            Options = new OpenApiValidationOptions
+            {
                 // ValidateSpecification = true 
             }
         };
@@ -1204,8 +1212,9 @@ public class OpenApiValidationServiceTests
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = feedSpecUrl ,
-            Options = new OpenApiValidationOptions { 
+            OwnSchemaUrl = feedSpecUrl,
+            Options = new OpenApiValidationOptions
+            {
                 // ValidateSpecification = true 
                 ReportAdditionalFields = true
             },
@@ -1254,8 +1263,9 @@ public class OpenApiValidationServiceTests
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = feedSpecUrl ,
-            Options = new OpenApiValidationOptions { 
+            OwnSchemaUrl = feedSpecUrl,
+            Options = new OpenApiValidationOptions
+            {
                 // ValidateSpecification = true 
             },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
@@ -1321,7 +1331,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = feedSpecUrl ,
+            OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
@@ -1452,7 +1462,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = feedSpecUrl ,
+            OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
@@ -1593,7 +1603,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = feedSpecUrl ,
+            OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
@@ -1694,7 +1704,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = "https://example.com/openapi.json" ,
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions
             {
@@ -1738,7 +1748,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = "https://example.com/openapi.json" ,
+            OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions
             {
@@ -1801,7 +1811,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = feedSpecUrl ,
+            OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
@@ -1887,7 +1897,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = feedSpecUrl ,
+            OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
@@ -1970,7 +1980,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = feedSpecUrl ,
+            OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
             Options = new OpenApiValidationOptions()
         };
@@ -2042,7 +2052,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = feedSpecUrl ,
+            OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
@@ -2469,7 +2479,8 @@ public class OpenApiValidationServiceTests
         {
             OwnSchemaUrl = "https://example.com/openapi.json",
             BaseUrl = "https://api.example.com",
-            Options = new OpenApiValidationOptions {
+            Options = new OpenApiValidationOptions
+            {
                 IncludeTestResults = false
                 // ValidateSpecification = false
             }
@@ -2668,7 +2679,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = feedSpecUrl ,
+            OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
@@ -2821,7 +2832,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = specUrl ,
+            OwnSchemaUrl = specUrl,
             BaseUrl = baseUrl,
             Options = new OpenApiValidationOptions()
         };
@@ -2900,7 +2911,7 @@ public class OpenApiValidationServiceTests
 
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = specUrl ,
+            OwnSchemaUrl = specUrl,
             BaseUrl = baseUrl,
             Options = new OpenApiValidationOptions()
         };

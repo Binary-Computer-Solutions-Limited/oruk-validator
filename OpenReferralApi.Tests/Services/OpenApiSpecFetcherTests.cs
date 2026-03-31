@@ -378,7 +378,7 @@ public class OpenApiSpecFetcherTests
         // Act & Assert
         var ex = Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await fetcher.FetchOpenApiSpecFromUrlAsync("not-a-valid-url", null, CancellationToken.None));
-        
+
         Assert.That(ex!.Message, Does.Contain("Failed to fetch OpenAPI specification"));
         Assert.That(ex!.InnerException, Is.InstanceOf<ArgumentException>());
         Assert.That(ex!.InnerException!.Message, Does.Contain("Invalid OpenAPI spec URL"));
@@ -405,7 +405,7 @@ public class OpenApiSpecFetcherTests
         // Act & Assert
         var ex = Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await fetcher.FetchOpenApiSpecFromUrlAsync("/api/openapi.json", null, CancellationToken.None));
-        
+
         Assert.That(ex!.Message, Does.Contain("Failed to fetch OpenAPI specification"));
         Assert.That(ex!.InnerException, Is.InstanceOf<ArgumentException>());
         Assert.That(ex!.InnerException!.Message, Does.Contain("Invalid OpenAPI spec URL"));

@@ -38,7 +38,7 @@ public class OpenApiControllerTests
         {
             IsValid = true
         };
-        
+
         _validationServiceMock
             .Setup(x => x.ValidateOpenApiSpecificationAsync(It.IsAny<OpenApiValidationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(validationResult);

@@ -17,7 +17,7 @@ public class RemoteSchemaLoaderTests
     public void Setup()
     {
         _loggerMock = new Mock<ILogger<SchemaResolverService>>();
-        
+
         // Create real MemoryCache for testing
         _memoryCache = new MemoryCache(new MemoryCacheOptions
         {
@@ -285,7 +285,7 @@ public class RemoteSchemaLoaderTests
         // Act & Assert
         var ex = Assert.ThrowsAsync<ArgumentException>(async () =>
             await loader.LoadRemoteSchemaAsync("file:///etc/passwd"));
-        
+
         Assert.That(ex!.Message, Does.Contain("Invalid schema URL"));
         Assert.That(ex.Message, Does.Contain("HTTP and HTTPS"));
     }
@@ -309,7 +309,7 @@ public class RemoteSchemaLoaderTests
         // Act & Assert
         var ex = Assert.ThrowsAsync<ArgumentException>(async () =>
             await loader.LoadRemoteSchemaAsync("ftp://malicious.com/schema.json"));
-        
+
         Assert.That(ex!.Message, Does.Contain("Invalid schema URL"));
     }
 
@@ -332,7 +332,7 @@ public class RemoteSchemaLoaderTests
         // Act & Assert
         var ex = Assert.ThrowsAsync<ArgumentException>(async () =>
             await loader.LoadRemoteSchemaAsync("data:text/plain,{\"type\":\"object\"}"));
-        
+
         Assert.That(ex!.Message, Does.Contain("Invalid schema URL"));
     }
 
@@ -610,7 +610,7 @@ public class RemoteSchemaLoaderTests
         });
 
         using var httpClient = TestHttpClientFactory.CreateClient(handler);
-        
+
         var cacheOptions = Options.Create(new CacheOptions
         {
             Enabled = true,
@@ -625,7 +625,7 @@ public class RemoteSchemaLoaderTests
 
         // Assert
         Assert.That(result, Is.Not.Null);
-        
+
         var cacheKey = $"schema:{schemaUrl}";
         var cached = _memoryCache.TryGetValue<string>(cacheKey, out var cachedContent);
         Assert.That(cached, Is.True, "Schema should be cached");
@@ -649,7 +649,7 @@ public class RemoteSchemaLoaderTests
         });
 
         using var httpClient = TestHttpClientFactory.CreateClient(handler);
-        
+
         var cacheOptions = Options.Create(new CacheOptions
         {
             Enabled = true,
@@ -665,7 +665,7 @@ public class RemoteSchemaLoaderTests
 
         // Assert
         Assert.That(result, Is.Not.Null);
-        
+
         var cacheKey = $"schema:{schemaUrl}";
         var cached = _memoryCache.TryGetValue<string>(cacheKey, out var cachedContent);
         Assert.That(cached, Is.True, "Schema should be cached with sliding expiration");

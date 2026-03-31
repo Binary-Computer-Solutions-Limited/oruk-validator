@@ -3,7 +3,7 @@ namespace OpenReferralApi.Core.Models.Configuration;
 public class SpecificationOptions
 {
     public const string SectionName = "Specification";
-    
+
     /// <summary>
     /// Enables schema warmup on application startup.
     /// </summary>

@@ -64,7 +64,7 @@ public class SchemaWarmupBackgroundService : BackgroundService
         if (delaySeconds > 0)
         {
             _logger.LogInformation("Schema warmup starting in {DelaySeconds}s.", delaySeconds);
-            await Task.Delay(TimeSpan.FromSeconds(delaySeconds), stoppingToken);
+            await Task.Delay(TimeSpan.FromSeconds(delaySeconds), stoppingToken).ConfigureAwait(false);
         }
 
         using var scope = _serviceProvider.CreateScope();
@@ -88,7 +88,7 @@ public class SchemaWarmupBackgroundService : BackgroundService
                 }
                 """;
 
-                await resolver.ResolveAsync(warmupSchema, url, auth: null);
+                await resolver.ResolveAsync(warmupSchema, url, auth: null).ConfigureAwait(false);
                 _statusTracker.MarkSuccess();
                 _logger.LogInformation("Schema warmup succeeded: {SchemaUrl}", SchemaResolverService.SanitizeUrlForLogging(url));
             }

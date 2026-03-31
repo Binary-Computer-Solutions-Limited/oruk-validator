@@ -43,7 +43,7 @@ public class HttpTestResult
     /// </summary>
     [JsonProperty("responseTime")]
     public TimeSpan ResponseTime { get; set; }
-    
+
     /// <summary>
     /// HTTP status code returned by the server (200, 404, 500, etc.)
     /// Indicates whether the request was successful and how the server responded

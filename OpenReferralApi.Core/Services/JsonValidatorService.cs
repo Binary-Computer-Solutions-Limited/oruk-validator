@@ -474,7 +474,7 @@ public class JsonValidatorService : IJsonValidatorService
     private string? GetSchemaTitleFromObject(object? schemaObject)
     {
         if (schemaObject == null) return null;
-        
+
         try
         {
             var jObject = JObject.FromObject(schemaObject);
@@ -490,7 +490,7 @@ public class JsonValidatorService : IJsonValidatorService
     private string? GetSchemaDescriptionFromObject(object? schemaObject)
     {
         if (schemaObject == null) return null;
-        
+
         try
         {
             var jObject = JObject.FromObject(schemaObject);
@@ -516,10 +516,10 @@ public class JsonValidatorService : IJsonValidatorService
         {
             var jsonToken = JToken.Parse(jsonData);
             DetectAdditionalFieldsRecursive(jsonToken, schema, "", warnings);
-            
+
             // Normalize paths and keep only unique warnings by normalized path
             var uniqueWarnings = new Dictionary<string, ValidationError>();
-            
+
             foreach (var warning in warnings)
             {
                 var normalizedPath = ValidationPathNormalizer.NormalizeArrayIndexes(warning.Path);
@@ -530,7 +530,7 @@ public class JsonValidatorService : IJsonValidatorService
                     uniqueWarnings[normalizedPath] = warning;
                 }
             }
-            
+
             return uniqueWarnings.Values.ToList();
         }
         catch (Exception ex)

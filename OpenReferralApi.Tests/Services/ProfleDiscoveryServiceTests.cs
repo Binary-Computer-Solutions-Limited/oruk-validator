@@ -24,7 +24,7 @@ public class ProfleDiscoveryServiceTests
         _httpMessageHandlerMock = new Mock<HttpMessageHandler>();
         _specificationOptionsMock = new Mock<IOptions<SpecificationOptions>>();
         _httpClient = TestHttpClientFactory.CreateClient(_httpMessageHandlerMock.Object);
-        
+
         _httpClientFactoryMock
             .Setup(f => f.CreateClient("OpenApiValidationService"))
             .Returns(_httpClient);

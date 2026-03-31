@@ -54,8 +54,8 @@ public class OpenReferralUkController : BaseOpenApiController
             return validationError;
         }
 
-        var result = await _openApiValidationService.ValidateOpenApiSpecificationAsync(request, cancellationToken);
-        
+        var result = await _openApiValidationService.ValidateOpenApiSpecificationAsync(request, cancellationToken).ConfigureAwait(false);
+
         _logger.LogInformation(
             "Validation completed (Open Referral UK format) for BaseUrl: {BaseUrl}",
             SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty));

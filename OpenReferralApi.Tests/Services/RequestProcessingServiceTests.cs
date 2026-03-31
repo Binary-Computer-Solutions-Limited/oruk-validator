@@ -302,7 +302,7 @@ public class RequestProcessingServiceTests
             {
                 throw new HttpRequestException("Network error");
             }, options, cts.Token));
-        
+
         Assert.That(exception, Is.Not.Null);
     }
 

@@ -43,7 +43,7 @@ public class MockController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetServiceMetadata()
     {
-        return await ReadJsonFile(ResolveMockPath("api_details.json"));
+        return await ReadJsonFile(ResolveMockPath("api_details.json")).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -59,7 +59,7 @@ public class MockController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetServices()
     {
-        return await ReadJsonFile(ResolveMockPath("service_list.json"));
+        return await ReadJsonFile(ResolveMockPath("service_list.json")).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -76,7 +76,7 @@ public class MockController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetServicesById()
     {
-        return await ReadJsonFile(ResolveMockPath("service_full.json"));
+        return await ReadJsonFile(ResolveMockPath("service_full.json")).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -92,7 +92,7 @@ public class MockController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetTaxonomies()
     {
-        return await ReadJsonFile(ResolveMockPath("taxonomy_list.json"));
+        return await ReadJsonFile(ResolveMockPath("taxonomy_list.json")).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -109,7 +109,7 @@ public class MockController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetTaxonomiesById()
     {
-        return await ReadJsonFile(ResolveMockPath("taxonomy.json"));
+        return await ReadJsonFile(ResolveMockPath("taxonomy.json")).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -125,7 +125,7 @@ public class MockController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetTaxonomyTerms()
     {
-        return await ReadJsonFile(ResolveMockPath("taxonomy_term_list.json"));
+        return await ReadJsonFile(ResolveMockPath("taxonomy_term_list.json")).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -142,7 +142,7 @@ public class MockController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetTaxonomyTermsById()
     {
-        return await ReadJsonFile(ResolveMockPath("taxonomy_term.json"));
+        return await ReadJsonFile(ResolveMockPath("taxonomy_term.json")).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -158,7 +158,7 @@ public class MockController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetServiceAtLocations()
     {
-        return await ReadJsonFile(ResolveMockPath("service_at_location_list.json"));
+        return await ReadJsonFile(ResolveMockPath("service_at_location_list.json")).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -175,7 +175,7 @@ public class MockController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetServiceAtLocationsById()
     {
-        return await ReadJsonFile(ResolveMockPath("service_at_location_full.json"));
+        return await ReadJsonFile(ResolveMockPath("service_at_location_full.json")).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -189,7 +189,7 @@ public class MockController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetV1ValidatorMock([FromQuery] string? serviceUrl = null)
     {
-        return await ReadJsonFile("Mocks/V1.0-UK-Default/V1_ValidateResponse.json");
+        return await ReadJsonFile("Mocks/V1.0-UK-Default/V1_ValidateResponse.json").ConfigureAwait(false);
     }
 
     /// <summary>
@@ -203,7 +203,7 @@ public class MockController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetDashboardMock()
     {
-        return await ReadJsonFile("Mocks/V1.0-UK-Default/V1_DashboardResponse.json");
+        return await ReadJsonFile("Mocks/V1.0-UK-Default/V1_DashboardResponse.json").ConfigureAwait(false);
     }
 
     /// <summary>
@@ -217,7 +217,7 @@ public class MockController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetOrganizations()
     {
-        return await ReadJsonFile(ResolveMockPath("organization_list.json"));
+        return await ReadJsonFile(ResolveMockPath("organization_list.json")).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -232,7 +232,7 @@ public class MockController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetOrganizationsById()
     {
-        return await ReadJsonFile(ResolveMockPath("organization.json"));
+        return await ReadJsonFile(ResolveMockPath("organization.json")).ConfigureAwait(false);
     }
 
     private async Task<IActionResult> ReadJsonFile(string filePath)
@@ -245,7 +245,7 @@ public class MockController : ControllerBase
             using StreamReader reader = new(filePath);
 
             // Read the stream as a string.
-            var mock = await reader.ReadToEndAsync();
+            var mock = await reader.ReadToEndAsync().ConfigureAwait(false);
 
             var mockResponse = JsonNode.Parse(mock);
 

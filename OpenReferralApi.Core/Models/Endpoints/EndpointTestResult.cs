@@ -75,13 +75,13 @@ public class EndpointTestResult
     /// </summary>
     [JsonProperty("summary")]
     public string? Summary { get; set; }
-    
+
     /// <summary>
     /// Indicates whether this endpoint is marked as optional in the OpenAPI specification
     /// </summary>
     [JsonProperty("isOptional")]
     public bool IsOptional { get; internal set; }
-    
+
     /// <summary>
     /// Indicates whether actual HTTP testing was performed on this endpoint
     /// False if testing was skipped due to configuration, errors, or missing requirements

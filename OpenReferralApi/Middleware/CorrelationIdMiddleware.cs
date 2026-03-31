@@ -15,12 +15,12 @@ public class CorrelationIdMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
-        var correlationId = context.Request.Headers[CorrelationIdHeader].FirstOrDefault() 
+        var correlationId = context.Request.Headers[CorrelationIdHeader].FirstOrDefault()
                             ?? Guid.NewGuid().ToString();
 
         context.Items["CorrelationId"] = correlationId;
         context.Response.Headers.TryAdd(CorrelationIdHeader, correlationId);
 
-        await _next(context);
+        await _next(context).ConfigureAwait(false);
     }
 }

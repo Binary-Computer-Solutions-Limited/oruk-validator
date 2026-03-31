@@ -7,7 +7,7 @@ namespace OpenReferralApi.Core.Services;
 /// Internal helper class for resolving JSON Schema $ref references.
 /// Handles both external and internal reference resolution with circular reference detection.
 /// </summary>
-internal class ReferenceResolver
+public class ReferenceResolver
 {
     private readonly ILogger _logger;
     private readonly RemoteSchemaLoader _remoteSchemaLoader;
@@ -77,7 +77,7 @@ internal class ReferenceResolver
                 {
                     // Resolve internal JSON pointer reference
                     resolved = await ResolveInternalRefAsync(refString, visitedRefs);
-                    
+
                     // If internal reference resolution failed (returned null), keep the original $ref
                     // This prevents null values from being inserted into schema structures like allOf arrays
                     // where Newtonsoft.Json.Schema cannot handle them

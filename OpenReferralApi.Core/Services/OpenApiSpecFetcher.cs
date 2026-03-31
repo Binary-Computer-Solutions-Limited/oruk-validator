@@ -10,7 +10,7 @@ namespace OpenReferralApi.Core.Services;
 /// Internal helper class for fetching and parsing OpenAPI specifications from remote URLs.
 /// Handles authentication and reference resolution.
 /// </summary>
-internal class OpenApiSpecFetcher
+public class OpenApiSpecFetcher
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger _logger;

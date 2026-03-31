@@ -78,7 +78,7 @@ public class HsdsComplianceServiceTests
             _jsonValidatorServiceMock.Object,
             Options.Create(new SpecificationOptions
             {
-            Urls = new Dictionary<string, string>
+                Urls = new Dictionary<string, string>
                 {
                     ["4.0"] = "https://profiles.example.org/4.0/openapi.json"
                 }
@@ -326,7 +326,7 @@ public class HsdsComplianceServiceTests
 
         var options = new OpenApiValidationOptions
         {
-          ReportAdditionalFields = true
+            ReportAdditionalFields = true
         };
 
         await _service.ValidateEndpointResponsesAgainstHsdsProfileAsync(endpointTests, hsdsSpec, options, CancellationToken.None);
@@ -407,7 +407,7 @@ public class HsdsComplianceServiceTests
 
         var options = new OpenApiValidationOptions
         {
-          ReportAdditionalFields = true
+            ReportAdditionalFields = true
         };
         var serviceWithLenientPolicy = new HsdsComplianceService(
             _jsonValidatorServiceMock.Object,
@@ -522,32 +522,32 @@ public class HsdsComplianceServiceTests
             _jsonValidatorServiceMock.Object,
           specificationOptions: Options.Create(new SpecificationOptions()),
           openApiValidationOptions: Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.AllowAdditionalProperties }));
-    serviceWithLenientPolicy.ApplyAdditionalFieldPolicy(result, reportAdditionalFields: true);
+        serviceWithLenientPolicy.ApplyAdditionalFieldPolicy(result, reportAdditionalFields: true);
 
         Assert.That(result.Errors.Single(e => e.ErrorCode == "ADDITIONAL_FIELD").Severity, Is.EqualTo("Warning"));
         Assert.That(result.IsValid, Is.True);
     }
 
-  [Test]
-  public void ApplyAdditionalFieldPolicy_WhenReportAdditionalFieldsFalse_RemovesWarningEntries()
-  {
-    var result = new ValidationResult
+    [Test]
+    public void ApplyAdditionalFieldPolicy_WhenReportAdditionalFieldsFalse_RemovesWarningEntries()
     {
-      IsValid = false,
-      Errors = new List<ValidationError>
+        var result = new ValidationResult
+        {
+            IsValid = false,
+            Errors = new List<ValidationError>
       {
         new() { ErrorCode = "ADDITIONAL_FIELD", Severity = "Error" },
         new() { ErrorCode = "SOME_OTHER", Severity = "Warning" }
       }
-    };
+        };
 
-    var serviceWithLenientPolicy = new HsdsComplianceService(
-      _jsonValidatorServiceMock.Object,
-      specificationOptions: Options.Create(new SpecificationOptions()),
-      openApiValidationOptions: Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.AllowAdditionalProperties }));
-    serviceWithLenientPolicy.ApplyAdditionalFieldPolicy(result, reportAdditionalFields: false);
+        var serviceWithLenientPolicy = new HsdsComplianceService(
+          _jsonValidatorServiceMock.Object,
+          specificationOptions: Options.Create(new SpecificationOptions()),
+          openApiValidationOptions: Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.AllowAdditionalProperties }));
+        serviceWithLenientPolicy.ApplyAdditionalFieldPolicy(result, reportAdditionalFields: false);
 
-    Assert.That(result.Errors, Has.None.Matches<ValidationError>(e => e.ErrorCode == "ADDITIONAL_FIELD"));
-    Assert.That(result.IsValid, Is.True);
-  }
+        Assert.That(result.Errors, Has.None.Matches<ValidationError>(e => e.ErrorCode == "ADDITIONAL_FIELD"));
+        Assert.That(result.IsValid, Is.True);
+    }
 }

@@ -5,7 +5,7 @@ using OpenReferralApi.Telemetry;
 
 namespace OpenReferralApi.Extensions;
 
-public static class OpenTelemetryServiceExtensions
+internal static class OpenTelemetryServiceExtensions
 {
     public static void ConfigureOpenTelemetry(this WebApplicationBuilder builder)
     {
