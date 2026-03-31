@@ -162,7 +162,7 @@ public class ReferenceResolver
             return new JsonObject { ["$ref"] = refPointer };
         }
 
-        visitedRefs.Add(refPointer);
+    _ = visitedRefs.Add(refPointer);
 
         // Check cache first
         if (_refCache.TryGetValue(refPointer, out var cached))
@@ -244,7 +244,7 @@ public class ReferenceResolver
         }
         finally
         {
-            visitedRefs.Remove(refPointer);
+      _ = visitedRefs.Remove(refPointer);
         }
     }
 
@@ -270,7 +270,7 @@ public class ReferenceResolver
             return new JsonObject { ["$ref"] = refUrl };
         }
 
-        visitedRefs.Add(resolvedRefKey);
+    _ = visitedRefs.Add(resolvedRefKey);
 
         try
         {
@@ -334,7 +334,7 @@ public class ReferenceResolver
         }
         finally
         {
-            visitedRefs.Remove(resolvedRefKey);
+      _ = visitedRefs.Remove(resolvedRefKey);
         }
     }
 

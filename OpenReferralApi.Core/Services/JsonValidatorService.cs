@@ -280,7 +280,7 @@ public class JsonValidatorService : IJsonValidatorService
 
                 var httpClient = _httpClientFactory.CreateClient();
                 var response = await httpClient.GetAsync(validatedUri, ct);
-                response.EnsureSuccessStatusCode();
+            _ = response.EnsureSuccessStatusCode();
                 var schemaJson = await response.Content.ReadAsStringAsync(ct);
 
                 if (_externalSchemaUriCacheEnabled)
@@ -317,7 +317,7 @@ public class JsonValidatorService : IJsonValidatorService
 
         if (cachedEntry.ExpiresAtUtc <= DateTime.UtcNow || string.IsNullOrWhiteSpace(cachedEntry.SchemaJson))
         {
-            ExternalSchemaUriCache.TryRemove(schemaUri, out _);
+      _ = ExternalSchemaUriCache.TryRemove(schemaUri, out _);
             return false;
         }
 
@@ -402,7 +402,7 @@ public class JsonValidatorService : IJsonValidatorService
                 using var request = new HttpRequestMessage(HttpMethod.Get, validatedUri);
 
                 var response = await httpClient.SendAsync(request, ct);
-                response.EnsureSuccessStatusCode();
+            _ = response.EnsureSuccessStatusCode();
 
                 var content = await response.Content.ReadAsStringAsync(ct);
 

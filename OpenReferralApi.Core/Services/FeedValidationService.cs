@@ -124,7 +124,7 @@ public class FeedValidationService : IFeedValidationService
             updates.Add(updateBuilder.Set(f => f.LastTested, lastTestedDoc));
 
             var combinedUpdate = updateBuilder.Combine(updates);
-            await _servicesCollection.UpdateOneAsync(filter, combinedUpdate, cancellationToken: cancellationToken);
+      _ = await _servicesCollection.UpdateOneAsync(filter, combinedUpdate, cancellationToken: cancellationToken);
 
             _logger.LogInformation(
                 "Updated feed {FeedId}: IsUp={IsUp}, IsValid={IsValid}, ResponseTime={ResponseTime}ms, Errors={ErrorCount}",
@@ -254,7 +254,7 @@ public class FeedValidationService : IFeedValidationService
             }
             finally
             {
-                semaphore.Release();
+            _ = semaphore.Release();
             }
         });
 

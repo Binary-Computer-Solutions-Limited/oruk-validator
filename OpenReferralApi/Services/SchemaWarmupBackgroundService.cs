@@ -88,7 +88,7 @@ public class SchemaWarmupBackgroundService : BackgroundService
                 }
                 """;
 
-                await resolver.ResolveAsync(warmupSchema, url, auth: null).ConfigureAwait(false);
+                _ = await resolver.ResolveAsync(warmupSchema, url, auth: null).ConfigureAwait(false);
                 _statusTracker.MarkSuccess();
                 _logger.LogInformation("Schema warmup succeeded: {SchemaUrl}", SchemaResolverService.SanitizeUrlForLogging(url));
             }

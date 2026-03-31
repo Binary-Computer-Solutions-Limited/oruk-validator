@@ -12,22 +12,22 @@ internal static class SwaggerDocumentationExtensions
 {
     public static IServiceCollection AddSwaggerDocumentation(this IServiceCollection services, IConfiguration configuration)
     {
-        services.Configure<SwaggerDocumentationOptions>(
+        _ = services.Configure<SwaggerDocumentationOptions>(
             configuration.GetSection(SwaggerDocumentationOptions.SectionName));
 
         var swaggerOptions = configuration
             .GetSection(SwaggerDocumentationOptions.SectionName)
             .Get<SwaggerDocumentationOptions>() ?? new SwaggerDocumentationOptions();
 
-        services.AddSingleton(new SwaggerRuntimeOptions(
+        _ = services.AddSingleton(new SwaggerRuntimeOptions(
             swaggerOptions.DocName,
             swaggerOptions.Version,
             swaggerOptions.Title,
             swaggerOptions.Description,
             swaggerOptions.ResolveSpecVersion()));
 
-        services.AddEndpointsApiExplorer();
-        services.AddSwaggerGen(options =>
+        _ = services.AddEndpointsApiExplorer();
+        _ = services.AddSwaggerGen(options =>
         {
             var xmlFilename = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
             options.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, xmlFilename));
@@ -83,13 +83,13 @@ internal static class SwaggerDocumentationExtensions
     {
         var runtimeOptions = app.Services.GetRequiredService<SwaggerRuntimeOptions>();
 
-        app.UseSwagger(options =>
+        _ = app.UseSwagger(options =>
         {
             options.OpenApiVersion = runtimeOptions.OpenApiVersion;
             options.PreSerializeFilters.Add((document, _) => SwaggerExamplesApplier.Apply(document));
         });
 
-        app.UseSwaggerUI(options =>
+        _ = app.UseSwaggerUI(options =>
         {
             options.SwaggerEndpoint(
                 $"/swagger/{runtimeOptions.DocName}/swagger.json",

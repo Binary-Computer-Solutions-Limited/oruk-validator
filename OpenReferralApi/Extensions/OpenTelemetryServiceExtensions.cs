@@ -22,7 +22,7 @@ internal static class OpenTelemetryServiceExtensions
             ? parsedOtlpEndpoint
             : null;
 
-        builder.Services
+        _ = builder.Services
             .AddOpenTelemetry()
             .ConfigureResource(resourceBuilder =>
                 resourceBuilder.AddService(
@@ -30,40 +30,40 @@ internal static class OpenTelemetryServiceExtensions
                     serviceVersion: Instrumentation.ServiceVersion))
             .WithTracing(tracingBuilder =>
             {
-                tracingBuilder
+                _ = tracingBuilder
                     .AddSource(Instrumentation.ActivitySource.Name)
                     .AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation();
 
                 if (otlpEndpoint is not null)
                 {
-                    tracingBuilder.AddOtlpExporter(opts =>
+                    _ = tracingBuilder.AddOtlpExporter(opts =>
                     {
                         opts.Endpoint = otlpEndpoint;
                     });
                 }
                 else if (builder.Environment.IsDevelopment())
                 {
-                    tracingBuilder.AddConsoleExporter();
+                    _ = tracingBuilder.AddConsoleExporter();
                 }
             })
             .WithMetrics(metricsBuilder =>
             {
-                metricsBuilder
+                _ = metricsBuilder
                     .AddMeter(Instrumentation.ServiceName)
                     .AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation();
 
                 if (otlpEndpoint is not null)
                 {
-                    metricsBuilder.AddOtlpExporter(opts =>
+                    _ = metricsBuilder.AddOtlpExporter(opts =>
                     {
                         opts.Endpoint = otlpEndpoint;
                     });
                 }
                 else if (builder.Environment.IsDevelopment())
                 {
-                    metricsBuilder.AddConsoleExporter();
+                    _ = metricsBuilder.AddConsoleExporter();
                 }
             });
     }

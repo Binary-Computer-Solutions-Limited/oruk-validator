@@ -43,7 +43,7 @@ public class RemoteSchemaLoader
             var normalized = NormalizeAbsoluteUrl(url);
             if (!string.IsNullOrWhiteSpace(normalized))
             {
-                _knownJsonSchemaUrls.Add(normalized);
+        _ = _knownJsonSchemaUrls.Add(normalized);
             }
         }
     }
@@ -94,7 +94,7 @@ public class RemoteSchemaLoader
             }
 
             var response = await _httpClient.SendAsync(request);
-            response.EnsureSuccessStatusCode();
+      _ = response.EnsureSuccessStatusCode();
             var content = await response.Content.ReadAsStringAsync();
 
             // Store in persistent cache if caching is enabled
@@ -121,7 +121,7 @@ public class RemoteSchemaLoader
                     }
                 }
 
-                _memoryCache.Set(cacheKey, content, cacheEntryOptions);
+        _ = _memoryCache.Set(cacheKey, content, cacheEntryOptions);
                 _logger.LogDebug("Cached schema: {SchemaUrl} (expires in {Minutes} minutes)",
                     SchemaResolverService.SanitizeUrlForLogging(resolvedUrl), _cacheOptions.ExpirationMinutes);
             }

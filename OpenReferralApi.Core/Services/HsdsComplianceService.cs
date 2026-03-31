@@ -507,7 +507,7 @@ public class HsdsComplianceService : IHsdsComplianceService
                 }
 
                 var fullPath = string.IsNullOrEmpty(prefix) ? requiredName : $"{prefix}.{requiredName}";
-                result.Add(fullPath);
+        _ = result.Add(fullPath);
 
                 if (properties[requiredName] != null)
                 {
@@ -543,7 +543,7 @@ public class HsdsComplianceService : IHsdsComplianceService
             foreach (var property in properties.Properties())
             {
                 var fullPath = string.IsNullOrEmpty(prefix) ? property.Name : $"{prefix}.{property.Name}";
-                result.Add(fullPath);
+        _ = result.Add(fullPath);
                 ExtractAllFieldPaths(property.Value, fullPath, result);
             }
         }

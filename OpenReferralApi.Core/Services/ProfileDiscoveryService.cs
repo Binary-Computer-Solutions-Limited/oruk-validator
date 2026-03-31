@@ -164,7 +164,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
 
         if (!string.IsNullOrWhiteSpace(auth.ApiKey) && !string.IsNullOrWhiteSpace(auth.ApiKeyHeader) && IsValidHeaderName(auth.ApiKeyHeader))
         {
-            request.Headers.TryAddWithoutValidation(auth.ApiKeyHeader, auth.ApiKey);
+      _ = request.Headers.TryAddWithoutValidation(auth.ApiKeyHeader, auth.ApiKey);
         }
 
         if (!string.IsNullOrWhiteSpace(auth.BearerToken))
@@ -190,7 +190,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                 continue;
             }
 
-            request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+      _ = request.Headers.TryAddWithoutValidation(header.Key, header.Value);
         }
     }
 

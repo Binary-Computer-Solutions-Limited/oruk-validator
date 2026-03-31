@@ -62,13 +62,13 @@ builder.Services.AddCors(options =>
     {
         if (securityOptions.AllowedCorsOrigins.Contains("*"))
         {
-            policy.AllowAnyOrigin()
+            _ = policy.AllowAnyOrigin()
                   .AllowAnyMethod()
                   .AllowAnyHeader();
         }
         else
         {
-            policy.WithOrigins(securityOptions.AllowedCorsOrigins)
+            _ = policy.WithOrigins(securityOptions.AllowedCorsOrigins)
                   .AllowAnyMethod()
                   .AllowAnyHeader()
                   .AllowCredentials();
@@ -83,7 +83,7 @@ builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
-    options.AddFixedWindowLimiter("fixed", opt =>
+    _ = options.AddFixedWindowLimiter("fixed", opt =>
     {
         opt.PermitLimit = rateLimitingOptions.PermitLimit;
         opt.Window = TimeSpan.FromSeconds(rateLimitingOptions.Window);
@@ -138,23 +138,23 @@ var databaseOptions = builder.Configuration.GetSection(DatabaseOptions.SectionNa
 if (!string.IsNullOrEmpty(databaseOptions.ConnectionString))
 {
     // Register MongoDB client for health checks and feed validation
-    builder.Services.AddSingleton<MongoDB.Driver.IMongoClient>(sp =>
+    _ = builder.Services.AddSingleton<MongoDB.Driver.IMongoClient>(sp =>
     {
         return new MongoDB.Driver.MongoClient(databaseOptions.ConnectionString);
     });
 
-    healthChecksBuilder.AddMongoDb(
+    _ = healthChecksBuilder.AddMongoDb(
         name: "mongodb",
         tags: new[] { "ready", "db" });
 
     // Feed validation services - only register if MongoDB is configured
-    builder.Services.AddScoped<IFeedValidationService, FeedValidationService>();
-    builder.Services.AddHostedService<FeedValidationBackgroundService>();
+    _ = builder.Services.AddScoped<IFeedValidationService, FeedValidationService>();
+    _ = builder.Services.AddHostedService<FeedValidationBackgroundService>();
 }
 else
 {
     // Register null implementation when MongoDB is not configured
-    builder.Services.AddScoped<IFeedValidationService, NullFeedValidationService>();
+    _ = builder.Services.AddScoped<IFeedValidationService, NullFeedValidationService>();
 }
 
 healthChecksBuilder.AddCheck<FeedValidationHealthCheck>(
@@ -218,7 +218,7 @@ app.UseSwaggerDocumentation();
 
 if (!app.Environment.IsDevelopment())
 {
-    app.UseHsts();
+    _ = app.UseHsts();
 }
 
 // Health check endpoints
@@ -264,7 +264,7 @@ var hasKestrelHttpsEndpoint = !string.IsNullOrWhiteSpace(app.Configuration["Kest
 
 if (hasHttpsInUrls || hasExplicitHttpsPort || hasKestrelHttpsEndpoint)
 {
-    app.UseHttpsRedirection();
+    _ = app.UseHttpsRedirection();
 }
 app.UseResponseCaching();
 app.UseOutputCache();

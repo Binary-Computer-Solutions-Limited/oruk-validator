@@ -19,7 +19,7 @@ public class CorrelationIdMiddleware
                             ?? Guid.NewGuid().ToString();
 
         context.Items["CorrelationId"] = correlationId;
-        context.Response.Headers.TryAdd(CorrelationIdHeader, correlationId);
+        _ = context.Response.Headers.TryAdd(CorrelationIdHeader, correlationId);
 
         await _next(context).ConfigureAwait(false);
     }

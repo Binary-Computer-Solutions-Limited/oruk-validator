@@ -116,7 +116,7 @@ public static class OptionalEndpointExtensions
                 {
                     foreach (var tag in operationTagsArray)
                     {
-                        allTags.Add(tag.ToString());
+            _ = allTags.Add(tag.ToString());
                     }
                 }
             }

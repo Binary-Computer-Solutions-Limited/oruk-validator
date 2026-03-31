@@ -287,7 +287,7 @@ public class EndpointTestingService : IEndpointTestingService
         }
         finally
         {
-            semaphore.Release();
+      _ = semaphore.Release();
         }
 
         return result;
