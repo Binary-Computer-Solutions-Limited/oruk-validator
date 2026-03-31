@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.Extensions.Logging;
+using OpenReferralApi.Core.Logging;
 
 namespace OpenReferralApi.Core.Services;
 
@@ -105,7 +106,7 @@ public class PathParsingService : IPathParsingService
 
         try
         {
-            _logger.LogDebug("Checking accessibility of URI: {Uri}", uri);
+            _logger.CheckingAccessibilityOfUri(uri.ToString());
 
             if (uri.Scheme == "file")
             {
@@ -156,14 +157,14 @@ public class PathParsingService : IPathParsingService
                     result.IsAccessible = false;
                     result.StatusCode = 0;
                     result.ErrorMessage = TextSanitizer.SanitizeExceptionMessage(ex.Message);
-                    _logger.LogWarning(ex, "HTTP request failed for URI: {Uri}", uri);
+                    _logger.HttpRequestFailedForUri(ex, uri.ToString());
                 }
                 catch (TaskCanceledException ex) when (ex.CancellationToken.IsCancellationRequested)
                 {
                     result.IsAccessible = false;
                     result.StatusCode = 408; // Request Timeout
                     result.ErrorMessage = "Request timeout";
-                    _logger.LogWarning("Request timeout for URI: {Uri}", uri);
+                    _logger.RequestTimeoutForUri(uri.ToString());
                 }
             }
             else
@@ -176,7 +177,7 @@ public class PathParsingService : IPathParsingService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error checking accessibility of URI: {Uri}", uri);
+            _logger.ErrorCheckingAccessibilityOfUri(ex, uri.ToString());
             result.IsAccessible = false;
             result.StatusCode = 0;
             result.ErrorMessage = TextSanitizer.SanitizeExceptionMessage(ex.Message);
@@ -210,7 +211,7 @@ public class PathParsingService : IPathParsingService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error resolving relative URI '{RelativeUri}' against base '{baseUrl}'", relativeUri, baseUrl);
+            _logger.ErrorResolvingRelativeUri(ex, relativeUri, baseUrl?.ToString() ?? string.Empty);
             throw new ArgumentException($"Failed to resolve relative URI '{relativeUri}' against base '{baseUrl}': {TextSanitizer.SanitizeExceptionMessage(ex.Message)}", ex);
         }
     }
@@ -224,7 +225,7 @@ public class PathParsingService : IPathParsingService
                 throw new ArgumentException($"{uriType} cannot be null or empty", nameof(uriString));
             }
 
-            _logger.LogDebug("Validating {UriType}: {Uri}", uriType, uriString);
+            _logger.ValidatingUri(uriType, uriString);
 
             // Basic URI validation
             if (!Uri.IsWellFormedUriString(uriString, UriKind.Absolute))
@@ -249,17 +250,17 @@ public class PathParsingService : IPathParsingService
             // Security validation
             ValidateUriSecurity(uri, uriType, options);
 
-            _logger.LogDebug("Successfully validated {UriType}: {Uri}", uriType, uri);
+            _logger.SuccessfullyValidatedUri(uriType, uri.ToString());
             return uri;
         }
         catch (UriFormatException ex)
         {
-            _logger.LogError(ex, "URI format error for {UriType}: {Uri}", uriType, uriString);
+            _logger.UriFormatError(ex, uriType, uriString);
             throw new ArgumentException($"Invalid {uriType.ToLower()} format: {uriString}", ex);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error validating {UriType}: {Uri}", uriType, uriString);
+            _logger.ErrorValidatingUri(ex, uriType, uriString);
             throw;
         }
     }
@@ -270,7 +271,7 @@ public class PathParsingService : IPathParsingService
         if (uri.Scheme == "https" && options.ValidateSslCertificate)
         {
             // This would be implemented with actual SSL certificate validation
-            _logger.LogDebug("SSL certificate validation enabled for {UriType}: {Uri}", uriType, uri);
+            _logger.SslCertificateValidationEnabled(uriType, uri.ToString());
         }
 
         // Accessibility check if required
@@ -288,7 +289,7 @@ public class PathParsingService : IPathParsingService
         // Prevent localhost/private IP access unless explicitly allowed
         if (IsPrivateOrLocalhost(uri))
         {
-            _logger.LogWarning("Potentially unsafe {UriType} accessing private/localhost: {Uri}", uriType, uri);
+            _logger.PotentiallyUnsafeUri(uriType, uri.ToString());
             // Could throw exception here based on security policy
         }
 

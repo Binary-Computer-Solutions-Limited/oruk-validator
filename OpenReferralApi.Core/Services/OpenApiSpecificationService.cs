@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Schema;
+using OpenReferralApi.Core.Logging;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
 
 namespace OpenReferralApi.Core.Services;
@@ -35,7 +36,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
 
         try
         {
-            _logger.LogInformation("Validating OpenAPI specification");
+            _logger.ValidatingOpenApiSpecification();
 
             await ValidateOpenApiSpecObjectAsync(openApiSpec, validation, errors, null, cancellationToken);
 
@@ -47,7 +48,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during OpenAPI validation");
+            _logger.ErrorDuringOpenApiValidation(ex);
             errors.Add(new ValidationError
             {
                 Path = "",
@@ -179,7 +180,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                 var dialectInfo = specObject.ContainsKey("jsonSchemaDialect")
                     ? $"using jsonSchemaDialect: {SchemaResolverService.SanitizeStringForLogging(specObject["jsonSchemaDialect"]?.ToString() ?? string.Empty)}"
                     : $"using version-based schema for OpenAPI {validation.OpenApiVersion}";
-                _logger.LogDebug("Validated OpenAPI specification {DialogInfo} with schema URI: {SchemaUri}", dialectInfo, schemaUri);
+                _logger.ValidatedOpenApiSpecification(dialectInfo, schemaUri);
             }
             else
             {
@@ -198,7 +199,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Could not validate against OpenAPI schema");
+            _logger.CouldNotValidateAgainstSchema(ex);
             errors.Add(new ValidationError
             {
                 Path = "",
@@ -211,8 +212,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         validation.Errors = ValidationErrorNormalizer.NormalizeAndDeduplicateByPath(errors);
         validation.IsValid = !validation.Errors.Any(e => string.Equals(e.Severity, "Error", StringComparison.OrdinalIgnoreCase));
 
-        _logger.LogInformation("OpenAPI specification validation completed. IsValid: {IsValid}, Errors: {ErrorCount}",
-            validation.IsValid, validation.Errors.Count);
+        _logger.OpenApiValidationCompleted(validation.IsValid, validation.Errors.Count);
     }
 
     private string? GetOpenApiSchemaUri(JObject specObject, string? version)
@@ -345,7 +345,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error analyzing schema structure");
+            _logger.ErrorAnalyzingSchemaStructure(ex);
         }
 
         return analysis;
@@ -457,7 +457,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Error counting examples in specification");
+            _logger.ErrorCountingExamples(ex);
         }
 
         return exampleCount;
@@ -562,7 +562,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error analyzing quality metrics");
+            _logger.ErrorAnalyzingQualityMetrics(ex);
         }
 
         return metrics;
@@ -727,7 +727,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error generating recommendations");
+            _logger.ErrorGeneratingRecommendations(ex);
         }
 
         return recommendations;

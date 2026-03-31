@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using OpenReferralApi.Core.Logging;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
 
 namespace OpenReferralApi.Core.Services;
@@ -50,12 +51,12 @@ public class EndpointTestingService : IEndpointTestingService
 
         try
         {
-            _logger.LogInformation("Testing OpenAPI endpoints with intelligent dependency ordering");
+            _logger.TestingEndpointsWithDependencyOrdering();
 
             // We already have a JObject, so use it directly
             if (!openApiSpec.ContainsKey("paths"))
             {
-                _logger.LogWarning("No paths found in OpenAPI specification");
+                _logger.NoPathsFound();
                 return results;
             }
 
@@ -72,12 +73,12 @@ public class EndpointTestingService : IEndpointTestingService
             // This dictionary is populated by collection endpoints and consumed by parameterized endpoints
             var extractedIds = new ConcurrentDictionary<string, List<string>>();
 
-            _logger.LogInformation("Found {GroupCount} endpoint groups for dependency-aware testing", endpointGroups.Count);
+            _logger.FoundEndpointGroups(endpointGroups.Count);
 
             // Test endpoints in dependency order - collection endpoints first, then parameterized
             foreach (var group in endpointGroups)
             {
-                _logger.LogInformation("Testing endpoint group: {GroupName} with {Count} endpoints", TextSanitizer.SanitizeForLogging(group.RootPath), group.Endpoints.Count);
+                _logger.TestingEndpointGroup(TextSanitizer.SanitizeForLogging(group.RootPath), group.Endpoints.Count);
 
                 var semaphore = new SemaphoreSlim(options.MaxConcurrentRequests, options.MaxConcurrentRequests);
 
@@ -103,15 +104,14 @@ public class EndpointTestingService : IEndpointTestingService
                 var parameterizedResults = await Task.WhenAll(parameterizedTasks);
                 results.AddRange(parameterizedResults);
 
-                _logger.LogInformation("Completed group {GroupName}: {CollectionCount} collection + {ParamCount} parameterized endpoints",
-                    TextSanitizer.SanitizeForLogging(group.RootPath), group.CollectionEndpoints.Count, group.ParameterizedEndpoints.Count);
+                _logger.CompletedEndpointGroup(TextSanitizer.SanitizeForLogging(group.RootPath), group.CollectionEndpoints.Count, group.ParameterizedEndpoints.Count);
             }
 
-            _logger.LogInformation("Completed testing {Count} endpoints with intelligent dependency ordering", results.Count);
+            _logger.CompletedTestingEndpoints(results.Count);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during dependency-aware endpoint testing");
+            _logger.ErrorDuringEndpointTesting(ex);
         }
 
         return results;
@@ -146,9 +146,9 @@ public class EndpointTestingService : IEndpointTestingService
             }
 
             // Check if this endpoint has pagination support
-            _logger.LogDebug("Checking pagination support for {Method} {Path}", SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path));
+            _logger.CheckingPaginationSupport(SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path));
             bool hasPagination = method == "GET" && HasPageParameter(resolvedParams);
-            _logger.LogInformation("{Method} {Path}: hasPagination={HasPagination}", SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path), hasPagination);
+            _logger.PaginationCheckResult(SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path), hasPagination);
 
             if (hasPagination)
             {
@@ -274,7 +274,7 @@ public class EndpointTestingService : IEndpointTestingService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error testing endpoint {Method} {Path}", SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path));
+            _logger.ErrorTestingEndpoint(ex, SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path));
             result.TestResults.Add(new HttpTestResult
             {
                 RequestUrl = $"{baseUrl}{path}",
@@ -311,12 +311,12 @@ public class EndpointTestingService : IEndpointTestingService
         JObject pathItem,
         CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Testing paginated endpoint: {Method} {Path}", SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path));
+        _logger.TestingPaginatedEndpoint(SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path));
 
         result.IsTested = true;
 
         // Test first page (page=1)
-        _logger.LogDebug("Testing first page for {Path}", TextSanitizer.SanitizeForLogging(path));
+        _logger.TestingFirstPage(TextSanitizer.SanitizeForLogging(path));
         var firstPageUrl = BuildFullUrl(baseUrl, path, resolvedParams, options, pageNumber: 1);
         var firstPageResult = await ExecuteHttpRequestAsync(firstPageUrl, method, operation, options, auth, cancellationToken);
         result.TestResults.Add(firstPageResult);
@@ -375,20 +375,20 @@ public class EndpointTestingService : IEndpointTestingService
             NormalizeValidationResultErrors(firstPageResult.ValidationResult);
             firstPageResult.ValidationResult.IsValid = false;
             result.Status = EndpointTestStatus.PassedWithWarnings;
-            _logger.LogWarning("Paginated endpoint {Path} returned empty feed (0 items)", TextSanitizer.SanitizeForLogging(path));
+            _logger.PaginatedEndpointReturnedEmpty(TextSanitizer.SanitizeForLogging(path));
             return; // No further pagination testing needed for empty feeds
         }
 
         if (paginationInfo.TotalPages.HasValue && paginationInfo.TotalPages.Value > 1)
         {
             var totalPages = paginationInfo.TotalPages.Value;
-            _logger.LogInformation("Endpoint {Path} has {TotalPages} pages, testing pagination", TextSanitizer.SanitizeForLogging(path), totalPages);
+            _logger.TestingPaginationPages(TextSanitizer.SanitizeForLogging(path), totalPages);
 
             // Test middle page if there are more than 2 pages
             if (totalPages > 2)
             {
                 var middlePage = totalPages / 2;
-                _logger.LogDebug("Testing middle page {PageNumber} for {Path}", middlePage, TextSanitizer.SanitizeForLogging(path));
+                _logger.TestingMiddlePage(middlePage, TextSanitizer.SanitizeForLogging(path));
                 var middlePageUrl = BuildFullUrl(baseUrl, path, resolvedParams, options, pageNumber: middlePage);
                 var middlePageResult = await ExecuteHttpRequestAsync(middlePageUrl, method, operation, options, auth, cancellationToken);
                 result.TestResults.Add(middlePageResult);
@@ -400,7 +400,7 @@ public class EndpointTestingService : IEndpointTestingService
             }
 
             // Test last page
-            _logger.LogDebug("Testing last page {PageNumber} for {Path}", totalPages, TextSanitizer.SanitizeForLogging(path));
+            _logger.TestingLastPage(totalPages, TextSanitizer.SanitizeForLogging(path));
             var lastPageUrl = BuildFullUrl(baseUrl, path, resolvedParams, options, pageNumber: totalPages);
             var lastPageResult = await ExecuteHttpRequestAsync(lastPageUrl, method, operation, options, auth, cancellationToken);
             result.TestResults.Add(lastPageResult);
@@ -412,7 +412,7 @@ public class EndpointTestingService : IEndpointTestingService
         }
         else
         {
-            _logger.LogDebug("Endpoint {Path} has only 1 page or pagination info not available, skipping additional page tests", TextSanitizer.SanitizeForLogging(path));
+            _logger.SkippingAdditionalPageTests(TextSanitizer.SanitizeForLogging(path));
         }
 
         foreach (var testResult in result.TestResults)
@@ -520,7 +520,7 @@ public class EndpointTestingService : IEndpointTestingService
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Failed to extract pagination info from response");
+            _logger.FailedToExtractPaginationInfo(ex);
             return (null, 0);
         }
     }
@@ -545,24 +545,24 @@ public class EndpointTestingService : IEndpointTestingService
     /// </summary>
     private bool HasPageParameter(JArray resolvedParams)
     {
-        _logger.LogDebug("Checking {Count} parameters for 'page' parameter", resolvedParams.Count);
+        _logger.CheckingPageParameter(resolvedParams.Count);
         foreach (var param in resolvedParams)
         {
             if (param is JObject paramObj)
             {
                 var name = paramObj["name"]?.ToString();
                 var inLocation = paramObj["in"]?.ToString();
-                _logger.LogDebug("Checking param: name={Name}, in={In}", SchemaResolverService.SanitizeStringForLogging(name ?? string.Empty), SchemaResolverService.SanitizeStringForLogging(inLocation ?? string.Empty));
+                _logger.CheckingParam(SchemaResolverService.SanitizeStringForLogging(name ?? string.Empty), SchemaResolverService.SanitizeStringForLogging(inLocation ?? string.Empty));
 
                 if (name?.Equals("page", StringComparison.OrdinalIgnoreCase) == true &&
                     inLocation?.Equals("query", StringComparison.OrdinalIgnoreCase) == true)
                 {
-                    _logger.LogInformation("Found 'page' query parameter - endpoint supports pagination");
+                    _logger.FoundPageQueryParameter();
                     return true;
                 }
             }
         }
-        _logger.LogDebug("No 'page' parameter found - endpoint does not support pagination");
+        _logger.NoPageParameterFound();
         return false;
     }
 
@@ -577,14 +577,14 @@ public class EndpointTestingService : IEndpointTestingService
         // Add path-level parameters first (these are inherited by all operations)
         if (pathItem["parameters"] is JArray pathParams)
         {
-            _logger.LogDebug("Found {Count} path-level parameters", pathParams.Count);
+            _logger.FoundPathLevelParameters(pathParams.Count);
             foreach (var param in pathParams)
             {
                 resolvedParams.Add(param);
                 if (param is JObject paramObj)
                 {
                     var paramName = paramObj["name"]?.ToString();
-                    _logger.LogDebug("Path-level param: {Name}", SchemaResolverService.SanitizeStringForLogging(paramName ?? string.Empty));
+                    _logger.PathLevelParam(SchemaResolverService.SanitizeStringForLogging(paramName ?? string.Empty));
                 }
             }
         }
@@ -592,19 +592,19 @@ public class EndpointTestingService : IEndpointTestingService
         // Add operation-level parameters (these can override path-level params)
         if (operation["parameters"] is JArray operationParams)
         {
-            _logger.LogDebug("Found {Count} operation-level parameters", operationParams.Count);
+            _logger.FoundOperationLevelParameters(operationParams.Count);
             foreach (var param in operationParams)
             {
                 resolvedParams.Add(param);
                 if (param is JObject paramObj)
                 {
                     var paramName = paramObj["name"]?.ToString();
-                    _logger.LogDebug("Operation-level param: {Name}", SchemaResolverService.SanitizeStringForLogging(paramName ?? string.Empty));
+                    _logger.OperationLevelParam(SchemaResolverService.SanitizeStringForLogging(paramName ?? string.Empty));
                 }
             }
         }
 
-        _logger.LogDebug("Total resolved parameters: {Count}", resolvedParams.Count);
+        _logger.TotalResolvedParameters(resolvedParams.Count);
         return resolvedParams;
     }
 
@@ -641,9 +641,7 @@ public class EndpointTestingService : IEndpointTestingService
             }
             else if (authentication != null)
             {
-                _logger.LogWarning(
-                    "User-supplied data source authentication was provided for a non-HTTPS endpoint. Skipping auth headers for {Url}",
-                    TextSanitizer.SanitizeForLogging(url));
+                _logger.SkippedAuthForNonHttpsEndpoint(TextSanitizer.SanitizeForLogging(url));
             }
 
             // Set timeout
@@ -734,7 +732,7 @@ public class EndpointTestingService : IEndpointTestingService
                                 {
                                     var schemaForValidation = BuildValidationSchemaWithComponentsContext(schema, openApiDocument);
                                     var schemaJson = schemaForValidation.ToString();
-                                    _logger.LogDebug("validating against schema (length: {Length} chars)", schemaJson.Length);
+                                    _logger.ResponseContentLength(schemaJson.Length);
                                     // Build schema in full OpenAPI context so internal refs like
                                     // #/components/schemas/* can be pre-resolved before JSchema creation.
                                     var validationRequest = new ValidationRequest
@@ -762,7 +760,7 @@ public class EndpointTestingService : IEndpointTestingService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Could not validate response for {Url}", SchemaResolverService.SanitizeUrlForLogging(testResult.RequestUrl ?? string.Empty));
+            _logger.CouldNotValidateResponse(ex, SchemaResolverService.SanitizeUrlForLogging(testResult.RequestUrl ?? string.Empty));
         }
     }
 
@@ -873,9 +871,9 @@ public class EndpointTestingService : IEndpointTestingService
             var rootPath = EndpointInfo.GetRootPath(path);
             var successfulResponse = result.TestResults.First(r => r.IsSuccessStatusCode);
 
-            _logger.LogInformation("Processing HTTP response from {Url} (Status: {StatusCode}, ResponseSize: {Size} chars)",
+            _logger.ProcessingHttpResponse(
                 SchemaResolverService.SanitizeUrlForLogging(successfulResponse.RequestUrl ?? string.Empty),
-                successfulResponse.ResponseStatusCode,
+                successfulResponse.ResponseStatusCode ?? 0,
                 successfulResponse.ResponseBody?.Length ?? 0);
 
             // Log first 500 characters of response for debugging
@@ -883,7 +881,7 @@ public class EndpointTestingService : IEndpointTestingService
                 ? successfulResponse.ResponseBody[..500] + "..."
                 : successfulResponse.ResponseBody;
 
-            _logger.LogDebug("Response content length: {Length} chars", successfulResponse.ResponseBody?.Length ?? 0);
+            _logger.ResponseContentLength(successfulResponse.ResponseBody?.Length ?? 0);
 
             var ids = ExtractIdsFromResponse(successfulResponse.ResponseBody!, rootPath, operation, openApiDocument);
 
@@ -892,23 +890,21 @@ public class EndpointTestingService : IEndpointTestingService
                 // Store extracted IDs in the shared dictionary for use by dependent endpoints
                 // Note: ConcurrentDictionary is a reference type, so this modification persists to the caller
                 extractedIds[rootPath] = ids;
-                _logger.LogInformation("✅ Successfully extracted and stored {Count} IDs from {Path} for root path '{RootPath}'",
-                    ids.Count, TextSanitizer.SanitizeForLogging(path), TextSanitizer.SanitizeForLogging(rootPath));
+                _logger.SuccessfullyExtractedIds(ids.Count, TextSanitizer.SanitizeForLogging(path), TextSanitizer.SanitizeForLogging(rootPath));
 
                 // Verify the IDs were stored correctly
                 if (extractedIds.TryGetValue(rootPath, out var storedIds))
                 {
-                    _logger.LogDebug("✅ Verified: {Count} IDs successfully stored in extractedIds dictionary for '{RootPath}'",
-                        storedIds.Count, TextSanitizer.SanitizeForLogging(rootPath));
+                    _logger.VerifiedIdsStored(storedIds.Count, TextSanitizer.SanitizeForLogging(rootPath));
                 }
                 else
                 {
-                    _logger.LogWarning("⚠️ Warning: IDs extraction appeared successful but verification failed for '{RootPath}'", TextSanitizer.SanitizeForLogging(rootPath));
+                    _logger.IdsVerificationFailed(TextSanitizer.SanitizeForLogging(rootPath));
                 }
             }
             else
             {
-                _logger.LogWarning("No IDs could be extracted from response for path {Path} (root: {RootPath})", TextSanitizer.SanitizeForLogging(path), TextSanitizer.SanitizeForLogging(rootPath));
+                _logger.NoIdsExtracted(TextSanitizer.SanitizeForLogging(path), TextSanitizer.SanitizeForLogging(rootPath));
             }
         }
 
@@ -938,14 +934,12 @@ public class EndpointTestingService : IEndpointTestingService
     {
         var rootPath = EndpointInfo.GetRootPath(path);
 
-        _logger.LogInformation("🔍 Looking for extracted IDs for root path '{RootPath}'. Available keys count: {Count}",
-            TextSanitizer.SanitizeForLogging(rootPath), extractedIds.Keys.Count);
+        _logger.LookingForExtractedIds(TextSanitizer.SanitizeForLogging(rootPath), extractedIds.Keys.Count);
 
         // Try to retrieve extracted IDs from the shared dictionary populated by collection endpoint tests
         if (extractedIds.TryGetValue(rootPath, out var availableIds) && availableIds.Any())
         {
-            _logger.LogInformation("✅ Found {Count} extracted IDs for root path '{RootPath}'",
-                availableIds.Count, TextSanitizer.SanitizeForLogging(rootPath));
+            _logger.FoundExtractedIds(availableIds.Count, TextSanitizer.SanitizeForLogging(rootPath));
 
             // Test up to 10 random IDs from the available IDs
             var maxIdsToTest = Math.Min(10, availableIds.Count);
@@ -954,7 +948,7 @@ public class EndpointTestingService : IEndpointTestingService
                 ? availableIds.ToList()
                 : availableIds.OrderBy(_ => random.Next()).Take(10).ToList();
 
-            _logger.LogInformation("🎯 Testing {Count} random IDs for endpoint {Path}", idsToTest.Count, TextSanitizer.SanitizeForLogging(path));
+            _logger.TestingRandomIds(idsToTest.Count, TextSanitizer.SanitizeForLogging(path));
 
             // Create a composite result that combines all test results
             var compositeResult = new EndpointTestResult
@@ -975,7 +969,7 @@ public class EndpointTestingService : IEndpointTestingService
             foreach (var id in idsToTest)
             {
                 var substitutedPath = SubstitutePathParametersWithSpecificId(path, id);
-                _logger.LogDebug("Testing endpoint with extracted ID (path sanitized for security)");
+                _logger.TestingEndpointWithExtractedId();
 
                 var singleResult = await TestSingleEndpointAsync(substitutedPath, method, operation, baseUrl, options, authentication, semaphore, openApiDocument, documentUri, pathItem, cancellationToken, testedId: id);
 
@@ -1022,13 +1016,12 @@ public class EndpointTestingService : IEndpointTestingService
         }
         else
         {
-            _logger.LogWarning("⚠️ No extracted IDs available for root path '{RootPath}'. Dictionary contains {KeyCount} entries. Marking endpoint as NotTested: {Path}",
-                TextSanitizer.SanitizeForLogging(rootPath), extractedIds.Count, TextSanitizer.SanitizeForLogging(path));
+            _logger.NoExtractedIdsAvailable(TextSanitizer.SanitizeForLogging(rootPath), extractedIds.Count, TextSanitizer.SanitizeForLogging(path));
 
             // Log available keys for debugging
             if (extractedIds.Any())
             {
-                _logger.LogDebug("Available ID keys count in dictionary: {Count}", extractedIds.Keys.Count);
+                _logger.AvailableIdKeysCount(extractedIds.Keys.Count);
             }
 
             // Return a NotTested result instead of falling back to default values
@@ -1077,35 +1070,35 @@ public class EndpointTestingService : IEndpointTestingService
     {
         var ids = new List<string>();
 
-        _logger.LogInformation("Starting ID extraction from JSON response for root path: {RootPath}", TextSanitizer.SanitizeForLogging(rootPath));
+        _logger.StartingIdExtraction(TextSanitizer.SanitizeForLogging(rootPath));
 
         // First, try to extract ID field names from the OpenAPI schema
         var schemaIdFields = ExtractIdFieldsFromSchema(operation, openApiDocument);
         if (schemaIdFields.Any())
         {
-            _logger.LogDebug("Found {Count} ID fields from OpenAPI schema", schemaIdFields.Count);
+            _logger.FoundIdFieldsFromSchema(schemaIdFields.Count);
         }
         else
         {
-            _logger.LogDebug("No ID fields identified from OpenAPI schema, falling back to common field names");
+            _logger.FallingBackToCommonFieldNames();
         }
 
         try
         {
             var json = JToken.Parse(responseBody);
-            _logger.LogDebug("Parsed JSON type: {JsonType}", json.Type);
+            _logger.ParsedJsonType(json.Type.ToString());
 
             // Handle array responses (most common for collections)
             if (json is JArray array)
             {
-                _logger.LogInformation("Found JSON array with {Count} items, extracting all IDs", array.Count);
+                _logger.FoundJsonArray(array.Count);
 
                 foreach (var item in array)
                 {
                     var id = ExtractIdFromObject(item, schemaIdFields);
                     if (!string.IsNullOrEmpty(id))
                     {
-                        _logger.LogDebug("Found ID in array item (ID hidden for security)");
+                        _logger.FoundIdInArrayItem();
                         ids.Add(id);
                     }
                 }
@@ -1118,13 +1111,13 @@ public class EndpointTestingService : IEndpointTestingService
                 if (collectionProps.Any())
                 {
                     var sanitizedProps = string.Join(", ", collectionProps.Select(p => TextSanitizer.SanitizeForLogging(p)));
-                    _logger.LogDebug("Found collection properties from OpenAPI schema: [{CollectionProps}]", sanitizedProps);
+                    _logger.FoundCollectionProperties(sanitizedProps);
 
                     foreach (var propName in collectionProps)
                     {
                         if (obj[propName] is JArray items)
                         {
-                            _logger.LogDebug("Processing collection property '{PropName}' with {Count} items", TextSanitizer.SanitizeForLogging(propName), items.Count);
+                            _logger.ProcessingCollectionProperty(TextSanitizer.SanitizeForLogging(propName), items.Count);
                             foreach (var item in items)
                             {
                                 var id = ExtractIdFromObject(item, schemaIdFields);
@@ -1143,7 +1136,7 @@ public class EndpointTestingService : IEndpointTestingService
                     {
                         if (obj[propName] is JArray items)
                         {
-                            _logger.LogDebug("Processing fallback collection property '{PropName}' with {Count} items", TextSanitizer.SanitizeForLogging(propName), items.Count);
+                            _logger.ProcessingFallbackCollectionProperty(TextSanitizer.SanitizeForLogging(propName), items.Count);
                             foreach (var item in items)
                             {
                                 var id = ExtractIdFromObject(item, schemaIdFields);
@@ -1166,7 +1159,7 @@ public class EndpointTestingService : IEndpointTestingService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to extract IDs from response for path {Path}", TextSanitizer.SanitizeForLogging(rootPath));
+            _logger.FailedToExtractIds(ex, TextSanitizer.SanitizeForLogging(rootPath));
         }
 
         return ids.Distinct().ToList();
@@ -1217,7 +1210,7 @@ public class EndpointTestingService : IEndpointTestingService
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Failed to extract ID fields from OpenAPI schema");
+            _logger.FailedToExtractIdFieldsFromSchema(ex);
         }
 
         return idFields.Distinct().ToList();
@@ -1241,7 +1234,7 @@ public class EndpointTestingService : IEndpointTestingService
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Failed to extract collection properties from OpenAPI schema");
+            _logger.FailedToExtractCollectionProperties(ex);
         }
 
         return collectionProps.Distinct().ToList();
@@ -1474,11 +1467,11 @@ public class EndpointTestingService : IEndpointTestingService
             if (IsValidHttpHeaderName(headerName) && IsSafeHeaderValue(authentication.ApiKey))
             {
                 request.Headers.Add(headerName, authentication.ApiKey);
-                _logger.LogDebug("Applied API Key authentication with header: {HeaderName}", TextSanitizer.SanitizeForLogging(headerName));
+                _logger.AppliedApiKeyAuthenticationWithHeader(TextSanitizer.SanitizeForLogging(headerName));
             }
             else
             {
-                _logger.LogWarning("Skipped API Key authentication due to invalid header name or value");
+                _logger.SkippedApiKeyAuthentication();
             }
         }
 
@@ -1488,11 +1481,11 @@ public class EndpointTestingService : IEndpointTestingService
             if (IsSafeHeaderValue(authentication.BearerToken))
             {
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", authentication.BearerToken);
-                _logger.LogDebug("Applied Bearer Token authentication");
+                EndpointTestingLog.AppliedBearerTokenAuthentication(_logger);
             }
             else
             {
-                _logger.LogWarning("Skipped Bearer Token authentication due to invalid token value");
+                _logger.SkippedBearerTokenAuthentication();
             }
         }
 
@@ -1503,7 +1496,7 @@ public class EndpointTestingService : IEndpointTestingService
             var credentials = Convert.ToBase64String(
                 Encoding.ASCII.GetBytes($"{authentication.BasicAuth.Username}:{authentication.BasicAuth.Password ?? string.Empty}"));
             request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
-            _logger.LogDebug("Applied Basic authentication for user: {Username}", TextSanitizer.SanitizeForLogging(authentication.BasicAuth.Username));
+            _logger.AppliedBasicAuthentication(TextSanitizer.SanitizeForLogging(authentication.BasicAuth.Username));
         }
 
         // Apply Custom Headers
@@ -1517,11 +1510,11 @@ public class EndpointTestingService : IEndpointTestingService
                     IsSafeHeaderValue(header.Value))
                 {
                     request.Headers.Add(header.Key, header.Value);
-                    _logger.LogDebug("Applied custom header: {HeaderName}", TextSanitizer.SanitizeForLogging(header.Key));
+                    EndpointTestingLog.AppliedCustomHeader(_logger, TextSanitizer.SanitizeForLogging(header.Key));
                 }
                 else
                 {
-                    _logger.LogWarning("Skipped invalid custom header");
+                    _logger.SkippedInvalidCustomHeader();
                 }
             }
         }

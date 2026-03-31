@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using OpenReferralApi.Core.Services;
+using OpenReferralApi.Logging;
 using OpenReferralApi.Models;
 
 namespace OpenReferralApi.Controllers;
@@ -48,7 +49,7 @@ public class FeedValidationController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<FeedValidationSummary>> ValidateAllFeeds(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Manual validation triggered for all feeds");
+        _logger.ManualValidationTriggeredForAllFeeds();
 
         var feeds = await _feedValidationService.GetAllFeedsAsync(cancellationToken).ConfigureAwait(false);
 
@@ -74,9 +75,7 @@ public class FeedValidationController : ControllerBase
             Results = results
         };
 
-        _logger.LogInformation(
-            "Manual validation completed: {Total} feeds, {Up} up, {Valid} valid",
-            summary.TotalFeeds, summary.UpFeeds, summary.ValidFeeds);
+        _logger.ManualValidationCompleted(summary.TotalFeeds, summary.UpFeeds, summary.ValidFeeds);
 
         return Ok(summary);
     }
@@ -109,7 +108,7 @@ public class FeedValidationController : ControllerBase
         }
 
         var safeFeedId = feedId?.Replace("\r", string.Empty).Replace("\n", string.Empty);
-        _logger.LogInformation("Manual validation triggered for feed {FeedId}", safeFeedId);
+        _logger.ManualValidationTriggeredForFeed(safeFeedId ?? string.Empty);
 
         var result = await _feedValidationService.ValidateAndUpdateFeedAsync(feed, cancellationToken).ConfigureAwait(false);
 

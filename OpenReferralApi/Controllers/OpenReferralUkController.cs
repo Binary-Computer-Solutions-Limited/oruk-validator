@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using OpenReferralApi.Core.Services;
+using OpenReferralApi.Logging;
 
 namespace OpenReferralApi.Controllers;
 
@@ -44,9 +45,7 @@ public class OpenReferralUkController : BaseOpenApiController
         [FromBody] OpenApiValidationRequest request,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation(
-            "Received OpenAPI validation request (Open Referral UK format) for BaseUrl: {BaseUrl}",
-            SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty));
+        OpenReferralUkControllerLog.ReceivedValidationRequest(_logger, SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty));
 
         var validationError = ValidateRequestAndReturnErrorIfInvalid(request);
         if (validationError != null)
@@ -56,9 +55,7 @@ public class OpenReferralUkController : BaseOpenApiController
 
         var result = await _openApiValidationService.ValidateOpenApiSpecificationAsync(request, cancellationToken).ConfigureAwait(false);
 
-        _logger.LogInformation(
-            "Validation completed (Open Referral UK format) for BaseUrl: {BaseUrl}",
-            SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty));
+        OpenReferralUkControllerLog.ValidationCompleted(_logger, SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty));
 
         var mappedResult = _mapper.MapToOpenReferralUKValidationResponse(result);
         return Ok(mappedResult);

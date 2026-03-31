@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Schema;
+using OpenReferralApi.Core.Logging;
 
 namespace OpenReferralApi.Core.Services;
 
@@ -295,19 +296,19 @@ public class SchemaResolverService : ISchemaResolverService
     {
         try
         {
-            _logger.LogDebug("Creating JSON schema from JSON string with resolver. DocumentUri: {DocumentUri}", documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
+            _logger.CreatingJsonSchema(documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
 
             // Pre-resolve all external and internal references using System.Text.Json based resolution
             string resolvedSchemaJson = schemaJson;
             try
             {
-                _logger.LogDebug("Pre-resolving all schema references with base URI: {DocumentUri}", documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
+                _logger.PreResolvingSchemaReferences(documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
                 resolvedSchemaJson = await ResolveAsync(schemaJson, documentUri, auth);
-                _logger.LogDebug("Successfully pre-resolved all schema references");
+                _logger.SuccessfullyPreResolvedSchemaReferences();
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to pre-resolve schema, continuing with original schema");
+                _logger.FailedToPreResolveSchema(ex);
                 // Continue with original schema if resolution fails
                 resolvedSchemaJson = schemaJson;
             }
@@ -332,7 +333,7 @@ public class SchemaResolverService : ISchemaResolverService
             // Set base URI for any remaining reference resolution if provided
             if (!string.IsNullOrEmpty(documentUri))
             {
-                _logger.LogDebug("Loading schema with base URI: {DocumentUri}", SanitizeUrlForLogging(documentUri));
+                _logger.LoadingSchemaWithBaseUri(SanitizeUrlForLogging(documentUri));
                 settings.BaseUri = new Uri(documentUri);
             }
 
@@ -340,16 +341,16 @@ public class SchemaResolverService : ISchemaResolverService
             try
             {
                 schema = await Task.Run(() => JSchema.Parse(resolvedSchemaJson, settings), cancellationToken);
-                _logger.LogDebug("Successfully created schema with reference resolution");
+                _logger.SuccessfullyCreatedSchemaWithReferenceResolution();
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to parse schema with resolver, attempting to parse without resolver. DocumentUri: {DocumentUri}", documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
+                _logger.FailedToParseSchemaWithResolver(ex, documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
                 try
                 {
                     // Fallback: parse original schema with the same relaxed settings.
                     schema = await Task.Run(() => JSchema.Parse(schemaJson, settings), cancellationToken);
-                    _logger.LogDebug("Successfully created schema without resolver");
+                    _logger.SuccessfullyCreatedSchemaWithoutResolver();
                 }
                 catch (Exception fallbackEx)
                 {
@@ -358,9 +359,8 @@ public class SchemaResolverService : ISchemaResolverService
                     var originalSchemaId = ExtractTopLevelSchemaId(schemaJson);
                     var resolvedSchemaId = ExtractTopLevelSchemaId(resolvedSchemaJson);
 
-                    _logger.LogError(
+                    _logger.FailedToParseSchemaWithoutResolver(
                       fallbackEx,
-                      "Failed to parse schema even without resolver. DocumentUri: {DocumentUri}. ReaderError: {ReaderError}. OriginalFingerprint: {OriginalFingerprint}. ResolvedFingerprint: {ResolvedFingerprint}. OriginalSchemaId: {OriginalSchemaId}. ResolvedSchemaId: {ResolvedSchemaId}",
                       documentUri != null ? SanitizeUrlForLogging(documentUri) : "none",
                       SanitizeStringForLogging(fallbackEx.Message),
                       originalFingerprint,
@@ -376,7 +376,7 @@ public class SchemaResolverService : ISchemaResolverService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to create JSON schema from JSON with resolver. DocumentUri: {DocumentUri}", documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
+            _logger.FailedToCreateJsonSchema(ex, documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
             throw;
         }
     }
