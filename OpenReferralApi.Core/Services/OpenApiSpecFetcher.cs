@@ -52,6 +52,7 @@ public class OpenApiSpecFetcher
         if (!_allowUserSuppliedAuth)
         {
             _logger.AuthDisabledByServerConfig(safeSpecUrl);
+            return null;
         }
 
         // Enforce HTTPS requirement when sending authentication credentials.
@@ -143,9 +144,9 @@ public class OpenApiSpecFetcher
         }
         catch (Exception ex)
         {
-            var safeSpecUrl2 = SchemaResolverService.SanitizeUrlForLogging(specUrl);
-            _logger.FailedToFetchOpenApiSpec(ex, safeSpecUrl2);
-            throw new InvalidOperationException($"Failed to fetch OpenAPI specification from URL: {safeSpecUrl2}", ex);
+            var sanitizedSpecUrl = SchemaResolverService.SanitizeUrlForLogging(specUrl);
+            _logger.FailedToFetchOpenApiSpec(ex, sanitizedSpecUrl);
+            throw new InvalidOperationException($"Failed to fetch OpenAPI specification from URL: {sanitizedSpecUrl}", ex);
         }
     }
 
