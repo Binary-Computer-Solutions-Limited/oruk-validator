@@ -98,17 +98,37 @@ public class JsonValidatorService : IJsonValidatorService
             var dataTask = GetJsonDataAsync(request, effectiveToken);
             var schemaTask = GetSchemaAsync(request, effectiveToken);
 
-            var jsonData = await dataTask;
+            var jsonDataDoc = await dataTask;
             var schema = await schemaTask;
 
-            // Validate the JSON data
-            // Format with indentation so validation error line numbers are accurate
-            var jsonDataString = System.Text.Json.JsonSerializer.Serialize(jsonData, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-            var validationErrors = await ValidateJsonAgainstSchemaAsync(jsonDataString, schema, request.Options);
+            // Fail fast: check for required root properties (example: "type")
+            if (schema.Required != null && schema.Required.Count > 0)
+            {
+                foreach (var requiredProp in schema.Required)
+                {
+                    if (!jsonDataDoc.RootElement.TryGetProperty(requiredProp, out _))
+                    {
+                        result.IsValid = false;
+                        result.Errors.Add(new ValidationError
+                        {
+                            Path = requiredProp,
+                            Message = $"Missing required property: {requiredProp}",
+                            ErrorCode = "MISSING_REQUIRED_PROPERTY",
+                            Severity = "Error"
+                        });
+                        // Fail fast: stop further validation
+                        return result;
+                    }
+                }
+            }
+
+            // Selective parsing: only validate properties present in schema
+            var validationErrors = await ValidateJsonAgainstSchemaAsync(jsonDataDoc, schema, request.Options);
 
             // Report additional fields if requested
             if (request.Options?.ReportAdditionalFields == true)
             {
+                var jsonDataString = jsonDataDoc.RootElement.GetRawText();
                 var additionalFieldWarnings = DetectAdditionalFields(jsonDataString, schema);
                 validationErrors.AddRange(additionalFieldWarnings);
             }
@@ -121,7 +141,7 @@ public class JsonValidatorService : IJsonValidatorService
             {
                 SchemaTitle = GetSchemaTitle(request, schema),
                 SchemaDescription = GetSchemaDescription(request, schema),
-                DataSize = jsonDataString.Length,
+                DataSize = jsonDataDoc.RootElement.GetRawText().Length,
                 ValidationTimestamp = DateTime.UtcNow,
                 DataSource = !string.IsNullOrEmpty(request.DataUrl) ? request.DataUrl : "direct"
             };
@@ -219,15 +239,24 @@ public class JsonValidatorService : IJsonValidatorService
         return result;
     }
 
-    private async Task<object> GetJsonDataAsync(ValidationRequest request, CancellationToken cancellationToken)
+    private async Task<System.Text.Json.JsonDocument> GetJsonDataAsync(ValidationRequest request, CancellationToken cancellationToken)
     {
         if (!string.IsNullOrEmpty(request.DataUrl))
         {
             return await FetchJsonDataFromUrlAsync(request.DataUrl, request.Options, cancellationToken);
         }
+        else if (request.JsonData is string jsonString)
+        {
+            return System.Text.Json.JsonDocument.Parse(jsonString);
+        }
+        else if (request.JsonData is System.Text.Json.JsonDocument doc)
+        {
+            return doc;
+        }
         else if (request.JsonData != null)
         {
-            return request.JsonData;
+            var json = System.Text.Json.JsonSerializer.Serialize(request.JsonData);
+            return System.Text.Json.JsonDocument.Parse(json);
         }
         else
         {
@@ -341,17 +370,18 @@ public class JsonValidatorService : IJsonValidatorService
         }
     }
 
-    private Task<List<ValidationError>> ValidateJsonAgainstSchemaAsync(string jsonData, JSchema schema, ValidationOptions? options)
+    private Task<List<ValidationError>> ValidateJsonAgainstSchemaAsync(System.Text.Json.JsonDocument jsonDataDoc, JSchema schema, ValidationOptions? options)
     {
         var errors = new List<ValidationError>();
         var maxErrors = options?.MaxErrors ?? 100;
 
         try
         {
-            // Parse JSON to validate format
-            var jsonToken = JToken.Parse(jsonData);
+            // Convert JsonDocument to JObject for schema validation (Newtonsoft)
+            var jsonString = jsonDataDoc.RootElement.GetRawText();
+            var jsonToken = JToken.Parse(jsonString);
 
-            // Perform validation using Newtonsoft.Json.Schema
+            // Only validate properties present in schema (selective parsing)
             bool isValid = jsonToken.IsValid(schema, out IList<string> errorMessages);
 
             if (!isValid)
@@ -369,7 +399,6 @@ public class JsonValidatorService : IJsonValidatorService
                         Severity = isAdditionalProp ? "Info" : "Error"
                     });
                 });
-
                 errors.AddRange(validationErrors.Take(maxErrors));
             }
         }
@@ -387,28 +416,20 @@ public class JsonValidatorService : IJsonValidatorService
         return Task.FromResult(errors);
     }
 
-    private async Task<object> FetchJsonDataFromUrlAsync(string dataUrl, ValidationOptions? options, CancellationToken cancellationToken)
+    private async Task<System.Text.Json.JsonDocument> FetchJsonDataFromUrlAsync(string dataUrl, ValidationOptions? options, CancellationToken cancellationToken)
     {
         return await _requestProcessingService.ExecuteWithRetryAsync(async (ct) =>
         {
             try
             {
                 _logger.LogInformation("Fetching JSON data from URL: {DataUrl}", dataUrl);
-
-                // Use PathParsingService for URL validation
                 var validatedUri = await _pathParsingService.ValidateAndParseDataUrlAsync(dataUrl, options);
-
                 var httpClient = _httpClientFactory.CreateClient();
                 using var request = new HttpRequestMessage(HttpMethod.Get, validatedUri);
-
-                var response = await httpClient.SendAsync(request, ct);
-            _ = response.EnsureSuccessStatusCode();
-
-                var content = await response.Content.ReadAsStringAsync(ct);
-
-                // Parse and return the JSON data
-                return System.Text.Json.JsonSerializer.Deserialize<object>(content)
-                    ?? throw new InvalidOperationException("Failed to deserialize JSON data from URL");
+                var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+                _ = response.EnsureSuccessStatusCode();
+                await using var stream = await response.Content.ReadAsStreamAsync(ct);
+                return await System.Text.Json.JsonDocument.ParseAsync(stream, cancellationToken: ct);
             }
             catch (HttpRequestException ex)
             {
