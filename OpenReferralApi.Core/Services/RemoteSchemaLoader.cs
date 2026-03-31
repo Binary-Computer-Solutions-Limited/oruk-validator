@@ -1,3 +1,5 @@
+// Enable nullable reference types for better null-safety
+#nullable enable
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json.Nodes;
