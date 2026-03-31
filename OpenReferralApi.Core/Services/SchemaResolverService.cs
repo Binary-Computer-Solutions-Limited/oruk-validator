@@ -87,14 +87,13 @@ public class SchemaResolverService : ISchemaResolverService
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _memoryCache = memoryCache ?? throw new ArgumentNullException(nameof(memoryCache));
         _cacheOptions = cacheOptions?.Value ?? throw new ArgumentNullException(nameof(cacheOptions));
-        var httpClient = httpClientFactory.CreateClient();
-        _remoteSchemaLoader = new RemoteSchemaLoader(
-          httpClient,
-          logger,
-          memoryCache,
-          cacheOptions,
-          schemaResolutionOptions?.Value?.KnownJsonSchemaUrls,
-          schemaResolutionOptions?.Value?.WarnOnUnknownJsonSchemaDraft ?? true);
+                _remoteSchemaLoader = new RemoteSchemaLoader(
+                    httpClientFactory,
+                    logger,
+                    memoryCache,
+                    cacheOptions,
+                    schemaResolutionOptions?.Value?.KnownJsonSchemaUrls,
+                    schemaResolutionOptions?.Value?.WarnOnUnknownJsonSchemaDraft ?? true);
         _referenceResolver = new ReferenceResolver(logger, _remoteSchemaLoader);
     }
 

@@ -16,21 +16,21 @@ public class RemoteSchemaLoader
     private readonly HashSet<string> _unknownDraftWarnings = new(StringComparer.OrdinalIgnoreCase);
     private readonly bool _warnOnUnknownJsonSchemaDraft;
 
-    private readonly HttpClient _httpClient;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger _logger;
     private readonly IMemoryCache _memoryCache;
     private readonly CacheOptions _cacheOptions;
     private IAuthenticationConfig? _auth;
 
     public RemoteSchemaLoader(
-        HttpClient httpClient,
+        IHttpClientFactory httpClientFactory,
         ILogger logger,
         IMemoryCache memoryCache,
         IOptions<CacheOptions> cacheOptions,
         IEnumerable<string>? knownJsonSchemaUrls = null,
         bool warnOnUnknownJsonSchemaDraft = true)
     {
-        _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _memoryCache = memoryCache ?? throw new ArgumentNullException(nameof(memoryCache));
         _cacheOptions = cacheOptions?.Value ?? throw new ArgumentNullException(nameof(cacheOptions));
@@ -43,7 +43,7 @@ public class RemoteSchemaLoader
             var normalized = NormalizeAbsoluteUrl(url);
             if (!string.IsNullOrWhiteSpace(normalized))
             {
-        _ = _knownJsonSchemaUrls.Add(normalized);
+                _ = _knownJsonSchemaUrls.Add(normalized);
             }
         }
     }
@@ -93,7 +93,8 @@ public class RemoteSchemaLoader
                 ApplyAuthentication(request, _auth);
             }
 
-            var response = await _httpClient.SendAsync(request);
+            var httpClient = _httpClientFactory.CreateClient("OpenApiValidationService");
+            var response = await httpClient.SendAsync(request);
       _ = response.EnsureSuccessStatusCode();
             var content = await response.Content.ReadAsStringAsync();
 
