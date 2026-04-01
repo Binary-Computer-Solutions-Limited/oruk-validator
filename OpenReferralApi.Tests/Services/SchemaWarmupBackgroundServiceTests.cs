@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using OpenReferralApi.Core.Services;
 using OpenReferralApi.Services;
+using System.Reflection;
 
 namespace OpenReferralApi.Tests.Services;
 
@@ -215,6 +216,15 @@ public class SchemaWarmupBackgroundServiceTests
 
     private static Task RunOnce(SchemaWarmupBackgroundService service, CancellationToken cancellationToken)
     {
-        return service.StartAsync(cancellationToken);
+        var method = typeof(SchemaWarmupBackgroundService).GetMethod(
+            "ExecuteAsync",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+
+        Assert.That(method, Is.Not.Null, "ExecuteAsync method not found via reflection.");
+
+        var result = method!.Invoke(service, new object[] { cancellationToken }) as Task;
+        Assert.That(result, Is.Not.Null, "ExecuteAsync did not return a Task.");
+
+        return result!;
     }
 }

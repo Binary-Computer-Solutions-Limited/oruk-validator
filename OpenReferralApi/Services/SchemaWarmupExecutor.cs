@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OpenReferralApi.Core.Services;
 using OpenReferralApi.Core.Logging;
@@ -42,19 +44,12 @@ namespace OpenReferralApi.Services
             ILogger logger,
             CancellationToken cancellationToken)
         {
-            // Always call MarkStarted at the beginning with the configured URL count (may be 0)
             var urls = (options.Urls ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase))
                 .Values
                 .Where(url => !string.IsNullOrWhiteSpace(url))
                 .Select(url => url.Trim())
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
-
-            if (cancellationToken.IsCancellationRequested)
-            {
-                statusTracker.MarkCompleted(true);
-                return;
-            }
 
             if (!options.WarmupEnabled)
             {
@@ -80,24 +75,67 @@ namespace OpenReferralApi.Services
             statusTracker.MarkStarted(urls.Count);
             try
             {
-                await Task.Delay(10, cancellationToken).ConfigureAwait(false); // Simulate work
+                if (options.WarmupStartupDelaySeconds > 0)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(options.WarmupStartupDelaySeconds), cancellationToken).ConfigureAwait(false);
+                }
+
                 if (cancellationToken.IsCancellationRequested)
                 {
                     statusTracker.MarkCompleted(true);
                     return;
                 }
-                // Simulate mixed results for test: if more than one URL, mark a failure to trigger completed-with-errors
-                if (urls.Count > 1)
+
+                using var scope = serviceProvider.CreateScope();
+                var resolver = scope.ServiceProvider.GetRequiredService<ISchemaResolverService>();
+
+                foreach (var url in urls)
                 {
-                    statusTracker.MarkFailure(urls[1]);
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        statusTracker.MarkCompleted(true);
+                        return;
+                    }
+
+                    var warmupSchemaRef = $$"""
+                    {
+                      "$ref": "{{url}}"
+                    }
+                    """;
+
+                    try
+                    {
+                        await resolver.ResolveAsync(warmupSchemaRef, url, auth: null).ConfigureAwait(false);
+                        statusTracker.MarkSuccess();
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        statusTracker.MarkFailure(url);
+                    }
+                    catch (HttpRequestException)
+                    {
+                        statusTracker.MarkFailure(url);
+                    }
+                    catch (UriFormatException)
+                    {
+                        statusTracker.MarkFailure(url);
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        statusTracker.MarkFailure(url);
+                    }
+                    catch (ArgumentException)
+                    {
+                        statusTracker.MarkFailure(url);
+                    }
                 }
+
                 statusTracker.MarkCompleted(false);
                 LogWarmupCompleted(logger, urls.Count, null);
             }
             catch (OperationCanceledException)
             {
                 statusTracker.MarkCompleted(true);
-                throw;
             }
         }
     }

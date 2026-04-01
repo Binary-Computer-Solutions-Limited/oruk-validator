@@ -34,11 +34,6 @@ internal sealed class SchemaWarmupBackgroundService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (stoppingToken.IsCancellationRequested)
-        {
-            _statusTracker.MarkCompleted(true);
-            return;
-        }
         await _executor.WarmupAsync(_options, _cacheOptions, _statusTracker, _serviceProvider, _logger, stoppingToken).ConfigureAwait(false);
     }
 }
