@@ -42,6 +42,14 @@ namespace OpenReferralApi.Services
             ILogger logger,
             CancellationToken cancellationToken)
         {
+            // Always call MarkStarted at the beginning with the configured URL count (may be 0)
+            var urls = (options.Urls ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase))
+                .Values
+                .Where(url => !string.IsNullOrWhiteSpace(url))
+                .Select(url => url.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
             if (cancellationToken.IsCancellationRequested)
             {
                 statusTracker.MarkCompleted(true);
@@ -61,13 +69,6 @@ namespace OpenReferralApi.Services
                 LogWarmupCacheDisabled(logger, null);
                 return;
             }
-
-            var urls = (options.Urls ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase))
-                .Values
-                .Where(url => !string.IsNullOrWhiteSpace(url))
-                .Select(url => url.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
 
             if (urls.Count == 0)
             {

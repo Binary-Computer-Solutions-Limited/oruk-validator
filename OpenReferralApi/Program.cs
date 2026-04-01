@@ -14,6 +14,8 @@ using OpenReferralApi.Services;
 using OpenReferralApi.Swagger;
 using Serilog;
 
+using OpenReferralApi.Logging;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Just declare it here!
@@ -210,7 +212,7 @@ var openApiValidationSettings = app.Configuration
     .GetSection(OpenApiValidationServerOptions.SectionName)
     .Get<OpenApiValidationServerOptions>() ?? new OpenApiValidationServerOptions();
 
-Logging.StartupLogger.LogSettings(app.Logger, openApiValidationSettings);
+StartupLogger.LogSettings(app.Logger, openApiValidationSettings);
 
 // Configure the HTTP request pipeline
 app.UseExceptionHandler();
