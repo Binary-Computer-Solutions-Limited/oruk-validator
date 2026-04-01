@@ -3,7 +3,7 @@ namespace OpenReferralApi.Models;
 /// <summary>
 /// Standard API error payload used for documented non-2xx controller responses.
 /// </summary>
-public class ApiErrorResponse
+internal sealed class ApiErrorResponse
 {
     /// <summary>
     /// High-level error identifier.

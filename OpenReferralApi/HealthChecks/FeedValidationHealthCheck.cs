@@ -4,7 +4,7 @@ using OpenReferralApi.Core.Services;
 
 namespace OpenReferralApi.HealthChecks;
 
-public class FeedValidationHealthCheck : IHealthCheck
+internal sealed class FeedValidationHealthCheck : IHealthCheck
 {
     private readonly FeedValidationOptions _options;
     private readonly IFeedValidationService _feedValidationService;

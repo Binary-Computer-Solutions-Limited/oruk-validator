@@ -7,7 +7,7 @@ namespace OpenReferralApi.Swagger;
 /// Note: The "Swagger" naming is retained for consistency with Swashbuckle.AspNetCore NuGet package.
 /// The API currently generates OpenAPI 3.1 specification.
 /// </summary>
-public class SwaggerDocumentationOptions
+internal sealed class SwaggerDocumentationOptions
 {
     public const string SectionName = "Swagger";
 

@@ -18,14 +18,14 @@ public class SchemaWarmupBackgroundServiceTests
         var statusTracker = new SchemaWarmupStatusTracker();
         var logger = new Mock<ILogger<SchemaWarmupBackgroundService>>();
 
-        var service = new TestableSchemaWarmupBackgroundService(
+        var service = CreateService(
             serviceProvider,
             Options.Create(new SpecificationOptions { WarmupEnabled = false }),
             Options.Create(new CacheOptions { Enabled = true }),
             statusTracker,
             logger.Object);
 
-        await service.RunOnce(CancellationToken.None);
+        await RunOnce(service, CancellationToken.None);
 
         var snapshot = statusTracker.GetSnapshot();
         Assert.That(snapshot.State, Is.EqualTo("skipped"));
@@ -41,7 +41,7 @@ public class SchemaWarmupBackgroundServiceTests
         var statusTracker = new SchemaWarmupStatusTracker();
         var logger = new Mock<ILogger<SchemaWarmupBackgroundService>>();
 
-        var service = new TestableSchemaWarmupBackgroundService(
+        var service = CreateService(
             serviceProvider,
             Options.Create(new SpecificationOptions
             {
@@ -55,7 +55,7 @@ public class SchemaWarmupBackgroundServiceTests
             statusTracker,
             logger.Object);
 
-        await service.RunOnce(CancellationToken.None);
+        await RunOnce(service, CancellationToken.None);
 
         var snapshot = statusTracker.GetSnapshot();
         Assert.That(snapshot.State, Is.EqualTo("skipped"));
@@ -86,7 +86,7 @@ public class SchemaWarmupBackgroundServiceTests
         var statusTracker = new SchemaWarmupStatusTracker();
         var logger = new Mock<ILogger<SchemaWarmupBackgroundService>>();
 
-        var service = new TestableSchemaWarmupBackgroundService(
+        var service = CreateService(
             serviceProvider,
             Options.Create(new SpecificationOptions
             {
@@ -102,7 +102,7 @@ public class SchemaWarmupBackgroundServiceTests
             statusTracker,
             logger.Object);
 
-        await service.RunOnce(CancellationToken.None);
+        await RunOnce(service, CancellationToken.None);
 
         var snapshot = statusTracker.GetSnapshot();
         Assert.That(snapshot.State, Is.EqualTo("completed-with-errors"));
@@ -127,7 +127,7 @@ public class SchemaWarmupBackgroundServiceTests
 
         var canonicalUrl = "https://example.com/schema.json";
 
-        var service = new TestableSchemaWarmupBackgroundService(
+        var service = CreateService(
             serviceProvider,
             Options.Create(new SpecificationOptions
             {
@@ -144,7 +144,7 @@ public class SchemaWarmupBackgroundServiceTests
             statusTracker,
             logger.Object);
 
-        await service.RunOnce(CancellationToken.None);
+        await RunOnce(service, CancellationToken.None);
 
         var snapshot = statusTracker.GetSnapshot();
         Assert.That(snapshot.State, Is.EqualTo("completed"));
@@ -167,7 +167,7 @@ public class SchemaWarmupBackgroundServiceTests
         var statusTracker = new SchemaWarmupStatusTracker();
         var logger = new Mock<ILogger<SchemaWarmupBackgroundService>>();
 
-        var service = new TestableSchemaWarmupBackgroundService(
+        var service = CreateService(
             serviceProvider,
             Options.Create(new SpecificationOptions
             {
@@ -185,7 +185,7 @@ public class SchemaWarmupBackgroundServiceTests
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        await service.RunOnce(cts.Token);
+        await RunOnce(service, cts.Token);
 
         var snapshot = statusTracker.GetSnapshot();
         Assert.That(snapshot.State, Is.EqualTo("cancelled"));
@@ -202,21 +202,19 @@ public class SchemaWarmupBackgroundServiceTests
         return services.BuildServiceProvider();
     }
 
-    private sealed class TestableSchemaWarmupBackgroundService : SchemaWarmupBackgroundService
+    private static SchemaWarmupBackgroundService CreateService(
+        IServiceProvider serviceProvider,
+        IOptions<SpecificationOptions> options,
+        IOptions<CacheOptions> cacheOptions,
+        ISchemaWarmupStatusTracker statusTracker,
+        ILogger<SchemaWarmupBackgroundService> logger,
+        ISchemaWarmupExecutor? executor = null)
     {
-        public TestableSchemaWarmupBackgroundService(
-            IServiceProvider serviceProvider,
-            IOptions<SpecificationOptions> options,
-            IOptions<CacheOptions> cacheOptions,
-            ISchemaWarmupStatusTracker statusTracker,
-            ILogger<SchemaWarmupBackgroundService> logger)
-            : base(serviceProvider, options, cacheOptions, statusTracker, logger)
-        {
-        }
+        return new SchemaWarmupBackgroundService(serviceProvider, options, cacheOptions, statusTracker, logger, executor);
+    }
 
-        public Task RunOnce(CancellationToken cancellationToken)
-        {
-            return ExecuteAsync(cancellationToken);
-        }
+    private static Task RunOnce(SchemaWarmupBackgroundService service, CancellationToken cancellationToken)
+    {
+        return service.StartAsync(cancellationToken);
     }
 }

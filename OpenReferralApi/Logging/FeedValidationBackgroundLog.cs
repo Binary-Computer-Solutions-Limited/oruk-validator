@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 
 namespace OpenReferralApi.Logging
 {
-    public static partial class FeedValidationBackgroundLog
+    internal static partial class FeedValidationBackgroundLog
     {
         [LoggerMessage(EventId = 23000, Level = LogLevel.Information, Message = "Feed Validation Background Service is disabled. Set FeedValidation:Enabled=true to enable.")]
         public static partial void ServiceDisabled(this ILogger logger);

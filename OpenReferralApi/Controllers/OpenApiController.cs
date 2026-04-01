@@ -9,7 +9,7 @@ namespace OpenReferralApi.Controllers;
 [Route("openreferral")]
 [Produces("application/json")]
 [EnableRateLimiting("fixed")]
-public class OpenReferralController : BaseOpenApiController
+internal sealed class OpenReferralController : BaseOpenApiController
 {
     private readonly IOpenApiValidationService _openApiValidationService;
     private readonly ILogger<OpenReferralController> _logger;

@@ -12,7 +12,7 @@ namespace OpenReferralApi.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [EnableRateLimiting("fixed")]
-public class FeedValidationController : ControllerBase
+internal sealed class FeedValidationController : ControllerBase
 {
     private readonly IFeedValidationService _feedValidationService;
     private readonly ILogger<FeedValidationController> _logger;
@@ -107,7 +107,7 @@ public class FeedValidationController : ControllerBase
             });
         }
 
-        var safeFeedId = feedId?.Replace("\r", string.Empty).Replace("\n", string.Empty);
+        var safeFeedId = feedId?.Replace("\r", string.Empty, StringComparison.Ordinal).Replace("\n", string.Empty, StringComparison.Ordinal);
         _logger.ManualValidationTriggeredForFeed(safeFeedId ?? string.Empty);
 
         var result = await _feedValidationService.ValidateAndUpdateFeedAsync(feed, cancellationToken).ConfigureAwait(false);
@@ -119,7 +119,7 @@ public class FeedValidationController : ControllerBase
 /// <summary>
 /// Summary of feed validation results
 /// </summary>
-public class FeedValidationSummary
+internal sealed class FeedValidationSummary
 {
     public int TotalFeeds { get; set; }
     public int UpFeeds { get; set; }

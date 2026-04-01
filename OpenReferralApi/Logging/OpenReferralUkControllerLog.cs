@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 
 namespace OpenReferralApi.Logging
 {
-    public static partial class OpenReferralUkControllerLog
+    internal static partial class OpenReferralUkControllerLog
     {
         [LoggerMessage(EventId = 21000, Level = LogLevel.Information, Message = "Received OpenAPI validation request (Open Referral UK format) for BaseUrl: {BaseUrl}")]
         public static partial void ReceivedValidationRequest(this ILogger logger, string baseUrl);

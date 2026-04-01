@@ -6,8 +6,10 @@ namespace OpenReferralApi.Controllers;
 /// Base controller for OpenAPI validation endpoints
 /// Provides shared validation logic for different response format implementations
 /// </summary>
-public abstract class BaseOpenApiController : ControllerBase
+internal abstract class BaseOpenApiController : ControllerBase
 {
+    private static readonly string[] OpenApiSchemaUrlError = { "OpenAPI schema URL must be provided or discoverable from baseUrl" };
+    private static readonly string[] BaseUrlError = { "BaseUrl is required when testing endpoints" };
     /// <summary>
     /// Validates the incoming request for required fields
     /// </summary>
@@ -20,7 +22,7 @@ public abstract class BaseOpenApiController : ControllerBase
         {
             return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
             {
-                ["request"] = new[] { "OpenAPI schema URL must be provided or discoverable from baseUrl" }
+                ["request"] = OpenApiSchemaUrlError
             }));
         }
 
@@ -28,7 +30,7 @@ public abstract class BaseOpenApiController : ControllerBase
         {
             return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
             {
-                ["baseUrl"] = new[] { "BaseUrl is required when testing endpoints" }
+                ["baseUrl"] = BaseUrlError
             }));
         }
 

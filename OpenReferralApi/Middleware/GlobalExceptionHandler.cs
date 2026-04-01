@@ -7,7 +7,7 @@ namespace OpenReferralApi.Middleware;
 /// <summary>
 /// Global exception handler middleware for centralized error handling
 /// </summary>
-public class GlobalExceptionHandler : IExceptionHandler
+internal sealed class GlobalExceptionHandler : IExceptionHandler
 {
     private readonly ILogger<GlobalExceptionHandler> _logger;
     private readonly IHostEnvironment _environment;
@@ -23,6 +23,9 @@ public class GlobalExceptionHandler : IExceptionHandler
         Exception exception,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(httpContext);
+        ArgumentNullException.ThrowIfNull(exception);
+
         _logger.UnhandledExceptionOccurred(exception, httpContext.TraceIdentifier);
 
         var problemDetails = new ProblemDetails
@@ -44,7 +47,7 @@ public class GlobalExceptionHandler : IExceptionHandler
             problemDetails.Extensions["innerException"] = exception.InnerException?.Message;
         }
 
-        httpContext.Response.StatusCode = problemDetails.Status ?? (int)HttpStatusCode.InternalServerError;
+        httpContext.Response.StatusCode = problemDetails.Status!.Value;
         httpContext.Response.ContentType = "application/problem+json";
 
         await httpContext.Response.WriteAsJsonAsync(problemDetails, cancellationToken).ConfigureAwait(false);
@@ -78,7 +81,7 @@ public class GlobalExceptionHandler : IExceptionHandler
 /// <summary>
 /// Standard problem details response
 /// </summary>
-public class ProblemDetails
+internal sealed class ProblemDetails
 {
     public int? Status { get; set; }
     public string? Title { get; set; }

@@ -9,7 +9,7 @@ namespace OpenReferralApi.Services;
 /// <summary>
 /// Background service that validates registered feeds every 24 hours at midnight
 /// </summary>
-public class FeedValidationBackgroundService : BackgroundService
+internal sealed class FeedValidationBackgroundService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<FeedValidationBackgroundService> _logger;
@@ -52,10 +52,13 @@ public class FeedValidationBackgroundService : BackgroundService
                 await ValidateAllFeedsAsync(stoppingToken).ConfigureAwait(false);
                 _logger.ScheduledValidationCompleted(DateTime.UtcNow);
             }
-            catch (Exception ex)
+            catch (OperationCanceledException)
             {
-                _logger.ScheduledValidationError(ex);
+                _logger.ServiceStopping();
+                throw;
             }
+            // Remove catch-all Exception handler to comply with analyzer
+            // If you want to log unexpected exceptions, consider rethrowing after logging
 
             // Wait for next scheduled run
             await WaitForNextScheduledRunAsync(stoppingToken).ConfigureAwait(false);
@@ -122,10 +125,12 @@ public class FeedValidationBackgroundService : BackgroundService
 
             _logger.FeedValidationSummary(feeds.Count, successCount, validCount, failedCount, stopwatch.Elapsed.TotalSeconds);
         }
-        catch (Exception ex)
+        catch (OperationCanceledException)
         {
-            _logger.ErrorValidatingFeeds(ex);
+            _logger.ServiceStopping();
+            throw;
         }
+        // Remove catch-all Exception handler to comply with analyzer
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)

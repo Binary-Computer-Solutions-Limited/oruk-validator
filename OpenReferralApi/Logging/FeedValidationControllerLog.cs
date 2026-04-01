@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 
 namespace OpenReferralApi.Logging
 {
-    public static partial class FeedValidationControllerLog
+    internal static partial class FeedValidationControllerLog
     {
         [LoggerMessage(EventId = 19000, Level = LogLevel.Information, Message = "Manual validation triggered for all feeds")]
         public static partial void ManualValidationTriggeredForAllFeeds(this ILogger logger);

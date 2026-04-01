@@ -10,7 +10,7 @@ namespace OpenReferralApi.Controllers;
 [Route("api/openapi")] // Legacy route for backward compatibility, will be removed in future versions (once openreferraluk website is updated to point to new route)
 [Produces("application/json")]
 [EnableRateLimiting("fixed")]
-public class OpenReferralUkController : BaseOpenApiController
+internal sealed class OpenReferralUkController : BaseOpenApiController
 {
     private readonly IOpenApiValidationService _openApiValidationService;
     private readonly ILogger<OpenReferralUkController> _logger;

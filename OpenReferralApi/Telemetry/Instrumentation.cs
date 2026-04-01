@@ -53,7 +53,7 @@ internal static class Instrumentation
             () => GetActiveValidationsCount(),
             description: "Number of validations currently in progress");
 
-    private static int _activeValidations = 0;
+    private static int _activeValidations;
 
     public static void IncrementActiveValidations() =>
         Interlocked.Increment(ref _activeValidations);

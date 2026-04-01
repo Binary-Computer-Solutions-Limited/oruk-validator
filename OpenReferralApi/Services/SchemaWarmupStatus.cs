@@ -1,11 +1,11 @@
 namespace OpenReferralApi.Services;
 
-public interface ISchemaWarmupStatusProvider
+internal interface ISchemaWarmupStatusProvider
 {
     SchemaWarmupStatusSnapshot GetSnapshot();
 }
 
-public interface ISchemaWarmupStatusTracker : ISchemaWarmupStatusProvider
+internal interface ISchemaWarmupStatusTracker : ISchemaWarmupStatusProvider
 {
     void MarkSkipped(string reason);
     void MarkStarted(int configuredUrlCount);
@@ -14,20 +14,42 @@ public interface ISchemaWarmupStatusTracker : ISchemaWarmupStatusProvider
     void MarkCompleted(bool cancelled);
 }
 
-public sealed class SchemaWarmupStatusSnapshot
+internal sealed class SchemaWarmupStatusSnapshot
 {
-    public string State { get; init; } = "not-started";
-    public DateTimeOffset? LastStartedAtUtc { get; init; }
-    public DateTimeOffset? LastCompletedAtUtc { get; init; }
-    public int ConfiguredUrlCount { get; init; }
-    public int AttemptedCount { get; init; }
-    public int SucceededCount { get; init; }
-    public int FailedCount { get; init; }
-    public string? LastFailureUrl { get; init; }
-    public string? SkipReason { get; init; }
+    public string State { get; }
+    public DateTimeOffset? LastStartedAtUtc { get; }
+    public DateTimeOffset? LastCompletedAtUtc { get; }
+    public int ConfiguredUrlCount { get; }
+    public int AttemptedCount { get; }
+    public int SucceededCount { get; }
+    public int FailedCount { get; }
+    public string? LastFailureUrl { get; }
+    public string? SkipReason { get; }
+
+    public SchemaWarmupStatusSnapshot(
+        string state,
+        DateTimeOffset? lastStartedAtUtc,
+        DateTimeOffset? lastCompletedAtUtc,
+        int configuredUrlCount,
+        int attemptedCount,
+        int succeededCount,
+        int failedCount,
+        string? lastFailureUrl,
+        string? skipReason)
+    {
+        State = state;
+        LastStartedAtUtc = lastStartedAtUtc;
+        LastCompletedAtUtc = lastCompletedAtUtc;
+        ConfiguredUrlCount = configuredUrlCount;
+        AttemptedCount = attemptedCount;
+        SucceededCount = succeededCount;
+        FailedCount = failedCount;
+        LastFailureUrl = lastFailureUrl;
+        SkipReason = skipReason;
+    }
 }
 
-public sealed class SchemaWarmupStatusTracker : ISchemaWarmupStatusTracker
+internal sealed class SchemaWarmupStatusTracker : ISchemaWarmupStatusTracker
 {
     private readonly object _sync = new();
     private string _state = "not-started";
@@ -109,18 +131,17 @@ public sealed class SchemaWarmupStatusTracker : ISchemaWarmupStatusTracker
     {
         lock (_sync)
         {
-            return new SchemaWarmupStatusSnapshot
-            {
-                State = _state,
-                LastStartedAtUtc = _lastStartedAtUtc,
-                LastCompletedAtUtc = _lastCompletedAtUtc,
-                ConfiguredUrlCount = _configuredUrlCount,
-                AttemptedCount = _attemptedCount,
-                SucceededCount = _succeededCount,
-                FailedCount = _failedCount,
-                LastFailureUrl = _lastFailureUrl,
-                SkipReason = _skipReason
-            };
+            return new SchemaWarmupStatusSnapshot(
+                _state,
+                _lastStartedAtUtc,
+                _lastCompletedAtUtc,
+                _configuredUrlCount,
+                _attemptedCount,
+                _succeededCount,
+                _failedCount,
+                _lastFailureUrl,
+                _skipReason
+            );
         }
     }
 }

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OutputCaching;
@@ -8,7 +9,7 @@ namespace OpenReferralApi.Controllers;
 
 [ApiController]
 [Route("api/[Controller]")]
-public class MockController : ControllerBase
+internal sealed class MockController : ControllerBase
 {
     private const string MockPath = "Mocks/V3.0-UK-";
     private readonly ILogger<MockController> _logger;
@@ -270,12 +271,12 @@ public class MockController : ControllerBase
                 Message = ex.Message
             });
         }
-        catch (Exception ex)
+        catch (JsonException ex)
         {
             _logger.UnexpectedErrorReadingMockFile(ex, filePath);
             return StatusCode(500, new ApiErrorResponse
             {
-                Error = "An unexpected error occurred",
+                Error = "Invalid JSON in mock file",
                 Message = ex.Message
             });
         }
