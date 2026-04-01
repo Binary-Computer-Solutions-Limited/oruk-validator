@@ -200,8 +200,8 @@ public class EndpointTestingServiceTests
 
         var schema = (JObject)capturedValidationRequest.Schema!;
         Assert.That(schema["components"], Is.TypeOf<JObject>());
-        Assert.That(schema["x-validation-schema"], Is.Not.Null);
-        Assert.That(schema["$ref"]?.ToString(), Is.EqualTo("#/x-validation-schema"));
+        Assert.That(schema["x-validation-schema"], Is.Null);
+        Assert.That(schema["$ref"]?.ToString(), Is.EqualTo("#/components/schemas/Service"));
     }
 
     [Test]

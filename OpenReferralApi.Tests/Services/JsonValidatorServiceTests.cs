@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Newtonsoft.Json.Schema;
 using OpenReferralApi.Core.Services;
+using System.Text.Json.Nodes;
 
 namespace OpenReferralApi.Tests.Services;
 
@@ -714,6 +715,51 @@ public class JsonValidatorServiceTests
             e => e.ErrorCode == "JSON_STRUCTURE_VIOLATION"));
         Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
             e => e.ErrorCode == "JSON_STRUCTURE_VIOLATION" && e.Path.Contains("$.self", StringComparison.Ordinal)));
+    }
+
+    [Test]
+    public async Task ValidateAsync_WithJsonNodePayload_DoesNotTriggerCycleStructureViolation()
+    {
+        // Arrange
+        var schema = new
+        {
+            type = "object",
+            properties = new
+            {
+                data = new
+                {
+                    type = "array",
+                    items = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            id = new { type = "string" }
+                        }
+                    }
+                }
+            }
+        };
+
+        var jsonNodePayload = JsonNode.Parse("""
+        {
+          "data": [
+            { "id": "abc" }
+          ]
+        }
+        """);
+
+        var request = new ValidationRequest
+        {
+            JsonData = jsonNodePayload,
+            Schema = schema
+        };
+
+        // Act
+        var result = await _service.ValidateAsync(request);
+
+        // Assert
+        Assert.That(result.Errors.Any(e => e.ErrorCode == "JSON_STRUCTURE_VIOLATION"), Is.False);
     }
 
     [Test]

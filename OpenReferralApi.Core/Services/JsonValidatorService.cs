@@ -269,6 +269,18 @@ public class JsonValidatorService : IJsonValidatorService
         {
             return doc;
         }
+        else if (request.JsonData is System.Text.Json.Nodes.JsonNode jsonNode)
+        {
+            // JsonNode maintains parent links, so serializing it as a plain object can trigger
+            // false cycle detection; parse from its JSON representation instead.
+            return System.Text.Json.JsonDocument.Parse(jsonNode.ToJsonString());
+        }
+        else if (request.JsonData is JToken jToken)
+        {
+            // JToken is already a parsed JSON tree. Convert directly to JSON text to avoid
+            // object-graph traversal over framework internals.
+            return System.Text.Json.JsonDocument.Parse(jToken.ToString(Formatting.None));
+        }
         else if (request.JsonData != null)
         {
             var options = new System.Text.Json.JsonSerializerOptions

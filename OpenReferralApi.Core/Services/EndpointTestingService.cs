@@ -771,14 +771,20 @@ public class EndpointTestingService : IEndpointTestingService
             return schema.DeepClone();
         }
 
-        var wrappedSchema = new JObject
+        // Keep the response schema at document root and attach components so refs like
+        // #/components/schemas/* remain resolvable without introducing synthetic wrapper refs.
+        if (schema is JObject schemaObject)
         {
-            ["components"] = components.DeepClone(),
-            ["x-validation-schema"] = schema.DeepClone(),
-            ["$ref"] = "#/x-validation-schema"
-        };
+            var schemaWithComponents = (JObject)schemaObject.DeepClone();
+            if (!schemaWithComponents.ContainsKey("components"))
+            {
+                schemaWithComponents["components"] = components.DeepClone();
+            }
 
-        return wrappedSchema;
+            return schemaWithComponents;
+        }
+
+        return schema.DeepClone();
     }
 
     private static void NormalizeValidationResultErrors(ValidationResult? validationResult)
