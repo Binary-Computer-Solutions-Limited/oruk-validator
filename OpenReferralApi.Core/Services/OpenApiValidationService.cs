@@ -93,6 +93,7 @@ public class OpenApiValidationService : IOpenApiValidationService
     {
         var stopwatch = Stopwatch.StartNew();
         var result = new OpenApiValidationResult();
+        var schemaResolutionIssues = new List<SchemaResolutionIssue>();
 
         try
         {
@@ -184,7 +185,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 knownHsdsSchemaUrl = resolvedKnownHsdsSchemaUrl;
                 if (!string.IsNullOrWhiteSpace(knownHsdsSchemaUrl))
                 {
-                    resolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(knownHsdsSchemaUrl, null, cancellationToken, cacheScope: "profile");
+                    resolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(knownHsdsSchemaUrl, null, cancellationToken, cacheScope: "profile", collectedIssues: schemaResolutionIssues);
                 }
             }
 
@@ -196,7 +197,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             JObject openApiSpec;
             try
             {
-                openApiSpec = await GetCachedResolvedOpenApiSpecAsync(request.OwnSchemaUrl, schemaRequestAuth, cancellationToken, cacheScope: "feed");
+                openApiSpec = await GetCachedResolvedOpenApiSpecAsync(request.OwnSchemaUrl, schemaRequestAuth, cancellationToken, cacheScope: "feed", collectedIssues: schemaResolutionIssues);
             }
             catch (Exception ex)
             {
@@ -204,7 +205,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 {
                     try
                     {
-                        resolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(defaultProfileSchemaUrl, null, cancellationToken, cacheScope: "profile");
+                        resolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(defaultProfileSchemaUrl, null, cancellationToken, cacheScope: "profile", collectedIssues: schemaResolutionIssues);
                         knownHsdsSchemaUrl = defaultProfileSchemaUrl;
                     }
                     catch (Exception defaultFallbackEx)
@@ -287,7 +288,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 knownHsdsSchemaUrl = defaultProfileSchemaUrl;
                 if (resolvedHsdsProfileSpec == null)
                 {
-                    resolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(knownHsdsSchemaUrl, null, cancellationToken, cacheScope: "profile");
+                    resolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(knownHsdsSchemaUrl, null, cancellationToken, cacheScope: "profile", collectedIssues: schemaResolutionIssues);
                 }
 
                 if (!string.IsNullOrWhiteSpace(defaultProfileVersion))
@@ -301,7 +302,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 knownHsdsSchemaUrl = resolvedKnownHsdsSchemaUrl;
                 if (!string.IsNullOrWhiteSpace(knownHsdsSchemaUrl))
                 {
-                    resolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(knownHsdsSchemaUrl, null, cancellationToken, cacheScope: "profile");
+                    resolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(knownHsdsSchemaUrl, null, cancellationToken, cacheScope: "profile", collectedIssues: schemaResolutionIssues);
                 }
             }
 
@@ -397,11 +398,14 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             if (_openApiValidationOptions.ValidateSpecification && specValidation != null)
             {
+                AddCircularReferenceValidationIssues(schemaResolutionIssues, specValidationErrors!);
                 specValidation.Errors = ValidationErrorNormalizer.NormalizeAndDeduplicateByPath(specValidationErrors!);
                 specValidation.IsValid = !specValidation.Errors.Any(e =>
                     string.Equals(e.Severity, "Error", StringComparison.OrdinalIgnoreCase));
                 result.SpecificationValidation = specValidation;
             }
+
+            AddCircularReferenceNotifications(schemaResolutionIssues, result.Notifications);
 
             if (_openApiValidationOptions.HsdsValidationMode == HsdsValidationMode.FullHsdsRuntime)
             {
@@ -492,6 +496,63 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
 
         return result;
+    }
+
+    private void CollectSchemaResolutionIssues(ICollection<SchemaResolutionIssue>? collectedIssues)
+    {
+        if (collectedIssues == null)
+        {
+            return;
+        }
+
+        var latestIssues = _schemaResolverService.GetResolutionIssues() ?? Array.Empty<SchemaResolutionIssue>();
+        foreach (var issue in latestIssues)
+        {
+            if (string.Equals(issue.ErrorCode, "CIRCULAR_SCHEMA_REFERENCE", StringComparison.Ordinal))
+            {
+                collectedIssues.Add(issue);
+            }
+        }
+    }
+
+    private static void AddCircularReferenceValidationIssues(
+        IEnumerable<SchemaResolutionIssue> schemaResolutionIssues,
+        ICollection<ValidationError> targetValidationErrors)
+    {
+        foreach (var issue in DistinctCircularReferenceIssues(schemaResolutionIssues))
+        {
+            targetValidationErrors.Add(new ValidationError
+            {
+                Path = issue.Reference,
+                ErrorCode = issue.ErrorCode,
+                Severity = "Error",
+                Message = BuildCircularReferenceMessage(issue)
+            });
+        }
+    }
+
+    private static void AddCircularReferenceNotifications(
+        IEnumerable<SchemaResolutionIssue> schemaResolutionIssues,
+        ICollection<string> notifications)
+    {
+        foreach (var issue in DistinctCircularReferenceIssues(schemaResolutionIssues))
+        {
+            notifications.Add(BuildCircularReferenceMessage(issue));
+        }
+    }
+
+    private static IEnumerable<SchemaResolutionIssue> DistinctCircularReferenceIssues(
+        IEnumerable<SchemaResolutionIssue> schemaResolutionIssues)
+    {
+        return schemaResolutionIssues
+            .Where(issue => string.Equals(issue.ErrorCode, "CIRCULAR_SCHEMA_REFERENCE", StringComparison.Ordinal))
+            .GroupBy(issue => $"{issue.Reference}|{issue.ReferencePath}", StringComparer.Ordinal)
+            .Select(group => group.First());
+    }
+
+    private static string BuildCircularReferenceMessage(SchemaResolutionIssue issue)
+    {
+        return $"Circular schema reference detected at '{issue.Reference}'. Resolution path: {issue.ReferencePath}. Nested reference resolution was stopped at the repeated reference.";
     }
 
     private static bool ShouldIncludeProfileComplianceFinding(ValidationError error)
@@ -661,7 +722,8 @@ public class OpenApiValidationService : IOpenApiValidationService
         string specUrl,
         DataSourceAuthentication? auth,
         CancellationToken cancellationToken,
-        string cacheScope)
+        string cacheScope,
+        ICollection<SchemaResolutionIssue>? collectedIssues = null)
     {
         var cache = ResolveCacheByScope(cacheScope);
         var cacheKey = $"resolved-openapi:{specUrl}";
@@ -689,6 +751,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             try
             {
                 var resolvedFromWarmup = await _schemaResolverService.ResolveAsync(warmupSchemaRef, specUrl, auth: null);
+                CollectSchemaResolutionIssues(collectedIssues);
                 var resolvedFromWarmupObject = JObject.Parse(resolvedFromWarmup);
 
                 if (!IsLikelyOpenApiDocument(resolvedFromWarmupObject))
@@ -720,6 +783,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             resolveReferences: false);
 
         var resolvedSpecContent = await _schemaResolverService.ResolveAsync(unresolvedSpec.ToString(), specUrl, auth);
+        CollectSchemaResolutionIssues(collectedIssues);
 
         if (_cacheOptions.Enabled)
         {

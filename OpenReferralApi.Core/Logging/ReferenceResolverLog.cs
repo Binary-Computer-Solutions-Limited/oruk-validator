@@ -36,5 +36,11 @@ namespace OpenReferralApi.Core.Logging
 
         [LoggerMessage(EventId = 13010, Level = LogLevel.Error, Message = "Failed to load local schema file: {Path}")]
         public static partial void FailedToLoadLocalSchemaFile(this ILogger logger, Exception exception, string path);
+
+        [LoggerMessage(EventId = 13011, Level = LogLevel.Error, Message = "Circular schema reference detected: {Ref}. Resolution path: {Path}")]
+        public static partial void CircularReferenceDetectedWithPath(this ILogger logger, string @ref, string path);
+
+        [LoggerMessage(EventId = 13012, Level = LogLevel.Error, Message = "Circular external schema reference detected: {Ref}. Resolution path: {Path}")]
+        public static partial void CircularExternalReferenceDetectedWithPath(this ILogger logger, string @ref, string path);
     }
 }

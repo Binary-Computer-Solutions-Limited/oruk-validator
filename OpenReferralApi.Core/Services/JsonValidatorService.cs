@@ -399,17 +399,22 @@ public class JsonValidatorService : IJsonValidatorService
     {
         try
         {
-            var schemaJson = System.Text.Json.JsonSerializer.Serialize(schema, new System.Text.Json.JsonSerializerOptions
-            {
-                MaxDepth = MaxAllowedJsonDepth
-            });
+            // Endpoint validation commonly passes a JObject/JToken schema.
+            // Serialize those with Newtonsoft to avoid object-graph cycle checks on JToken internals.
+            var schemaJson = schema is JToken token
+                ? token.ToString(Formatting.None)
+                : System.Text.Json.JsonSerializer.Serialize(schema, new System.Text.Json.JsonSerializerOptions
+                {
+                    MaxDepth = MaxAllowedJsonDepth
+                });
             return await _schemaResolverService.CreateSchemaFromJsonAsync(schemaJson);
         }
         catch (System.Text.Json.JsonException ex) when (IsCycleOrDepthViolation(ex))
         {
             const string sourceIdentifier = "request.schema";
             _logger.UserSchemaCycleOrDepthLimitExceeded(ex, MaxAllowedJsonDepth, sourceIdentifier);
-            throw new JsonStructureViolationException(JsonStructureViolationSource.UserProvidedSchema, sourceIdentifier, ex);
+            var detectedCyclePath = TryFindCyclePath(schema);
+            throw new JsonStructureViolationException(JsonStructureViolationSource.UserProvidedSchema, sourceIdentifier, ex, detectedCyclePath);
         }
         catch (Exception ex)
         {

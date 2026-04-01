@@ -745,6 +745,33 @@ public class JsonValidatorServiceTests
             e => e.Message.Contains("maximum depth of 64", StringComparison.OrdinalIgnoreCase)));
     }
 
+    [Test]
+    public async Task ValidateAsync_WithCircularUserSchema_ReturnsSpecificStructureViolationErrorWithPath()
+    {
+        // Arrange
+        var circularSchema = new Dictionary<string, object?>
+        {
+            ["type"] = "object"
+        };
+        circularSchema["self"] = circularSchema;
+
+        var request = new ValidationRequest
+        {
+            JsonData = new { name = "Ada" },
+            Schema = circularSchema
+        };
+
+        // Act
+        var result = await _service.ValidateAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.False);
+        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
+            e => e.ErrorCode == "SCHEMA_STRUCTURE_VIOLATION"));
+        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
+            e => e.ErrorCode == "SCHEMA_STRUCTURE_VIOLATION" && e.Path.Contains("$.self", StringComparison.Ordinal)));
+    }
+
     private static string BuildDeepJson(int depth)
     {
         var sb = new System.Text.StringBuilder();

@@ -10,11 +10,15 @@ namespace OpenReferralApi.Core.Services;
 /// </summary>
 public class ReferenceResolver
 {
+    private const string CircularReferenceErrorCode = "CIRCULAR_SCHEMA_REFERENCE";
     private readonly ILogger _logger;
     private readonly RemoteSchemaLoader _remoteSchemaLoader;
     private readonly Dictionary<string, JsonNode?> _refCache = new();
+    private readonly List<SchemaResolutionIssue> _resolutionIssues = new();
     private JsonNode? _rootDocument;
     private string? _baseUri;
+
+    public IReadOnlyList<SchemaResolutionIssue> ResolutionIssues => _resolutionIssues;
 
     public ReferenceResolver(
         ILogger logger,
@@ -30,6 +34,7 @@ public class ReferenceResolver
     public void Initialize(JsonNode? rootDocument, string? baseUri)
     {
         _refCache.Clear();
+        _resolutionIssues.Clear();
         _rootDocument = rootDocument;
         _baseUri = baseUri;
     }
@@ -37,8 +42,10 @@ public class ReferenceResolver
     /// <summary>
     /// Resolves all $ref references in the provided JSON node recursively.
     /// </summary>
-    public async Task<JsonNode?> ResolveAllRefsAsync(JsonNode? obj, HashSet<string> visitedRefs)
+    public async Task<JsonNode?> ResolveAllRefsAsync(JsonNode? obj, HashSet<string> visitedRefs, List<string>? referencePath = null)
     {
+        referencePath ??= new List<string>();
+
         if (obj == null)
         {
             return null;
@@ -54,7 +61,7 @@ public class ReferenceResolver
             var resultArray = new JsonArray();
             foreach (var item in jsonArray)
             {
-                var resolved = await ResolveAllRefsAsync(item, visitedRefs);
+                var resolved = await ResolveAllRefsAsync(item, visitedRefs, referencePath);
                 resultArray.Add(resolved);
             }
             return resultArray;
@@ -72,12 +79,12 @@ public class ReferenceResolver
                 if (IsExternalSchemaRef(refString))
                 {
                     // Resolve external URL reference
-                    resolved = await ResolveRefAsync(refString, visitedRefs);
+                    resolved = await ResolveRefAsync(refString, visitedRefs, referencePath);
                 }
                 else if (IsInternalRef(refString))
                 {
                     // Resolve internal JSON pointer reference
-                    resolved = await ResolveInternalRefAsync(refString, visitedRefs);
+                    resolved = await ResolveInternalRefAsync(refString, visitedRefs, referencePath);
 
                     // If internal reference resolution failed (returned null), keep the original $ref
                     // This prevents null values from being inserted into schema structures like allOf arrays
@@ -91,7 +98,7 @@ public class ReferenceResolver
                 else if (IsLocalSchemaRef(refString))
                 {
                     // Resolve local file or relative path reference
-                    resolved = await ResolveRefAsync(refString, visitedRefs);
+                    resolved = await ResolveRefAsync(refString, visitedRefs, referencePath);
                 }
                 else
                 {
@@ -109,13 +116,13 @@ public class ReferenceResolver
                     // Add resolved properties first
                     foreach (var kvp in resolvedObject)
                     {
-                        merged[kvp.Key] = await ResolveAllRefsAsync(kvp.Value, visitedRefs);
+                        merged[kvp.Key] = await ResolveAllRefsAsync(kvp.Value, visitedRefs, referencePath);
                     }
 
                     // Add/override with other properties
                     foreach (var kvp in otherProps)
                     {
-                        merged[kvp.Key] = await ResolveAllRefsAsync(kvp.Value, visitedRefs);
+                        merged[kvp.Key] = await ResolveAllRefsAsync(kvp.Value, visitedRefs, referencePath);
                     }
 
                     return merged;
@@ -128,7 +135,7 @@ public class ReferenceResolver
             var result = new JsonObject();
             foreach (var kvp in jsonObject)
             {
-                result[kvp.Key] = await ResolveAllRefsAsync(kvp.Value, visitedRefs);
+                result[kvp.Key] = await ResolveAllRefsAsync(kvp.Value, visitedRefs, referencePath);
             }
 
             // Flatten resolved allOf properties to make composite fields discoverable.
@@ -143,7 +150,7 @@ public class ReferenceResolver
     /// <summary>
     /// Resolves an internal JSON pointer reference (e.g., #/definitions/Person).
     /// </summary>
-    private async Task<JsonNode?> ResolveInternalRefAsync(string refPointer, HashSet<string> visitedRefs)
+    private async Task<JsonNode?> ResolveInternalRefAsync(string refPointer, HashSet<string> visitedRefs, List<string> referencePath)
     {
         if (_rootDocument == null)
         {
@@ -153,23 +160,25 @@ public class ReferenceResolver
 
         if (refPointer == "#")
         {
-            return await ResolveAllRefsAsync(_rootDocument, visitedRefs);
+            return await ResolveAllRefsAsync(_rootDocument, visitedRefs, referencePath);
         }
+
+        var resolvedRefKey = CreateInternalReferenceKey(refPointer);
 
         // Check for circular references
-        if (visitedRefs.Contains(refPointer))
+        if (visitedRefs.Contains(resolvedRefKey))
         {
-            _logger.CircularReferenceDetected(refPointer);
+            RecordCircularReference(resolvedRefKey, refPointer, referencePath, isExternal: false);
             return new JsonObject { ["$ref"] = refPointer };
         }
-
-    _ = visitedRefs.Add(refPointer);
-
         // Check cache first
-        if (_refCache.TryGetValue(refPointer, out var cached))
+        if (_refCache.TryGetValue(resolvedRefKey, out var cached))
         {
             return cached?.DeepClone();
         }
+
+        _ = visitedRefs.Add(resolvedRefKey);
+        referencePath.Add(resolvedRefKey);
 
         try
         {
@@ -236,23 +245,27 @@ public class ReferenceResolver
             }
 
             // Recursively resolve the referenced schema
-            var resolved = await ResolveAllRefsAsync(current, visitedRefs);
+            var resolved = await ResolveAllRefsAsync(current, visitedRefs, referencePath);
 
             // Cache the resolved value
-            _refCache[refPointer] = resolved;
+            _refCache[resolvedRefKey] = resolved;
 
             return resolved?.DeepClone();
         }
         finally
         {
-      _ = visitedRefs.Remove(refPointer);
+                        _ = visitedRefs.Remove(resolvedRefKey);
+                        if (referencePath.Count > 0)
+                        {
+                                referencePath.RemoveAt(referencePath.Count - 1);
+                        }
         }
     }
 
     /// <summary>
     /// Resolves an external URL reference (e.g., https://example.com/schema.json#/definitions/Person).
     /// </summary>
-    private async Task<JsonNode?> ResolveRefAsync(string refUrl, HashSet<string> visitedRefs)
+    private async Task<JsonNode?> ResolveRefAsync(string refUrl, HashSet<string> visitedRefs, List<string> referencePath)
     {
         // Split URL and fragment
         var parts = refUrl.Split('#');
@@ -260,18 +273,20 @@ public class ReferenceResolver
         var fragment = parts.Length > 1 ? $"#{parts[1]}" : string.Empty;
 
         var schemaLocation = ResolveSchemaLocation(schemaUrl);
-        var resolvedRefKey = string.IsNullOrEmpty(fragment)
+        var resolvedRefLocation = string.IsNullOrEmpty(fragment)
             ? schemaLocation
             : $"{schemaLocation}{fragment}";
+        var resolvedRefKey = CreateExternalReferenceKey(resolvedRefLocation);
 
         // Check for circular references
         if (visitedRefs.Contains(resolvedRefKey))
         {
-            _logger.CircularExternalReferenceDetected(SchemaResolverService.SanitizeStringForLogging(resolvedRefKey));
+            RecordCircularReference(resolvedRefKey, refUrl, referencePath, isExternal: true);
             return new JsonObject { ["$ref"] = refUrl };
         }
 
-    _ = visitedRefs.Add(resolvedRefKey);
+        _ = visitedRefs.Add(resolvedRefKey);
+        referencePath.Add(resolvedRefKey);
 
         try
         {
@@ -301,7 +316,7 @@ public class ReferenceResolver
                 {
                     _rootDocument = schema;
                     _baseUri = schemaLocation;
-                    resolved = await ResolveInternalRefAsync(fragment, visitedRefs);
+                    resolved = await ResolveInternalRefAsync(fragment, visitedRefs, referencePath);
                 }
                 finally
                 {
@@ -319,7 +334,7 @@ public class ReferenceResolver
                 {
                     _rootDocument = schema;
                     _baseUri = schemaLocation;
-                    resolved = await ResolveAllRefsAsync(schema, visitedRefs);
+                    resolved = await ResolveAllRefsAsync(schema, visitedRefs, referencePath);
                 }
                 finally
                 {
@@ -335,8 +350,85 @@ public class ReferenceResolver
         }
         finally
         {
-      _ = visitedRefs.Remove(resolvedRefKey);
+            _ = visitedRefs.Remove(resolvedRefKey);
+            if (referencePath.Count > 0)
+            {
+                referencePath.RemoveAt(referencePath.Count - 1);
+            }
         }
+    }
+
+    private string CreateInternalReferenceKey(string refPointer)
+    {
+        var documentKey = string.IsNullOrWhiteSpace(_baseUri) ? "root" : _baseUri;
+        return $"int::{documentKey}{refPointer}";
+    }
+
+    private static string CreateExternalReferenceKey(string refLocation)
+    {
+        return $"ext::{refLocation}";
+    }
+
+    private static string ToDisplayReference(string refKey)
+    {
+        if (refKey.StartsWith("int::", StringComparison.Ordinal) ||
+            refKey.StartsWith("ext::", StringComparison.Ordinal))
+        {
+            return refKey[5..];
+        }
+
+        return refKey;
+    }
+
+    private void RecordCircularReference(string seenRefKey, string originalReference, IReadOnlyList<string> referencePath, bool isExternal)
+    {
+        var cyclePath = BuildCyclePath(referencePath, seenRefKey);
+        var cyclePathText = string.Join(" -> ", cyclePath.Select(ToDisplayReference).Select(SchemaResolverService.SanitizeStringForLogging));
+        var safeReference = SchemaResolverService.SanitizeStringForLogging(originalReference);
+
+        if (isExternal)
+        {
+            _logger.CircularExternalReferenceDetectedWithPath(safeReference, cyclePathText);
+        }
+        else
+        {
+            _logger.CircularReferenceDetectedWithPath(safeReference, cyclePathText);
+        }
+
+        _resolutionIssues.Add(new SchemaResolutionIssue
+        {
+            ErrorCode = CircularReferenceErrorCode,
+            Message = "Circular schema reference detected; nested dependency resolution stopped at the repeated reference.",
+            Reference = originalReference,
+            ReferencePath = string.Join(" -> ", cyclePath.Select(ToDisplayReference))
+        });
+    }
+
+    private static IReadOnlyList<string> BuildCyclePath(IReadOnlyList<string> referencePath, string repeatedRef)
+    {
+        var startIndex = -1;
+        for (var i = 0; i < referencePath.Count; i++)
+        {
+            if (string.Equals(referencePath[i], repeatedRef, StringComparison.Ordinal))
+            {
+                startIndex = i;
+                break;
+            }
+        }
+
+        if (startIndex < 0)
+        {
+            return new List<string> { repeatedRef, repeatedRef };
+        }
+
+        var cycle = new List<string>();
+        for (var i = startIndex; i < referencePath.Count; i++)
+        {
+            cycle.Add(referencePath[i]);
+        }
+
+        cycle.Add(repeatedRef);
+        return cycle;
     }
 
     /// <summary>

@@ -63,6 +63,10 @@ public class OpenApiValidationServiceTests
             .Setup(service => service.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication>()))
             .ReturnsAsync((string schema, string baseUri, DataSourceAuthentication auth) => schema);
 
+        _schemaResolverServiceMock
+            .Setup(service => service.GetResolutionIssues())
+            .Returns(Array.Empty<SchemaResolutionIssue>());
+
         var mockHandler = new MockHttpMessageHandler();
         _httpClient = TestHttpClientFactory.CreateClient(mockHandler);
 
@@ -229,6 +233,41 @@ public class OpenApiValidationServiceTests
 
         // Assert
         Assert.That(result.Summary, Is.Not.Null);
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WhenCircularRefDetected_AddsNotificationAndSpecificationError()
+    {
+        // Arrange
+        var json = CreateOpenApi30Spec();
+        var request = new OpenApiValidationRequest
+        {
+            OwnSchemaUrl = "https://example.com/openapi.json",
+            Options = new OpenApiValidationOptions()
+        };
+
+        SetupHttpMock(json);
+
+        _schemaResolverServiceMock
+            .Setup(service => service.GetResolutionIssues())
+            .Returns(new[]
+            {
+                new SchemaResolutionIssue
+                {
+                    ErrorCode = "CIRCULAR_SCHEMA_REFERENCE",
+                    Reference = "#/components/schemas/Organization",
+                    ReferencePath = "https://example.com/openapi.json#/components/schemas/Organization -> https://example.com/openapi.json#/components/schemas/Service -> https://example.com/openapi.json#/components/schemas/Organization",
+                    Message = "Circular schema reference detected"
+                }
+            });
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.Notifications.Any(n => n.Contains("Circular schema reference detected", StringComparison.Ordinal)), Is.True);
+        Assert.That(result.SpecificationValidation, Is.Not.Null);
+        Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "CIRCULAR_SCHEMA_REFERENCE"), Is.True);
     }
 
     #endregion

@@ -50,6 +50,11 @@ public interface ISchemaResolverService
     /// Creates a JSON schema from JSON string with proper reference resolution and base URI
     /// </summary>
     Task<JSchema> CreateSchemaFromJsonAsync(string schemaJson, string? documentUri, DataSourceAuthentication? auth = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns non-fatal issues discovered during the most recent reference resolution call.
+    /// </summary>
+    IReadOnlyList<SchemaResolutionIssue> GetResolutionIssues();
 }
 
 /// <summary>
@@ -137,6 +142,11 @@ public class SchemaResolverService : ISchemaResolverService
 
         // Pass a new HashSet to track the current resolution path
         return await _referenceResolver.ResolveAllRefsAsync(schema, new HashSet<string>());
+    }
+
+    public IReadOnlyList<SchemaResolutionIssue> GetResolutionIssues()
+    {
+        return _referenceResolver.ResolutionIssues.ToList();
     }
 
     /// <summary>

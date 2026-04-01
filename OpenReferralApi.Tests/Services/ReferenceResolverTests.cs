@@ -136,6 +136,62 @@ public class ReferenceResolverTests
     }
 
     [Test]
+    public async Task ResolveAllRefsAsync_WithCircularReference_TracksDependencyPathIssue()
+    {
+        // Arrange - Organization -> Service -> Organization
+        var schema = @"{
+            ""components"": {
+                ""schemas"": {
+                    ""Organization"": {
+                        ""type"": ""object"",
+                        ""properties"": {
+                            ""services"": {
+                                ""type"": ""array"",
+                                ""items"": { ""$ref"": ""#/components/schemas/Service"" }
+                            }
+                        }
+                    },
+                    ""Service"": {
+                        ""type"": ""object"",
+                        ""properties"": {
+                            ""organization"": { ""$ref"": ""#/components/schemas/Organization"" }
+                        }
+                    }
+                }
+            },
+            ""$ref"": ""#/components/schemas/Organization""
+        }";
+
+        var handler = new MockHttpMessageHandler(async request =>
+        {
+            return new HttpResponseMessage
+            {
+                StatusCode = System.Net.HttpStatusCode.OK,
+                Content = new StringContent(@"{""type"": ""object""}")
+            };
+        });
+
+        var httpClientFactory = TestHttpClientFactory.CreateFactory(handler);
+        var loader = new RemoteSchemaLoader(httpClientFactory, _loggerMock.Object, _memoryCache, _cacheOptions);
+        var resolver = new ReferenceResolver(_loggerMock.Object, loader);
+
+        var rootDoc = JsonNode.Parse(schema);
+        resolver.Initialize(rootDoc, "https://example.com/openapi.json");
+
+        // Act
+        var result = await resolver.ResolveAllRefsAsync(rootDoc, new HashSet<string>());
+
+        // Assert
+        Assert.That(result, Is.Not.Null);
+        var issues = resolver.ResolutionIssues;
+        Assert.That(issues.Any(i => i.ErrorCode == "CIRCULAR_SCHEMA_REFERENCE"), Is.True);
+
+        var circularIssue = issues.First(i => i.ErrorCode == "CIRCULAR_SCHEMA_REFERENCE");
+        Assert.That(circularIssue.ReferencePath, Does.Contain("Organization"));
+        Assert.That(circularIssue.ReferencePath, Does.Contain("Service"));
+    }
+
+    [Test]
     public async Task ResolveAllRefsAsync_WithChainedCircularReference_BreaksLoop()
     {
         // Arrange - A -> B -> C -> A
