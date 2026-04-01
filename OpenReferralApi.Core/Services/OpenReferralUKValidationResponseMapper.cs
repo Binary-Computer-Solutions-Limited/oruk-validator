@@ -52,8 +52,8 @@ public class OpenReferralUKValidationResponseMapper : IOpenReferralUKValidationR
                     name = error.ErrorCode,
                     description = error.Severity,
                     message = error.Message,
-                    errorIn = error.Path,
-                    errorAt = ""
+                    errorIn = BuildErrorIn(error),
+                    errorAt = BuildErrorAt(error)
                 }).ToList()
             };
 
@@ -71,6 +71,43 @@ public class OpenReferralUKValidationResponseMapper : IOpenReferralUKValidationR
             SpecificationValidation = specificationValidation,
             Notifications = openApiResult?.Notifications?.ToList() ?? new List<string>()
         };
+    }
+
+    private static string BuildErrorAt(ValidationError error)
+    {
+        if (error.LineNumber.HasValue && error.ColumnNumber.HasValue)
+        {
+            return $"line {error.LineNumber.Value}, column {error.ColumnNumber.Value}";
+        }
+
+        if (error.LineNumber.HasValue)
+        {
+            return $"line {error.LineNumber.Value}";
+        }
+
+        if (error.ColumnNumber.HasValue)
+        {
+            return $"column {error.ColumnNumber.Value}";
+        }
+
+        return string.Empty;
+    }
+
+    private static string BuildErrorIn(ValidationError error)
+    {
+        if (IsJsonStructureViolation(error.ErrorCode) && !string.IsNullOrWhiteSpace(error.SourceIdentifier))
+        {
+            return $"source={error.SourceIdentifier} | path={error.Path}";
+        }
+
+        return error.Path;
+    }
+
+    private static bool IsJsonStructureViolation(string? errorCode)
+    {
+        return string.Equals(errorCode, "JSON_STRUCTURE_VIOLATION", StringComparison.Ordinal)
+            || string.Equals(errorCode, "CACHED_SCHEMA_STRUCTURE_VIOLATION", StringComparison.Ordinal)
+            || string.Equals(errorCode, "SCHEMA_STRUCTURE_VIOLATION", StringComparison.Ordinal);
     }
 
     private object MapEndpointTests(List<EndpointTestResult> endpointTests, string baseUrl,

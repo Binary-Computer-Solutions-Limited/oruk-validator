@@ -712,6 +712,8 @@ public class JsonValidatorServiceTests
         Assert.That(result.IsValid, Is.False);
         Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
             e => e.ErrorCode == "JSON_STRUCTURE_VIOLATION"));
+        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
+            e => e.ErrorCode == "JSON_STRUCTURE_VIOLATION" && e.Path.Contains("$.self", StringComparison.Ordinal)));
     }
 
     [Test]

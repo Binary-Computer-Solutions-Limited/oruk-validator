@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Reflection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
@@ -259,8 +260,9 @@ public class JsonValidatorService : IJsonValidatorService
             }
             catch (System.Text.Json.JsonException ex) when (IsCycleOrDepthViolation(ex))
             {
-                _logger.UserJsonCycleOrDepthLimitExceeded(ex, MaxAllowedJsonDepth);
-                throw new JsonStructureViolationException(JsonStructureViolationSource.UserProvidedJson, ex);
+                const string sourceIdentifier = "request.jsonData (string)";
+                _logger.UserJsonCycleOrDepthLimitExceeded(ex, MaxAllowedJsonDepth, sourceIdentifier);
+                throw new JsonStructureViolationException(JsonStructureViolationSource.UserProvidedJson, sourceIdentifier, ex);
             }
         }
         else if (request.JsonData is System.Text.Json.JsonDocument doc)
@@ -281,8 +283,10 @@ public class JsonValidatorService : IJsonValidatorService
             }
             catch (System.Text.Json.JsonException ex) when (IsCycleOrDepthViolation(ex))
             {
-                _logger.UserJsonCycleOrDepthLimitExceeded(ex, MaxAllowedJsonDepth);
-                throw new JsonStructureViolationException(JsonStructureViolationSource.UserProvidedJson, ex);
+                const string sourceIdentifier = "request.jsonData (object)";
+                _logger.UserJsonCycleOrDepthLimitExceeded(ex, MaxAllowedJsonDepth, sourceIdentifier);
+                var detectedCyclePath = TryFindCyclePath(request.JsonData);
+                throw new JsonStructureViolationException(JsonStructureViolationSource.UserProvidedJson, sourceIdentifier, ex, detectedCyclePath);
             }
         }
         else
@@ -332,7 +336,7 @@ public class JsonValidatorService : IJsonValidatorService
             catch (System.Text.Json.JsonException ex) when (IsCycleOrDepthViolation(ex))
             {
                 _logger.CachedSchemaCycleOrDepthLimitExceeded(ex, normalizedSchemaUri, MaxAllowedJsonDepth);
-                throw new JsonStructureViolationException(JsonStructureViolationSource.CachedSchema, ex);
+                throw new JsonStructureViolationException(JsonStructureViolationSource.CachedSchema, normalizedSchemaUri, ex);
             }
         }
 
@@ -403,8 +407,9 @@ public class JsonValidatorService : IJsonValidatorService
         }
         catch (System.Text.Json.JsonException ex) when (IsCycleOrDepthViolation(ex))
         {
-            _logger.UserSchemaCycleOrDepthLimitExceeded(ex, MaxAllowedJsonDepth);
-            throw new JsonStructureViolationException(JsonStructureViolationSource.UserProvidedSchema, ex);
+            const string sourceIdentifier = "request.schema";
+            _logger.UserSchemaCycleOrDepthLimitExceeded(ex, MaxAllowedJsonDepth, sourceIdentifier);
+            throw new JsonStructureViolationException(JsonStructureViolationSource.UserProvidedSchema, sourceIdentifier, ex);
         }
         catch (Exception ex)
         {
@@ -419,6 +424,142 @@ public class JsonValidatorService : IJsonValidatorService
         return message.Contains("possible object cycle", StringComparison.OrdinalIgnoreCase)
             || message.Contains("maximum allowed depth", StringComparison.OrdinalIgnoreCase)
             || message.Contains("depth", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? TryFindCyclePath(object? root)
+    {
+        if (root == null || IsLeafValue(root.GetType()))
+        {
+            return null;
+        }
+
+        var stack = new Dictionary<object, string>(ReferenceEqualityComparer.Instance)
+        {
+            [root] = "$"
+        };
+
+        return TryFindCyclePathRecursive(root, "$", stack, depth: 0, visitedCount: 1);
+    }
+
+    private static string? TryFindCyclePathRecursive(object current, string currentPath, Dictionary<object, string> stack, int depth, int visitedCount)
+    {
+        const int maxTraversalDepth = 256;
+        const int maxVisitedNodes = 100_000;
+
+        if (depth >= maxTraversalDepth || visitedCount >= maxVisitedNodes)
+        {
+            return null;
+        }
+
+        foreach (var (segment, child) in EnumerateObjectChildren(current))
+        {
+            if (child == null)
+            {
+                continue;
+            }
+
+            var childType = child.GetType();
+            if (IsLeafValue(childType))
+            {
+                continue;
+            }
+
+            var childPath = BuildChildPath(currentPath, segment, childType);
+
+            if (stack.TryGetValue(child, out var seenPath))
+            {
+                return $"{childPath} (references {seenPath})";
+            }
+
+            stack[child] = childPath;
+            var nested = TryFindCyclePathRecursive(child, childPath, stack, depth + 1, visitedCount + 1);
+            if (nested != null)
+            {
+                return nested;
+            }
+
+            _ = stack.Remove(child);
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<(string Segment, object? Value)> EnumerateObjectChildren(object value)
+    {
+        if (value is System.Collections.IDictionary dictionary)
+        {
+            foreach (System.Collections.DictionaryEntry entry in dictionary)
+            {
+                var key = entry.Key?.ToString() ?? "?";
+                yield return (key, entry.Value);
+            }
+
+            yield break;
+        }
+
+        if (value is System.Collections.IEnumerable enumerable && value is not string)
+        {
+            var i = 0;
+            foreach (var item in enumerable)
+            {
+                yield return ($"[{i}]", item);
+                i++;
+            }
+
+            yield break;
+        }
+
+        foreach (var property in value.GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public))
+        {
+            if (!property.CanRead || property.GetIndexParameters().Length > 0)
+            {
+                continue;
+            }
+
+            object? propertyValue;
+            try
+            {
+                propertyValue = property.GetValue(value);
+            }
+            catch
+            {
+                continue;
+            }
+
+            yield return (property.Name, propertyValue);
+        }
+    }
+
+    private static string BuildChildPath(string parentPath, string segment, Type childType)
+    {
+        var isArrayIndex = segment.StartsWith("[", StringComparison.Ordinal);
+        if (isArrayIndex)
+        {
+            return $"{parentPath}{segment}";
+        }
+
+        if (childType.IsGenericType && childType.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))
+        {
+            return $"{parentPath}.{segment}";
+        }
+
+        return $"{parentPath}.{segment}";
+    }
+
+    private static bool IsLeafValue(Type type)
+    {
+        if (type.IsPrimitive || type.IsEnum)
+        {
+            return true;
+        }
+
+        return type == typeof(string)
+            || type == typeof(decimal)
+            || type == typeof(DateTime)
+            || type == typeof(DateTimeOffset)
+            || type == typeof(TimeSpan)
+            || type == typeof(Guid)
+            || type == typeof(Uri);
     }
 
     private static ValidationError MapJsonStructureViolationToValidationError(JsonStructureViolationException exception)
@@ -439,13 +580,89 @@ public class JsonValidatorService : IJsonValidatorService
             _ => "JSON_STRUCTURE_VIOLATION"
         };
 
+        var line = ToNullableInt(exception.LineNumber);
+        var column = ToNullableInt(exception.BytePositionInLine);
+        var location = BuildLocationSuffix(line, column);
+        var path = string.IsNullOrWhiteSpace(exception.JsonPath) ? "$" : exception.JsonPath!;
+        var sourceIdentifier = string.IsNullOrWhiteSpace(exception.SourceIdentifier)
+            ? "unknown"
+            : exception.SourceIdentifier;
+
+        var details = exception.ViolationKind switch
+        {
+            JsonStructureViolationKind.Cycle => "contains a circular reference",
+            JsonStructureViolationKind.Depth => $"exceeds maximum depth of {MaxAllowedJsonDepth}",
+            _ => $"contains circular references or exceeds maximum depth of {MaxAllowedJsonDepth}"
+        };
+
         return new ValidationError
         {
-            Path = "$",
-            Message = $"Validation failed: {source} contains circular references or exceeds maximum depth of {MaxAllowedJsonDepth}.",
+            Path = path,
+            Message = $"Validation failed: {source} {details}. Source: {sourceIdentifier}. JSON path: {path}{location}.",
             ErrorCode = code,
-            Severity = "Error"
+            Severity = "Error",
+            LineNumber = line,
+            ColumnNumber = column,
+            SourceIdentifier = sourceIdentifier
         };
+    }
+
+    private static int? ToNullableInt(long? value)
+    {
+        if (!value.HasValue)
+        {
+            return null;
+        }
+
+        if (value.Value < 0)
+        {
+            return null;
+        }
+
+        if (value.Value > int.MaxValue)
+        {
+            return int.MaxValue;
+        }
+
+        return (int)value.Value;
+    }
+
+    private static string BuildLocationSuffix(int? line, int? column)
+    {
+        if (!line.HasValue && !column.HasValue)
+        {
+            return string.Empty;
+        }
+
+        if (line.HasValue && column.HasValue)
+        {
+            return $", line {line.Value}, column {column.Value}";
+        }
+
+        if (line.HasValue)
+        {
+            return $", line {line.Value}";
+        }
+
+        return $", column {column!.Value}";
+    }
+
+    private static JsonStructureViolationKind GetViolationKind(System.Text.Json.JsonException exception)
+    {
+        var message = exception.Message;
+
+        if (message.Contains("possible object cycle", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonStructureViolationKind.Cycle;
+        }
+
+        if (message.Contains("maximum allowed depth", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("depth", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonStructureViolationKind.Depth;
+        }
+
+        return JsonStructureViolationKind.Unknown;
     }
 
     private enum JsonStructureViolationSource
@@ -455,15 +672,32 @@ public class JsonValidatorService : IJsonValidatorService
         UserProvidedSchema
     }
 
+    private enum JsonStructureViolationKind
+    {
+        Unknown,
+        Cycle,
+        Depth
+    }
+
     private sealed class JsonStructureViolationException : Exception
     {
-        public JsonStructureViolationException(JsonStructureViolationSource sourceType, Exception innerException)
+        public JsonStructureViolationException(JsonStructureViolationSource sourceType, string sourceIdentifier, System.Text.Json.JsonException innerException, string? detectedPath = null)
             : base("JSON structure violates cycle/depth constraints.", innerException)
         {
             SourceType = sourceType;
+            SourceIdentifier = sourceIdentifier;
+            JsonPath = !string.IsNullOrWhiteSpace(detectedPath) ? detectedPath : innerException.Path;
+            LineNumber = innerException.LineNumber;
+            BytePositionInLine = innerException.BytePositionInLine;
+            ViolationKind = GetViolationKind(innerException);
         }
 
         public JsonStructureViolationSource SourceType { get; }
+        public string SourceIdentifier { get; }
+        public string? JsonPath { get; }
+        public long? LineNumber { get; }
+        public long? BytePositionInLine { get; }
+        public JsonStructureViolationKind ViolationKind { get; }
     }
 
     private Task<List<ValidationError>> ValidateJsonAgainstSchemaAsync(System.Text.Json.JsonDocument jsonDataDoc, JSchema schema, ValidationOptions? options)
@@ -532,8 +766,14 @@ public class JsonValidatorService : IJsonValidatorService
                 _logger.HttpRequestFailedFetchingData(ex, dataUrl);
                 throw new InvalidOperationException($"Failed to fetch data from URL: {dataUrl}", ex);
             }
-            catch (JsonException ex)
+            catch (System.Text.Json.JsonException ex)
             {
+                if (IsCycleOrDepthViolation(ex))
+                {
+                    _logger.UserJsonCycleOrDepthLimitExceeded(ex, MaxAllowedJsonDepth, dataUrl);
+                    throw new JsonStructureViolationException(JsonStructureViolationSource.UserProvidedJson, dataUrl, ex);
+                }
+
                 _logger.InvalidJsonReceived(ex, dataUrl);
                 throw new InvalidOperationException($"Invalid JSON received from URL: {dataUrl}", ex);
             }

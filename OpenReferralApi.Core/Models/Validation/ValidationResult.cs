@@ -55,6 +55,9 @@ public class ValidationError
 
     [JsonProperty("columnNumber")]
     public int? ColumnNumber { get; set; }
+
+    [JsonProperty("sourceIdentifier")]
+    public string? SourceIdentifier { get; set; }
 }
 
 

@@ -115,4 +115,25 @@ public class ValidationErrorNormalizerTests
         Assert.That(normalized[0].Path, Is.EqualTo("paths[/services].get.responses[].content"));
         Assert.That(normalized[0].Message, Is.EqualTo("paths[/services].get.responses[].content invalid"));
     }
+
+        [Test]
+        public void NormalizeAndDeduplicateByPath_PreservesSourceIdentifier()
+        {
+            var errors = new[]
+            {
+                new ValidationError
+                {
+                    Path = "$.foo[0]",
+                    Message = "Bad path $.foo[0]",
+                    ErrorCode = "JSON_STRUCTURE_VIOLATION",
+                    Severity = "Error",
+                    SourceIdentifier = "request.jsonData (object)"
+                }
+            };
+
+            var result = ValidationErrorNormalizer.NormalizeAndDeduplicateByPath(errors);
+
+            Assert.That(result, Has.Count.EqualTo(1));
+            Assert.That(result[0].SourceIdentifier, Is.EqualTo("request.jsonData (object)"));
+        }
 }
