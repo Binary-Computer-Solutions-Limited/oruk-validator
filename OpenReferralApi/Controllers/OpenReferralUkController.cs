@@ -45,7 +45,11 @@ internal sealed class OpenReferralUkController : BaseOpenApiController
         [FromBody] OpenApiValidationRequest request,
         CancellationToken cancellationToken = default)
     {
-        OpenReferralUkControllerLog.ReceivedValidationRequest(_logger, SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty));
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            var sanitizedBaseUrl = SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty);
+            OpenReferralUkControllerLog.ReceivedValidationRequest(_logger, sanitizedBaseUrl);
+        }
 
         var validationError = ValidateRequestAndReturnErrorIfInvalid(request);
         if (validationError != null)
@@ -55,7 +59,11 @@ internal sealed class OpenReferralUkController : BaseOpenApiController
 
         var result = await _openApiValidationService.ValidateOpenApiSpecificationAsync(request, cancellationToken).ConfigureAwait(false);
 
-        OpenReferralUkControllerLog.ValidationCompleted(_logger, SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty));
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            var sanitizedBaseUrl = SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty);
+            OpenReferralUkControllerLog.ValidationCompleted(_logger, sanitizedBaseUrl);
+        }
 
         var mappedResult = _mapper.MapToOpenReferralUKValidationResponse(result);
         return Ok(mappedResult);

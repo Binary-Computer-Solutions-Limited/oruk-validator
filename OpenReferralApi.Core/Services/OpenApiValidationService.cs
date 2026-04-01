@@ -125,7 +125,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     usedBaseUrlDiscovery = true;
                     var bootstrap = await _openApiBootstrapService.ResolveFromBaseUrlAsync(request.BaseUrl, dataSourceRequestAuth, cancellationToken);
                     var discoveredUrl = bootstrap.OpenApiSchemaUrl;
-                    var reason = bootstrap.DiscoveryReason;
+                    var reason = bootstrap.DiscoveryReason ?? "unknown";
 
                     if (!string.IsNullOrEmpty(discoveredUrl))
                     {
