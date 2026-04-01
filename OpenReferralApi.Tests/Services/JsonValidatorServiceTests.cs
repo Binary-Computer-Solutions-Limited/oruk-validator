@@ -686,6 +686,81 @@ public class JsonValidatorServiceTests
         Assert.That(ageWarnings[0].Message.Contains("[0]"), Is.False, "Deduplicated message should not include concrete indexes");
     }
 
+    [Test]
+    public async Task ValidateAsync_WithCircularUserJson_ReturnsSpecificStructureViolationError()
+    {
+        // Arrange
+        var schema = new
+        {
+            type = "object",
+            additionalProperties = true
+        };
+
+        var cyclic = new Dictionary<string, object?>();
+        cyclic["self"] = cyclic;
+
+        var request = new ValidationRequest
+        {
+            JsonData = cyclic,
+            Schema = schema
+        };
+
+        // Act
+        var result = await _service.ValidateAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.False);
+        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
+            e => e.ErrorCode == "JSON_STRUCTURE_VIOLATION"));
+    }
+
+    [Test]
+    public async Task ValidateAsync_WithTooDeepUserJsonString_ReturnsSpecificStructureViolationError()
+    {
+        // Arrange
+        var schema = new
+        {
+            type = "object",
+            additionalProperties = true
+        };
+
+        var deepJson = BuildDeepJson(70);
+
+        var request = new ValidationRequest
+        {
+            JsonData = deepJson,
+            Schema = schema
+        };
+
+        // Act
+        var result = await _service.ValidateAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.False);
+        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
+            e => e.ErrorCode == "JSON_STRUCTURE_VIOLATION"));
+        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
+            e => e.Message.Contains("maximum depth of 64", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static string BuildDeepJson(int depth)
+    {
+        var sb = new System.Text.StringBuilder();
+        for (var i = 0; i < depth; i++)
+        {
+            sb.Append("{\"a\":");
+        }
+
+        sb.Append("\"value\"");
+
+        for (var i = 0; i < depth; i++)
+        {
+            sb.Append('}');
+        }
+
+        return sb.ToString();
+    }
+
     private void SetupHttpMock(string schemaJson, string dataJson)
     {
         var mockHandler = new MockHttpMessageHandler(schemaJson, dataJson);

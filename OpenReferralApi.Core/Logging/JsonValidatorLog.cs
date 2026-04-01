@@ -66,5 +66,14 @@ namespace OpenReferralApi.Core.Logging
 
         [LoggerMessage(EventId = 6020, Level = LogLevel.Warning, Message = "Error detecting additional fields")]
         public static partial void ErrorDetectingAdditionalFields(this ILogger logger, Exception exception);
+
+        [LoggerMessage(EventId = 6021, Level = LogLevel.Warning, Message = "User JSON failed validation due to circular reference or depth > {MaxDepth}")]
+        public static partial void UserJsonCycleOrDepthLimitExceeded(this ILogger logger, Exception exception, int maxDepth);
+
+        [LoggerMessage(EventId = 6022, Level = LogLevel.Error, Message = "Cached schema at URI {SchemaUri} failed validation due to circular reference or depth > {MaxDepth}")]
+        public static partial void CachedSchemaCycleOrDepthLimitExceeded(this ILogger logger, Exception exception, string schemaUri, int maxDepth);
+
+        [LoggerMessage(EventId = 6023, Level = LogLevel.Warning, Message = "User provided schema failed validation due to circular reference or depth > {MaxDepth}")]
+        public static partial void UserSchemaCycleOrDepthLimitExceeded(this ILogger logger, Exception exception, int maxDepth);
     }
 }

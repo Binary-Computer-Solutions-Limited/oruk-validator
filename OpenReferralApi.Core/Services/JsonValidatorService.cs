@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
@@ -20,6 +19,7 @@ public interface IJsonValidatorService
 
 public class JsonValidatorService : IJsonValidatorService
 {
+    private const int MaxAllowedJsonDepth = 64;
     private static readonly ConcurrentDictionary<string, CachedExternalSchemaDocument> ExternalSchemaUriCache = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly ILogger<JsonValidatorService> _logger;
@@ -150,6 +150,11 @@ public class JsonValidatorService : IJsonValidatorService
 
             _logger.JsonValidationCompleted(result.IsValid, result.Errors.Count);
         }
+        catch (JsonStructureViolationException ex)
+        {
+            result.IsValid = false;
+            result.Errors.Add(MapJsonStructureViolationToValidationError(ex));
+        }
         catch (ArgumentException ex)
         {
             _logger.InvalidArgumentDuringJsonValidation(ex);
@@ -248,7 +253,15 @@ public class JsonValidatorService : IJsonValidatorService
         }
         else if (request.JsonData is string jsonString)
         {
-            return System.Text.Json.JsonDocument.Parse(jsonString);
+            try
+            {
+                return System.Text.Json.JsonDocument.Parse(jsonString);
+            }
+            catch (System.Text.Json.JsonException ex) when (IsCycleOrDepthViolation(ex))
+            {
+                _logger.UserJsonCycleOrDepthLimitExceeded(ex, MaxAllowedJsonDepth);
+                throw new JsonStructureViolationException(JsonStructureViolationSource.UserProvidedJson, ex);
+            }
         }
         else if (request.JsonData is System.Text.Json.JsonDocument doc)
         {
@@ -256,13 +269,21 @@ public class JsonValidatorService : IJsonValidatorService
         }
         else if (request.JsonData != null)
         {
-            var options = new System.Text.Json.JsonSerializerOptions 
-            { 
-                ReferenceHandler = ReferenceHandler.IgnoreCycles,
-                DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+            var options = new System.Text.Json.JsonSerializerOptions
+            {
+                MaxDepth = MaxAllowedJsonDepth
             };
-            var json = System.Text.Json.JsonSerializer.Serialize(request.JsonData, options);
-            return System.Text.Json.JsonDocument.Parse(json);
+
+            try
+            {
+                var json = System.Text.Json.JsonSerializer.Serialize(request.JsonData, options);
+                return System.Text.Json.JsonDocument.Parse(json);
+            }
+            catch (System.Text.Json.JsonException ex) when (IsCycleOrDepthViolation(ex))
+            {
+                _logger.UserJsonCycleOrDepthLimitExceeded(ex, MaxAllowedJsonDepth);
+                throw new JsonStructureViolationException(JsonStructureViolationSource.UserProvidedJson, ex);
+            }
         }
         else
         {
@@ -304,7 +325,15 @@ public class JsonValidatorService : IJsonValidatorService
         if (TryGetCachedSchemaJson(normalizedSchemaUri, out var cachedSchemaJson))
         {
             _logger.UsingCachedSchemaDocument(normalizedSchemaUri);
-            return await _schemaResolverService.CreateSchemaFromJsonAsync(cachedSchemaJson, normalizedSchemaUri, null, cancellationToken);
+            try
+            {
+                return await _schemaResolverService.CreateSchemaFromJsonAsync(cachedSchemaJson, normalizedSchemaUri, null, cancellationToken);
+            }
+            catch (System.Text.Json.JsonException ex) when (IsCycleOrDepthViolation(ex))
+            {
+                _logger.CachedSchemaCycleOrDepthLimitExceeded(ex, normalizedSchemaUri, MaxAllowedJsonDepth);
+                throw new JsonStructureViolationException(JsonStructureViolationSource.CachedSchema, ex);
+            }
         }
 
         return await _requestProcessingService.ExecuteWithRetryAsync(async (ct) =>
@@ -366,14 +395,75 @@ public class JsonValidatorService : IJsonValidatorService
     {
         try
         {
-            var schemaJson = System.Text.Json.JsonSerializer.Serialize(schema);
+            var schemaJson = System.Text.Json.JsonSerializer.Serialize(schema, new System.Text.Json.JsonSerializerOptions
+            {
+                MaxDepth = MaxAllowedJsonDepth
+            });
             return await _schemaResolverService.CreateSchemaFromJsonAsync(schemaJson);
+        }
+        catch (System.Text.Json.JsonException ex) when (IsCycleOrDepthViolation(ex))
+        {
+            _logger.UserSchemaCycleOrDepthLimitExceeded(ex, MaxAllowedJsonDepth);
+            throw new JsonStructureViolationException(JsonStructureViolationSource.UserProvidedSchema, ex);
         }
         catch (Exception ex)
         {
             _logger.FailedToCreateSchemaFromObject(ex);
             throw new InvalidOperationException("Failed to create schema from object", ex);
         }
+    }
+
+    private static bool IsCycleOrDepthViolation(System.Text.Json.JsonException exception)
+    {
+        var message = exception.Message;
+        return message.Contains("possible object cycle", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("maximum allowed depth", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("depth", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static ValidationError MapJsonStructureViolationToValidationError(JsonStructureViolationException exception)
+    {
+        var source = exception.SourceType switch
+        {
+            JsonStructureViolationSource.UserProvidedJson => "user provided JSON",
+            JsonStructureViolationSource.CachedSchema => "cached schema",
+            JsonStructureViolationSource.UserProvidedSchema => "user provided schema",
+            _ => "JSON payload"
+        };
+
+        var code = exception.SourceType switch
+        {
+            JsonStructureViolationSource.UserProvidedJson => "JSON_STRUCTURE_VIOLATION",
+            JsonStructureViolationSource.CachedSchema => "CACHED_SCHEMA_STRUCTURE_VIOLATION",
+            JsonStructureViolationSource.UserProvidedSchema => "SCHEMA_STRUCTURE_VIOLATION",
+            _ => "JSON_STRUCTURE_VIOLATION"
+        };
+
+        return new ValidationError
+        {
+            Path = "$",
+            Message = $"Validation failed: {source} contains circular references or exceeds maximum depth of {MaxAllowedJsonDepth}.",
+            ErrorCode = code,
+            Severity = "Error"
+        };
+    }
+
+    private enum JsonStructureViolationSource
+    {
+        UserProvidedJson,
+        CachedSchema,
+        UserProvidedSchema
+    }
+
+    private sealed class JsonStructureViolationException : Exception
+    {
+        public JsonStructureViolationException(JsonStructureViolationSource sourceType, Exception innerException)
+            : base("JSON structure violates cycle/depth constraints.", innerException)
+        {
+            SourceType = sourceType;
+        }
+
+        public JsonStructureViolationSource SourceType { get; }
     }
 
     private Task<List<ValidationError>> ValidateJsonAgainstSchemaAsync(System.Text.Json.JsonDocument jsonDataDoc, JSchema schema, ValidationOptions? options)
