@@ -226,11 +226,38 @@ Validation behavior:
 
 Server-side OpenAPI validation controls:
 
-- `OwnSchemaValidation` is configured on `OpenApiValidation` server settings and is not overridable by client request payloads.
-- `OpenApiValidation:OwnSchemaValidation` accepts `None`, `AllowAdditionalProperties`, or `StrictOwnSchemaValidation`.
-- `None` validates endpoint responses against the resolved HSDS profile schema when available; `AllowAdditionalProperties` keeps feed-schema validation but downgrades own-schema `ADDITIONAL_FIELD` findings to warnings; `StrictOwnSchemaValidation` keeps those findings as errors.
-- `ValidateSpecification` is configured on `OpenApiValidation` server settings and is not overridable by client request payloads.
-- Use `OpenApiValidation:ValidateSpecification` (or `ORUK_API_OPENAPIVALIDATION__VALIDATESPECIFICATION`) to enable/disable OpenAPI specification structure validation globally.
+All `OpenApiValidation` settings are configured on the server and are **not overridable by client request payloads**:
+
+- **`OwnSchemaValidation`**: Controls how the validation engine treats data feed OpenAPI specs:
+  - `None` (default): Validates endpoint responses against the resolved HSDS profile schema
+  - `AllowAdditionalProperties`: Keeps feed-schema validation but downgrades own-schema `ADDITIONAL_FIELD` findings to warnings
+  - `StrictOwnSchemaValidation`: Treats additional properties as errors
+
+- **`HsdsValidationMode`**: Controls the depth of HSDS specification compliance checking:
+  - `SpecAndFeedRuntimeFast` (default): Validates feed spec against HSDS profile, tests live endpoints
+  - `FullHsdsRuntime`: Also re-validates live endpoint responses against HSDS profile schemas
+
+- **`ValidateSpecification`**: Enables/disables OpenAPI structural validation and HSDS profile comparison
+  - `false` (default): Skips structural validation
+  - `true`: Validates OpenAPI spec structure against official OpenAPI schema and compares against HSDS profile
+  - Environment variable: `ORUK_API_OPENAPIVALIDATION__VALIDATESPECIFICATION`
+
+- **`AllowUserSuppliedAuth`**: Controls whether client-supplied authentication credentials are accepted
+  - `false` (default): Client `dataSourceAuth` requests are rejected
+  - `true`: Clients can provide API keys, bearer tokens, basic auth, or custom headers
+  - Enable only if you trust clients to supply credentials appropriately
+
+- **`TestEndpoints`**: Enables/disables live endpoint testing
+  - `true` (default): API validation includes automated endpoint tests
+  - `false`: Skips endpoint testing, validation focuses on spec structure only
+
+- **`TestOptionalEndpoints`**: Controls whether optional endpoints are tested
+  - `true` (default): Tests all endpoints, including those marked optional in HSDS spec
+  - `false`: Skips testing of optional endpoints
+
+- **`TreatOptionalEndpointsAsWarnings`**: Controls severity of missing optional endpoints
+  - `true` (default): Missing optional endpoints are reported as warnings
+  - `false`: Missing optional endpoints are reported as errors
 
 ### Basic Authentication
 
