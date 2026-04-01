@@ -124,6 +124,10 @@ builder.Services.AddHttpClient(nameof(OpenApiValidationService), client =>
 
 builder.Services.AddHttpClient();
 builder.Services.AddControllers()
+    .ConfigureApplicationPartManager(manager =>
+    {
+        manager.FeatureProviders.Add(new InternalControllerFeatureProvider());
+    })
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
