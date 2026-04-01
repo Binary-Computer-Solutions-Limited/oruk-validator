@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
@@ -255,7 +256,12 @@ public class JsonValidatorService : IJsonValidatorService
         }
         else if (request.JsonData != null)
         {
-            var json = System.Text.Json.JsonSerializer.Serialize(request.JsonData);
+            var options = new System.Text.Json.JsonSerializerOptions 
+            { 
+                ReferenceHandler = ReferenceHandler.IgnoreCycles,
+                DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+            };
+            var json = System.Text.Json.JsonSerializer.Serialize(request.JsonData, options);
             return System.Text.Json.JsonDocument.Parse(json);
         }
         else
