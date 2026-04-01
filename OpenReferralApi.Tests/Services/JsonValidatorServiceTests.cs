@@ -45,6 +45,13 @@ public class JsonValidatorServiceTests
             .Returns((Func<CancellationToken, Task<object>> func, ValidationOptions? options, CancellationToken ct) => func(ct));
 
         _requestProcessingServiceMock
+            .Setup(service => service.ExecuteWithRetryAsync(
+                It.IsAny<Func<CancellationToken, Task<System.Text.Json.JsonDocument>>>(),
+                It.IsAny<ValidationOptions?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns((Func<CancellationToken, Task<System.Text.Json.JsonDocument>> func, ValidationOptions? options, CancellationToken ct) => func(ct));
+
+        _requestProcessingServiceMock
             .Setup(service => service.CreateTimeoutToken(It.IsAny<ValidationOptions?>(), It.IsAny<CancellationToken>()))
             .Returns((ValidationOptions? options, CancellationToken ct) => CancellationTokenSource.CreateLinkedTokenSource(ct));
 
@@ -162,12 +169,10 @@ public class JsonValidatorServiceTests
         var result = await _service.ValidateAsync(request);
 
         // Assert
-        // NOTE: This test is known to fail due to test infrastructure limitations with HttpClient mocking.
-        // Assert.That(result.IsValid, Is.True);
-        // Assert.That(result.Errors, Is.Empty);
-        // Assert.That(result.Metadata, Is.Not.Null);
-        // Assert.That(result.Metadata!.DataSource, Is.EqualTo(dataUrl));
-        Assert.Ignore("Test ignored due to known HttpClient mocking limitation in this test environment.");
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(result.Errors, Is.Empty);
+        Assert.That(result.Metadata, Is.Not.Null);
+        Assert.That(result.Metadata!.DataSource, Is.EqualTo(dataUrl));
     }
 
     [Test]
