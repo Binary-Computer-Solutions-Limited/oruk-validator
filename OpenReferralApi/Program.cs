@@ -210,7 +210,7 @@ var openApiValidationSettings = app.Configuration
     .GetSection(OpenApiValidationServerOptions.SectionName)
     .Get<OpenApiValidationServerOptions>() ?? new OpenApiValidationServerOptions();
 
-StartupLogger.LogSettings(app.Logger, openApiValidationSettings);
+Logging.StartupLogger.LogSettings(app.Logger, openApiValidationSettings);
 
 // Configure the HTTP request pipeline
 app.UseExceptionHandler();
