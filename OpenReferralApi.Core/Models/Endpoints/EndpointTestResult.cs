@@ -117,8 +117,9 @@ public class EndpointTestResult
     /// <summary>
     /// First failing test result for quick diagnostics, or first available result if none failed.
     /// </summary>
+    [JsonIgnore]
     [JsonProperty("primaryTestResult")]
-    public HttpTestResult? PrimaryTestResult =>
+    internal HttpTestResult? PrimaryTestResult =>
         TestResults.FirstOrDefault(tr => tr.ValidationResult != null && !tr.ValidationResult.IsValid)
         ?? TestResults.FirstOrDefault();
 
