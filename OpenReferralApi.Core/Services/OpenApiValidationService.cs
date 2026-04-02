@@ -405,8 +405,6 @@ public class OpenApiValidationService : IOpenApiValidationService
                 result.SpecificationValidation = specValidation;
             }
 
-            AddCircularReferenceNotifications(schemaResolutionIssues, result.Notifications);
-
             if (_openApiValidationOptions.HsdsValidationMode == HsdsValidationMode.FullHsdsRuntime)
             {
                 var useOwnSchemaValidation = _openApiValidationOptions.OwnSchemaValidation != OwnSchemaValidationMode.None;
@@ -528,16 +526,6 @@ public class OpenApiValidationService : IOpenApiValidationService
                 Severity = "Error",
                 Message = BuildCircularReferenceMessage(issue)
             });
-        }
-    }
-
-    private static void AddCircularReferenceNotifications(
-        IEnumerable<SchemaResolutionIssue> schemaResolutionIssues,
-        ICollection<string> notifications)
-    {
-        foreach (var issue in DistinctCircularReferenceIssues(schemaResolutionIssues))
-        {
-            notifications.Add(BuildCircularReferenceMessage(issue));
         }
     }
 

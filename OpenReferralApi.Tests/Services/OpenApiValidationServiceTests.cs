@@ -236,7 +236,7 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
-    public async Task ValidateOpenApiSpecificationAsync_WhenCircularRefDetected_AddsNotificationAndSpecificationError()
+    public async Task ValidateOpenApiSpecificationAsync_WhenCircularRefDetected_AddsSpecificationErrorButNotNotification()
     {
         // Arrange
         var json = CreateOpenApi30Spec();
@@ -265,7 +265,7 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.Notifications.Any(n => n.Contains("Circular schema reference detected", StringComparison.Ordinal)), Is.True);
+        Assert.That(result.Notifications.Any(n => n.Contains("Circular schema reference detected", StringComparison.Ordinal)), Is.False);
         Assert.That(result.SpecificationValidation, Is.Not.Null);
         Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "CIRCULAR_SCHEMA_REFERENCE"), Is.True);
     }

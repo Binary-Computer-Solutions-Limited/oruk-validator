@@ -223,8 +223,9 @@ Validation behavior:
 - If no OpenAPI spec is found on the data service, the validator resolves the profile version and validates the data service against the mapped profile OpenAPI.
 - If the data service provides its own OpenAPI spec, the validator validates the data service against that spec, validates the spec structure against the official OpenAPI schema, and compares the data-service spec against the mapped profile OpenAPI.
 - Missing required endpoints/properties are failures; additional endpoints/properties are informational findings.
+- Circular schema references are reported in schema/endpoint validation findings and are not repeated in `notifications`.
 
-### Server-side OpenAPI validation controls:
+### Server-side OpenAPI validation controls
 
 All `OpenApiValidation` settings are configured on the server and are **not overridable by client request payloads**:
 
