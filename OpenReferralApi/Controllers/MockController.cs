@@ -8,6 +8,7 @@ using OpenReferralApi.Core.Logging;
 namespace OpenReferralApi.Controllers;
 
 [ApiController]
+[ApiExplorerSettings(IgnoreApi = true)]
 [Route("api/[Controller]")]
 internal sealed class MockController : ControllerBase
 {

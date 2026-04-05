@@ -6,6 +6,7 @@ using OpenReferralApi.Logging;
 namespace OpenReferralApi.Controllers;
 
 [ApiController]
+[ApiExplorerSettings(IgnoreApi = true)]
 [Route("openreferraluk")]
 [Route("api/openapi")] // Legacy route for backward compatibility, will be removed in future versions (once openreferraluk website is updated to point to new route)
 [Produces("application/json")]

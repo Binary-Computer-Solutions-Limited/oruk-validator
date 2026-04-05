@@ -10,6 +10,7 @@ namespace OpenReferralApi.Controllers;
 /// Controller for managing and testing feed validation
 /// </summary>
 [ApiController]
+[ApiExplorerSettings(IgnoreApi = true)]
 [Route("api/[controller]")]
 [EnableRateLimiting("fixed")]
 internal sealed class FeedValidationController : ControllerBase
