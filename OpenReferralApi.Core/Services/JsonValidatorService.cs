@@ -313,6 +313,10 @@ public class JsonValidatorService : IJsonValidatorService
         {
             return await LoadSchemaFromUriAsync(request.SchemaUri, request.Options, cancellationToken);
         }
+        else if (request.Schema is JSchema compiledSchema)
+        {
+            return compiledSchema;
+        }
         else if (request.Schema != null)
         {
             return await CreateSchemaFromObjectAsync(request.Schema);

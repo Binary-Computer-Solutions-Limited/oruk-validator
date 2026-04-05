@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using Newtonsoft.Json.Linq;
 using OpenReferralApi.Core.Services;
+using JSchema = Newtonsoft.Json.Schema.JSchema;
 
 namespace OpenReferralApi.Tests.Services;
 
@@ -196,12 +197,13 @@ public class EndpointTestingServiceTests
 
         Assert.That(results, Has.Count.EqualTo(1));
         Assert.That(capturedValidationRequest, Is.Not.Null);
-        Assert.That(capturedValidationRequest!.Schema, Is.TypeOf<JObject>());
+        Assert.That(capturedValidationRequest!.Schema, Is.TypeOf<JSchema>());
 
-        var schema = (JObject)capturedValidationRequest.Schema!;
-        Assert.That(schema["components"], Is.TypeOf<JObject>());
-        Assert.That(schema["x-validation-schema"], Is.Null);
-        Assert.That(schema["$ref"]?.ToString(), Is.EqualTo("#/components/schemas/Service"));
+        var schema = (JSchema)capturedValidationRequest.Schema!;
+        var schemaJson = schema.ToString();
+        Assert.That(schemaJson, Does.Contain("\"components\""));
+        Assert.That(schemaJson, Does.Not.Contain("x-validation-schema"));
+        Assert.That(schemaJson, Does.Contain("#/components/schemas/Service"));
     }
 
     [Test]
