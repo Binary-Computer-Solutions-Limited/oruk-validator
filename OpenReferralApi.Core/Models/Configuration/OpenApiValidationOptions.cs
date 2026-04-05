@@ -30,7 +30,7 @@ public class OpenApiValidationOptions : ValidationOptionsBase
     /// </summary>
     [DefaultValue(false)]
     [JsonProperty("includeResponseBody")]
-    public bool IncludeResponseBody { get; set; } = true;
+    public bool IncludeResponseBody { get; set; } = false;
 
     /// <summary>
     /// Whether to include detailed test results array in the EndpointTestResult output.

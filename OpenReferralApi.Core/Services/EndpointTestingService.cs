@@ -424,7 +424,7 @@ public class EndpointTestingService : IEndpointTestingService
 
         result.Status = DeterminePaginatedEndpointStatus(result);
 
-        if (!options.IncludeResponseBody)
+        if (!ShouldRetainResponseBodies(options))
         {
             foreach (var tr in result.TestResults)
             {
@@ -667,16 +667,13 @@ public class EndpointTestingService : IEndpointTestingService
             var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
             var timeToHeaders = sendStart.Elapsed;
 
-            // Prepare to read content and measure transfer time
+            // Read response content without an intermediate MemoryStream to reduce peak allocations.
             string responseBody = string.Empty;
             var contentTransferStopwatch = System.Diagnostics.Stopwatch.StartNew();
             try
             {
-                using var responseStream = await response.Content.ReadAsStreamAsync(cts.Token);
-                using var ms = new MemoryStream();
-                await responseStream.CopyToAsync(ms, 81920, cts.Token);
+                responseBody = await response.Content.ReadAsStringAsync(cts.Token);
                 contentTransferStopwatch.Stop();
-                responseBody = Encoding.UTF8.GetString(ms.ToArray());
             }
             catch (OperationCanceledException)
             {
@@ -806,6 +803,13 @@ public class EndpointTestingService : IEndpointTestingService
 
         validationResult.Errors = ValidationErrorNormalizer.NormalizeAndDeduplicateByPath(validationResult.Errors);
     }
+
+    private bool ShouldRetainResponseBodies(OpenApiValidationOptions options)
+    {
+        return options.IncludeResponseBody
+            || (_openApiValidationOptions?.HsdsValidationMode == HsdsValidationMode.FullHsdsRuntime);
+    }
+
     private List<EndpointGroup> GroupEndpointsByDependencies(JObject pathsObject, OpenApiValidationOptions options)
     {
         var endpoints = new List<EndpointInfo>();
@@ -924,7 +928,7 @@ public class EndpointTestingService : IEndpointTestingService
             }
         }
 
-        if (!options.IncludeResponseBody)
+        if (!ShouldRetainResponseBodies(options))
         {
             foreach (var tr in result.TestResults)
             {
@@ -1036,7 +1040,7 @@ public class EndpointTestingService : IEndpointTestingService
                 compositeResult.Status = EndpointTestStatus.Skipped;
             }
 
-            if (!options.IncludeResponseBody)
+            if (!ShouldRetainResponseBodies(options))
             {
                 foreach (var tr in compositeResult.TestResults)
                 {
