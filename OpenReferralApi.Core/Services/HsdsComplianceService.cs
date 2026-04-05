@@ -210,7 +210,7 @@ public class HsdsComplianceService : IHsdsComplianceService
             {
                 var validationRequest = new ValidationRequest
                 {
-                    JsonData = JsonNode.Parse(testResult.ResponseBody ?? "{}"),
+                    JsonData = testResult.ResponseBody ?? "{}",
                     Schema = hsdsResponseSchema,
                     Options = new ValidationOptions
                     {

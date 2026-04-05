@@ -804,7 +804,7 @@ public class EndpointTestingService : IEndpointTestingService
                                     // #/components/schemas/* can be pre-resolved before JSchema creation.
                                     var validationRequest = new ValidationRequest
                                     {
-                                        JsonData = JsonNode.Parse(testResult.ResponseBody ?? "{}"),
+                                        JsonData = testResult.ResponseBody ?? "{}",
                                         Schema = schemaForValidation,
                                         Options = new ValidationOptions
                                         {
