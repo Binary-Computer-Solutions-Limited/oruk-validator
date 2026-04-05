@@ -104,6 +104,8 @@ public class EndpointTestingService : IEndpointTestingService
                 var parameterizedResults = await Task.WhenAll(parameterizedTasks);
                 results.AddRange(parameterizedResults);
 
+                semaphore.Dispose();
+
                 _logger.CompletedEndpointGroup(TextSanitizer.SanitizeForLogging(group.RootPath), group.CollectionEndpoints.Count, group.ParameterizedEndpoints.Count);
             }
 
@@ -421,6 +423,14 @@ public class EndpointTestingService : IEndpointTestingService
         }
 
         result.Status = DeterminePaginatedEndpointStatus(result);
+
+        if (!options.IncludeResponseBody)
+        {
+            foreach (var tr in result.TestResults)
+            {
+                tr.ResponseBody = null;
+            }
+        }
     }
 
     private static EndpointTestStatus DeterminePaginatedEndpointStatus(EndpointTestResult result)
@@ -914,6 +924,14 @@ public class EndpointTestingService : IEndpointTestingService
             }
         }
 
+        if (!options.IncludeResponseBody)
+        {
+            foreach (var tr in result.TestResults)
+            {
+                tr.ResponseBody = null;
+            }
+        }
+
         return result;
     }
 
@@ -1016,6 +1034,14 @@ public class EndpointTestingService : IEndpointTestingService
             else if (hasSkippedResult)
             {
                 compositeResult.Status = EndpointTestStatus.Skipped;
+            }
+
+            if (!options.IncludeResponseBody)
+            {
+                foreach (var tr in compositeResult.TestResults)
+                {
+                    tr.ResponseBody = null;
+                }
             }
 
             return compositeResult;

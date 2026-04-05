@@ -365,6 +365,7 @@ public class JsonValidatorService : IJsonValidatorService
 
                 if (_externalSchemaUriCacheEnabled)
                 {
+                    PurgeExpiredExternalSchemaEntries();
                     ExternalSchemaUriCache[normalizedSchemaUri] = new CachedExternalSchemaDocument(
                         schemaJson,
                         DateTime.UtcNow.Add(_externalSchemaUriCacheTtl));
@@ -406,6 +407,18 @@ public class JsonValidatorService : IJsonValidatorService
     }
 
     private sealed record CachedExternalSchemaDocument(string SchemaJson, DateTime ExpiresAtUtc);
+
+    private static void PurgeExpiredExternalSchemaEntries()
+    {
+        var now = DateTime.UtcNow;
+        foreach (var key in ExternalSchemaUriCache.Keys)
+        {
+            if (ExternalSchemaUriCache.TryGetValue(key, out var entry) && entry.ExpiresAtUtc <= now)
+            {
+                _ = ExternalSchemaUriCache.TryRemove(key, out _);
+            }
+        }
+    }
 
     private async Task<JSchema> CreateSchemaFromObjectAsync(object schema)
     {

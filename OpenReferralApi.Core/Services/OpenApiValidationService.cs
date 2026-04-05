@@ -749,6 +749,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
                 if (_cacheOptions.Enabled)
                 {
+                    PurgeExpiredCacheEntries();
                     cache[cacheKey] = new CachedResolvedSpec(
                         resolvedFromWarmup,
                     DateTime.UtcNow.Add(GetProfileSchemaCacheTtl()));
@@ -775,6 +776,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
         if (_cacheOptions.Enabled)
         {
+            PurgeExpiredCacheEntries();
             cache[cacheKey] = new CachedResolvedSpec(
                 resolvedSpecContent,
                 DateTime.UtcNow.Add(GetProfileSchemaCacheTtl()));
@@ -815,6 +817,26 @@ public class OpenApiValidationService : IOpenApiValidationService
         var expiredFeedEntries = FeedResolvedSpecCache.Values.Count(entry => entry.ExpiresAtUtc <= now);
         var expiredProfileEntries = ProfileResolvedSpecCache.Values.Count(entry => entry.ExpiresAtUtc <= now);
         return expiredFeedEntries + expiredProfileEntries;
+    }
+
+    private static void PurgeExpiredCacheEntries()
+    {
+        var now = DateTime.UtcNow;
+        foreach (var key in FeedResolvedSpecCache.Keys)
+        {
+            if (FeedResolvedSpecCache.TryGetValue(key, out var entry) && entry.ExpiresAtUtc <= now)
+            {
+                _ = FeedResolvedSpecCache.TryRemove(key, out _);
+            }
+        }
+
+        foreach (var key in ProfileResolvedSpecCache.Keys)
+        {
+            if (ProfileResolvedSpecCache.TryGetValue(key, out var entry) && entry.ExpiresAtUtc <= now)
+            {
+                _ = ProfileResolvedSpecCache.TryRemove(key, out _);
+            }
+        }
     }
 
     private bool HasExplicitProfileVersionContext(string? profileReason, string? schemaUrl)
