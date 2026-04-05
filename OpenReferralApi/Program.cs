@@ -18,6 +18,8 @@ using OpenReferralApi.Logging;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddAWSLambdaHosting(LambdaEventSource.HttpApi);
+
 // Just declare it here!
 string[] databaseHealthTags = ["ready", "db"];
 

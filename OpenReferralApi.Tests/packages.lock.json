@@ -61,6 +61,72 @@
           "Microsoft.Testing.Platform.MSBuild": "2.1.0"
         }
       },
+      "Amazon.Lambda.APIGatewayEvents": {
+        "type": "Transitive",
+        "resolved": "2.7.3",
+        "contentHash": "CXmiXdwuSXSJA0YH+7OJqG2uGDnhDcKkN2ei2u2/kdRFK+RH8JC5GbdechdJoldpogxHdHy12TuAfqqKSC67Nw=="
+      },
+      "Amazon.Lambda.ApplicationLoadBalancerEvents": {
+        "type": "Transitive",
+        "resolved": "2.2.0",
+        "contentHash": "UtCd9tFuVyED8+DmDKEkdXJbAb/TdHIz51R/CsJCexKerO6HGOG87FGId4Ce9IXE+qjlBGyNQsKCw9oLLNe0hw=="
+      },
+      "Amazon.Lambda.AspNetCoreServer": {
+        "type": "Transitive",
+        "resolved": "9.2.1",
+        "contentHash": "2K1x1AIMA7iK2G+oDi+rwHW9gYkaRe9+m1oZGHGduNCug/8Nq4ibiV8CMMO/jJ3NOaZa/l4tkA6xiWKV3aSjlw==",
+        "dependencies": {
+          "Amazon.Lambda.APIGatewayEvents": "2.7.3",
+          "Amazon.Lambda.ApplicationLoadBalancerEvents": "2.2.0",
+          "Amazon.Lambda.Core": "2.8.0",
+          "Amazon.Lambda.Logging.AspNetCore": "4.1.1",
+          "Amazon.Lambda.Serialization.SystemTextJson": "2.4.4"
+        }
+      },
+      "Amazon.Lambda.AspNetCoreServer.Hosting": {
+        "type": "Transitive",
+        "resolved": "1.10.0",
+        "contentHash": "IECXhGylZbFelTamqtZgIRfkHhkTF5jP9Kr9toRovIkyaR5SdZ9rc0D4SDTd7JMArL8G3ofEjurS0X+Cj8PoRQ==",
+        "dependencies": {
+          "Amazon.Lambda.APIGatewayEvents": "2.7.3",
+          "Amazon.Lambda.AspNetCoreServer": "9.2.1",
+          "Amazon.Lambda.Core": "2.8.1",
+          "Amazon.Lambda.RuntimeSupport": "1.14.2"
+        }
+      },
+      "Amazon.Lambda.Core": {
+        "type": "Transitive",
+        "resolved": "2.8.1",
+        "contentHash": "wLrBdUXY1jn12o3+sar5c5ApMJPGEMye+1rnyDjwCKA2rcPNMZbNsKLQ76bV+DGnx5CN8bArB26SKB/rEuxIxQ=="
+      },
+      "Amazon.Lambda.Logging.AspNetCore": {
+        "type": "Transitive",
+        "resolved": "4.1.1",
+        "contentHash": "4wtlguk2jI0FFR0dHvJfmfW99mDZWXJ56MELPfk2nxtgRlpUyo0RW5GcO3Teyc0nefFmxCiKdE7Iz2xSwiOnfg==",
+        "dependencies": {
+          "Amazon.Lambda.Core": "2.7.0",
+          "Microsoft.Extensions.Configuration.Abstractions": "2.1.0",
+          "Microsoft.Extensions.Logging": "2.1.0",
+          "Microsoft.Extensions.Logging.Abstractions": "2.1.0"
+        }
+      },
+      "Amazon.Lambda.RuntimeSupport": {
+        "type": "Transitive",
+        "resolved": "1.14.2",
+        "contentHash": "KR3iCwJbrHctB+po6F5cTNefS9bOKqqWl9G2Ai+PsqdHByDSv6aeVn8noEhKrnOCTqAlWQjBeStay/yM5JE7TA==",
+        "dependencies": {
+          "Amazon.Lambda.Core": "2.8.1",
+          "SnapshotRestore.Registry": "1.0.1"
+        }
+      },
+      "Amazon.Lambda.Serialization.SystemTextJson": {
+        "type": "Transitive",
+        "resolved": "2.4.4",
+        "contentHash": "iv/cvqFuZ3v3+NFDyof0IJZvU+4kdpzOe3pWSBwp9HB885I+D32WQxuid9V4GnvRynER9XnWMPaDmImX8qH5cA==",
+        "dependencies": {
+          "Amazon.Lambda.Core": "2.3.0"
+        }
+      },
       "AspNetCore.HealthChecks.MongoDb": {
         "type": "Transitive",
         "resolved": "9.0.0",
@@ -801,6 +867,11 @@
         "resolved": "1.0.0",
         "contentHash": "rFtK2KEI9hIe8gtx3a0YDXdHOpedIf9wYCEYtBEmtlyiWVX3XlCNV03JrmmAi/Cdfn7dxK+k0sjjcLv4fpHnqA=="
       },
+      "SnapshotRestore.Registry": {
+        "type": "Transitive",
+        "resolved": "1.0.1",
+        "contentHash": "UdA5y8wpa6dHiV4+J9MveLr6GRDB1llTmb4c+MeRYRoWKVNC5Y+nTDcC16/QAyw1dRry+aPS1yAy6f57mS+Xfw=="
+      },
       "Swashbuckle.AspNetCore": {
         "type": "Transitive",
         "resolved": "10.1.7",
@@ -860,6 +931,7 @@
       "openreferralapi": {
         "type": "Project",
         "dependencies": {
+          "Amazon.Lambda.AspNetCoreServer.Hosting": "[1.10.0, )",
           "AspNetCore.HealthChecks.MongoDb": "[9.0.0, )",
           "AspNetCore.HealthChecks.UI.Client": "[9.0.0, )",
           "AspNetCore.HealthChecks.Uris": "[9.0.0, )",
