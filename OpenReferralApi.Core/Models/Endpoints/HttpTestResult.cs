@@ -1,4 +1,5 @@
 using Newtonsoft.Json;
+using System.Text.Json;
 
 namespace OpenReferralApi.Core.Models.Endpoints;
 
@@ -84,4 +85,6 @@ public class HttpTestResult
     /// </summary>
     [JsonProperty("validationResult")]
     public ValidationResult? ValidationResult { get; set; }
+
+    internal JsonDocument? ParsedResponseJson { get; set; }
 }

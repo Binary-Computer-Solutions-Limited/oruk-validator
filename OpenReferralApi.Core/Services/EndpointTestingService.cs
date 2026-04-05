@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using System.Text.Json;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
@@ -544,6 +545,12 @@ public class EndpointTestingService : IEndpointTestingService
             return (null, 0);
         }
 
+        using var parsedDocument = ParseJsonDocument(responseBody);
+        if (parsedDocument != null)
+        {
+            return ExtractPaginationInfo(parsedDocument.RootElement);
+        }
+
         try
         {
             var json = JToken.Parse(responseBody);
@@ -598,6 +605,63 @@ public class EndpointTestingService : IEndpointTestingService
             _logger.FailedToExtractPaginationInfo(ex);
             return (null, 0);
         }
+    }
+
+    private (int? TotalPages, int ItemCount) ExtractPaginationInfo(JsonElement json)
+    {
+        int? totalPages = null;
+        var totalPagesPaths = new[]
+        {
+            new[] { "total_pages" },
+            new[] { "totalPages" },
+            new[] { "pagination", "total_pages" },
+            new[] { "pagination", "totalPages" },
+            new[] { "meta", "total_pages" },
+            new[] { "meta", "totalPages" }
+        };
+
+        foreach (var path in totalPagesPaths)
+        {
+            if (TryGetNestedPropertyIgnoreCase(json, path, out var totalPagesElement)
+                && TryParseInt32(totalPagesElement, out var pages))
+            {
+                totalPages = pages;
+                break;
+            }
+        }
+
+        var itemCount = 0;
+        if (json.ValueKind == JsonValueKind.Array)
+        {
+            itemCount = json.GetArrayLength();
+        }
+        else if (json.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var propName in new[] { "data", "items", "results", "content", "contents" })
+            {
+                if (TryGetPropertyIgnoreCase(json, propName, out var itemsElement)
+                    && itemsElement.ValueKind == JsonValueKind.Array)
+                {
+                    itemCount = itemsElement.GetArrayLength();
+                    break;
+                }
+            }
+
+            if (itemCount == 0)
+            {
+                foreach (var propName in new[] { "size", "count", "length" })
+                {
+                    if (TryGetPropertyIgnoreCase(json, propName, out var sizeElement)
+                        && TryParseInt32(sizeElement, out var size))
+                    {
+                        itemCount = size;
+                        break;
+                    }
+                }
+            }
+        }
+
+        return (totalPages, itemCount);
     }
 
     private string BuildFullUrl(string baseUrl, string path, JArray resolvedParams, OpenApiValidationOptions options, int? pageNumber = null)
@@ -754,6 +818,7 @@ public class EndpointTestingService : IEndpointTestingService
             testResult.ResponseStatusCode = (int)response.StatusCode;
             testResult.IsSuccessStatusCode = response.IsSuccessStatusCode;
             testResult.ResponseBody = responseBody;
+            testResult.ParsedResponseJson = ParseJsonDocument(responseBody);
 
             // Populate performance metrics (include best-effort DNS/TCP/TLS measurements if available)
             testResult.PerformanceMetrics = new EndpointPerformanceMetrics
@@ -812,7 +877,7 @@ public class EndpointTestingService : IEndpointTestingService
                                     // #/components/schemas/* can be pre-resolved before JSchema creation.
                                     var validationRequest = new ValidationRequest
                                     {
-                                        JsonData = testResult.ResponseBody ?? "{}",
+                                        JsonData = testResult.ParsedResponseJson ?? (object)(testResult.ResponseBody ?? "{}"),
                                         Schema = compiledSchema,
                                         Options = new ValidationOptions
                                         {
@@ -864,6 +929,82 @@ public class EndpointTestingService : IEndpointTestingService
         return compiledValidationSchemaCache.GetOrAdd(
             cacheKey,
             _ => JSchema.Parse(schemaForValidation.ToString(Formatting.None)));
+    }
+
+    private static JsonDocument? ParseJsonDocument(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonDocument.Parse(json);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static bool TryGetPropertyIgnoreCase(JsonElement element, string propertyName, out JsonElement value)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = property.Value;
+                    return true;
+                }
+            }
+        }
+
+        value = default;
+        return false;
+    }
+
+    private static bool TryGetNestedPropertyIgnoreCase(JsonElement element, IEnumerable<string> pathSegments, out JsonElement value)
+    {
+        var current = element;
+        foreach (var segment in pathSegments)
+        {
+            if (!TryGetPropertyIgnoreCase(current, segment, out current))
+            {
+                value = default;
+                return false;
+            }
+        }
+
+        value = current;
+        return true;
+    }
+
+    private static bool TryParseInt32(JsonElement element, out int value)
+    {
+        if (element.ValueKind == JsonValueKind.Number)
+        {
+            return element.TryGetInt32(out value);
+        }
+
+        if (element.ValueKind == JsonValueKind.String)
+        {
+            return int.TryParse(element.GetString(), out value);
+        }
+
+        value = 0;
+        return false;
+    }
+
+    private static void ReleaseParsedResponseJsonDocuments(IEnumerable<HttpTestResult> testResults)
+    {
+        foreach (var testResult in testResults)
+        {
+            testResult.ParsedResponseJson?.Dispose();
+            testResult.ParsedResponseJson = null;
+        }
     }
 
     private static JToken BuildValidationSchemaWithComponentsContext(JToken schema, JObject openApiDocument)
@@ -1020,7 +1161,7 @@ public class EndpointTestingService : IEndpointTestingService
 
             _logger.ResponseContentLength(successfulResponse.ResponseBody?.Length ?? 0);
 
-            var ids = ExtractIdsFromResponse(successfulResponse.ResponseBody!, rootPath, operation, openApiDocument);
+            var ids = ExtractIdsFromResponse(successfulResponse, rootPath, operation, openApiDocument);
 
             if (ids.Any())
             {
@@ -1052,6 +1193,8 @@ public class EndpointTestingService : IEndpointTestingService
                 tr.ResponseBody = null;
             }
         }
+
+        ReleaseParsedResponseJsonDocuments(result.TestResults);
 
         return result;
     }
@@ -1165,6 +1308,8 @@ public class EndpointTestingService : IEndpointTestingService
                 }
             }
 
+            ReleaseParsedResponseJsonDocuments(compositeResult.TestResults);
+
             return compositeResult;
         }
         else
@@ -1219,7 +1364,7 @@ public class EndpointTestingService : IEndpointTestingService
     /// <summary>
     /// Extracts IDs from a JSON response using OpenAPI schema information to identify ID field locations
     /// </summary>
-    private List<string> ExtractIdsFromResponse(string responseBody, string rootPath, JObject operation, JObject openApiDocument)
+    private List<string> ExtractIdsFromResponse(HttpTestResult response, string rootPath, JObject operation, JObject openApiDocument)
     {
         var ids = new List<string>();
 
@@ -1238,7 +1383,14 @@ public class EndpointTestingService : IEndpointTestingService
 
         try
         {
-            var json = JToken.Parse(responseBody);
+            if (response.ParsedResponseJson != null)
+            {
+                _logger.ParsedJsonType(response.ParsedResponseJson.RootElement.ValueKind.ToString());
+                ExtractIdsFromJsonElement(response.ParsedResponseJson.RootElement, schemaIdFields, operation, openApiDocument, ids);
+                return ids.Distinct().ToList();
+            }
+
+            var json = JToken.Parse(response.ResponseBody ?? string.Empty);
             _logger.ParsedJsonType(json.Type.ToString());
 
             // Handle array responses (most common for collections)
@@ -1316,6 +1468,124 @@ public class EndpointTestingService : IEndpointTestingService
         }
 
         return ids.Distinct().ToList();
+    }
+
+    private void ExtractIdsFromJsonElement(JsonElement json, List<string> schemaIdFields, JObject operation, JObject openApiDocument, List<string> ids)
+    {
+        if (json.ValueKind == JsonValueKind.Array)
+        {
+            _logger.FoundJsonArray(json.GetArrayLength());
+
+            foreach (var item in json.EnumerateArray())
+            {
+                var id = ExtractIdFromElement(item, schemaIdFields);
+                if (!string.IsNullOrEmpty(id))
+                {
+                    _logger.FoundIdInArrayItem();
+                    ids.Add(id);
+                }
+            }
+
+            return;
+        }
+
+        if (json.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        var collectionProps = ExtractCollectionPropertiesFromSchema(operation, openApiDocument);
+        if (collectionProps.Any())
+        {
+            var sanitizedProps = string.Join(", ", collectionProps.Select(p => TextSanitizer.SanitizeForLogging(p)));
+            _logger.FoundCollectionProperties(sanitizedProps);
+
+            foreach (var propName in collectionProps)
+            {
+                if (TryGetPropertyIgnoreCase(json, propName, out var itemsElement)
+                    && itemsElement.ValueKind == JsonValueKind.Array)
+                {
+                    _logger.ProcessingCollectionProperty(TextSanitizer.SanitizeForLogging(propName), itemsElement.GetArrayLength());
+                    foreach (var item in itemsElement.EnumerateArray())
+                    {
+                        var id = ExtractIdFromElement(item, schemaIdFields);
+                        if (!string.IsNullOrEmpty(id))
+                        {
+                            ids.Add(id);
+                        }
+                    }
+
+                    break;
+                }
+            }
+        }
+
+        if (!ids.Any())
+        {
+            foreach (var propName in new[] { "data", "items", "results", "content", "contents" })
+            {
+                if (TryGetPropertyIgnoreCase(json, propName, out var itemsElement)
+                    && itemsElement.ValueKind == JsonValueKind.Array)
+                {
+                    _logger.ProcessingFallbackCollectionProperty(TextSanitizer.SanitizeForLogging(propName), itemsElement.GetArrayLength());
+                    foreach (var item in itemsElement.EnumerateArray())
+                    {
+                        var id = ExtractIdFromElement(item, schemaIdFields);
+                        if (!string.IsNullOrEmpty(id))
+                        {
+                            ids.Add(id);
+                        }
+                    }
+
+                    break;
+                }
+            }
+        }
+
+        if (!ids.Any())
+        {
+            var id = ExtractIdFromElement(json, schemaIdFields);
+            if (!string.IsNullOrEmpty(id))
+            {
+                ids.Add(id);
+            }
+        }
+    }
+
+    private static string? ExtractIdFromElement(JsonElement item, List<string> schemaIdFields)
+    {
+        if (item.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        foreach (var fieldName in schemaIdFields)
+        {
+            if (TryGetPropertyIgnoreCase(item, fieldName, out var fieldValue)
+                && fieldValue.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined)
+            {
+                var value = fieldValue.ToString();
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value;
+                }
+            }
+        }
+
+        foreach (var fallbackName in new[] { "id", "Id", "ID", "uuid", "guid" })
+        {
+            if (TryGetPropertyIgnoreCase(item, fallbackName, out var fieldValue)
+                && fieldValue.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined)
+            {
+                var value = fieldValue.ToString();
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value;
+                }
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
