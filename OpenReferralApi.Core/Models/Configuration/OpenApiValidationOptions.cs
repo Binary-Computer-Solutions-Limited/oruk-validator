@@ -105,4 +105,12 @@ public class OpenApiValidationServerOptions
     /// </summary>
     [DefaultValue(true)]
     public bool TreatOptionalEndpointsAsWarnings { get; set; } = true;
+
+    /// <summary>
+    /// Maximum number of characters retained in each endpoint test response body when response bodies are included.
+    /// Set to 0 or a negative value to disable truncation.
+    /// This cap is applied server-side after validation/testing to bound response payload memory and output size.
+    /// </summary>
+    [DefaultValue(262144)]
+    public int MaxRetainedResponseBodyCharacters { get; set; } = 262144;
 }

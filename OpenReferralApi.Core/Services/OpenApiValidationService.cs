@@ -459,6 +459,10 @@ public class OpenApiValidationService : IOpenApiValidationService
                     }
                 }
             }
+            else if (result.EndpointTests != null)
+            {
+                ApplyResponseBodyRetentionCap(result.EndpointTests, result.Notifications);
+            }
 
             // Honor option to exclude test results array from the produced result (does not affect testing)
             if (!request.Options.IncludeTestResults && result.EndpointTests != null)
@@ -491,6 +495,13 @@ public class OpenApiValidationService : IOpenApiValidationService
         {
             stopwatch.Stop();
             result.Duration = stopwatch.Elapsed;
+
+            var managedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
+            var processWorkingSetBytes = Environment.WorkingSet;
+            _logger.OpenApiValidationMemoryUsageAtCompletion(
+                managedHeapBytes,
+                processWorkingSetBytes,
+                result.Duration.TotalMilliseconds);
         }
 
         return result;
@@ -679,6 +690,45 @@ public class OpenApiValidationService : IOpenApiValidationService
 
         var stripped = endpointPath[basePath.Length..];
         return NormalizePath(stripped);
+    }
+
+    private void ApplyResponseBodyRetentionCap(
+        IEnumerable<EndpointTestResult> endpointTests,
+        ICollection<string> notifications)
+    {
+        if (_openApiValidationOptions.MaxRetainedResponseBodyCharacters <= 0)
+        {
+            return;
+        }
+
+        var cap = _openApiValidationOptions.MaxRetainedResponseBodyCharacters;
+        var truncatedCount = 0;
+
+        foreach (var endpoint in endpointTests)
+        {
+            if (endpoint.TestResults == null)
+            {
+                continue;
+            }
+
+            foreach (var testResult in endpoint.TestResults)
+            {
+                if (string.IsNullOrEmpty(testResult.ResponseBody)
+                    || testResult.ResponseBody.Length <= cap)
+                {
+                    continue;
+                }
+
+                testResult.ResponseBody = testResult.ResponseBody[..cap];
+                truncatedCount++;
+            }
+        }
+
+        if (truncatedCount > 0)
+        {
+            notifications.Add(
+                $"Response bodies were truncated to {_openApiValidationOptions.MaxRetainedResponseBodyCharacters} characters for {truncatedCount} test result(s) by server configuration.");
+        }
     }
 
     private bool TryGetDefaultProfileSchemaFallback(out string schemaUrl, out string? profileVersion)

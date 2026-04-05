@@ -2487,6 +2487,62 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WhenServerResponseBodyCapConfigured_TruncatesRetainedBodies()
+    {
+        // Arrange
+        var json = CreateOpenApi30Spec();
+        var request = new OpenApiValidationRequest
+        {
+            OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com",
+            Options = new OpenApiValidationOptions { IncludeResponseBody = true }
+        };
+
+        SetupHttpMock(json, endpointResponseBody: "{\"data\":[{\"id\":\"123456789012345\"}]}");
+
+        var serviceWithCap = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(_httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _profileDiscoveryServiceMock.Object,
+            _feedSpecDiscoveryMock.Object,
+            specificationOptions: Options.Create(new SpecificationOptions
+            {
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-1.0"] = "https://openreferraluk.org/specifications/1.0/openapi.json",
+                    ["HSDS-UK-3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json"
+                }
+            }),
+            openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
+            {
+                HsdsValidationMode = HsdsValidationMode.SpecAndFeedRuntimeFast,
+                AllowUserSuppliedAuth = true,
+                ValidateSpecification = true,
+                TestEndpoints = true,
+                TestOptionalEndpoints = true,
+                TreatOptionalEndpointsAsWarnings = true,
+                MaxRetainedResponseBodyCharacters = 10
+            }));
+
+        // Act
+        var result = await serviceWithCap.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.EndpointTests, Is.Not.Empty);
+        var retainedBodies = result.EndpointTests
+            .SelectMany(e => e.TestResults)
+            .Select(tr => tr.ResponseBody)
+            .Where(body => body != null)
+            .ToList();
+
+        Assert.That(retainedBodies, Is.Not.Empty);
+        Assert.That(retainedBodies.All(body => body!.Length <= 10), Is.True);
+        Assert.That(result.Notifications.Any(n => n.Contains("Response bodies were truncated", StringComparison.Ordinal)), Is.True);
+    }
+
+    [Test]
     public async Task ValidateOpenApiSpecificationAsync_RespondsToTestResultsOption()
     {
         // Arrange
