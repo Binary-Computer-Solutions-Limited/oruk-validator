@@ -62,7 +62,7 @@ public class RemoteSchemaLoader
     /// <summary>
     /// Loads a remote JSON schema from a URL with caching support.
     /// </summary>
-    public async Task<JsonNode?> LoadRemoteSchemaAsync(string schemaUrl)
+    public async Task<JsonNode?> LoadRemoteSchemaAsync(string schemaUrl, CancellationToken cancellationToken = default)
     {
         var resolvedUrl = NormalizeKnownSchemaUrl(schemaUrl) ?? schemaUrl;
 
@@ -97,9 +97,9 @@ public class RemoteSchemaLoader
             }
 
             var httpClient = _httpClientFactory.CreateClient("OpenApiValidationService");
-            var response = await httpClient.SendAsync(request);
+            var response = await httpClient.SendAsync(request, cancellationToken);
       _ = response.EnsureSuccessStatusCode();
-            var content = await response.Content.ReadAsStringAsync();
+            var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
             // Store in persistent cache if caching is enabled
             if (_cacheOptions.Enabled)
