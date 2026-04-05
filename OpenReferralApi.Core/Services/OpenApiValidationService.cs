@@ -18,9 +18,10 @@ public interface IOpenApiValidationService
 
 public class OpenApiValidationService : IOpenApiValidationService
 {
+    private const string ValidationMetricsMeterName = "OpenReferralApi.Core.OpenApiValidationService";
     private static readonly ConcurrentDictionary<string, CachedResolvedSpec> FeedResolvedSpecCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly ConcurrentDictionary<string, CachedResolvedSpec> ProfileResolvedSpecCache = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly Meter CacheMetricsMeter = new("OpenReferralApi.Core.OpenApiValidationService", "1.0.0");
+    private static readonly Meter CacheMetricsMeter = new(ValidationMetricsMeterName, "1.0.0");
     private static readonly Counter<long> ResolvedOpenApiCacheHitsCounter = CacheMetricsMeter.CreateCounter<long>(
         "openreferral.openapi.cache.hits",
         description: "Number of resolved OpenAPI cache hits by scope (feed/profile)");
@@ -39,6 +40,22 @@ public class OpenApiValidationService : IOpenApiValidationService
         "openreferral.openapi.cache.entries.expired",
         CountExpiredCacheEntries,
         description: "Number of expired cached resolved OpenAPI specifications (feed + profile)");
+    private static readonly Histogram<long> ValidationManagedHeapBytesHistogram = CacheMetricsMeter.CreateHistogram<long>(
+        "openreferral.openapi.validation.memory.managed_heap_bytes",
+        unit: "By",
+        description: "Managed heap size observed at validation memory checkpoints");
+    private static readonly Histogram<long> ValidationManagedHeapDeltaBytesHistogram = CacheMetricsMeter.CreateHistogram<long>(
+        "openreferral.openapi.validation.memory.managed_heap_delta_bytes",
+        unit: "By",
+        description: "Managed heap delta between validation memory checkpoints");
+    private static readonly Histogram<long> ValidationWorkingSetBytesHistogram = CacheMetricsMeter.CreateHistogram<long>(
+        "openreferral.openapi.validation.memory.working_set_bytes",
+        unit: "By",
+        description: "Process working set observed at validation memory checkpoints");
+    private static readonly Histogram<long> ValidationWorkingSetDeltaBytesHistogram = CacheMetricsMeter.CreateHistogram<long>(
+        "openreferral.openapi.validation.memory.working_set_delta_bytes",
+        unit: "By",
+        description: "Process working set delta between validation memory checkpoints");
 
     private readonly ILogger<OpenApiValidationService> _logger;
     private readonly ISchemaResolverService _schemaResolverService;
@@ -94,10 +111,50 @@ public class OpenApiValidationService : IOpenApiValidationService
         var stopwatch = Stopwatch.StartNew();
         var result = new OpenApiValidationResult();
         var schemaResolutionIssues = new List<SchemaResolutionIssue>();
+        var lastManagedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
+        var lastWorkingSetBytes = Environment.WorkingSet;
+
+        void LogMemoryCheckpoint(string stage)
+        {
+            var managedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
+            var managedHeapDeltaBytes = managedHeapBytes - lastManagedHeapBytes;
+            var processWorkingSetBytes = Environment.WorkingSet;
+            var processWorkingSetDeltaBytes = processWorkingSetBytes - lastWorkingSetBytes;
+            var correlationId = GetCurrentCorrelationId();
+            var sanitizedBaseUrl = SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty);
+            var profile = ResolveMetadataProfileIdentifier(
+                request.ProfileReason,
+                _hsdsComplianceService.ExtractClaimedProfileVersion(request.ProfileReason, request.OwnSchemaUrl),
+                request.OwnSchemaUrl);
+
+            _logger.OpenApiValidationMemoryCheckpoint(
+                stage,
+                correlationId,
+                sanitizedBaseUrl,
+                SchemaResolverService.SanitizeStringForLogging(profile ?? string.Empty),
+                managedHeapBytes,
+                managedHeapDeltaBytes,
+                processWorkingSetBytes,
+                processWorkingSetDeltaBytes,
+                stopwatch.Elapsed.TotalMilliseconds);
+
+            var tags = new TagList
+            {
+                { "stage", stage }
+            };
+            ValidationManagedHeapBytesHistogram.Record(managedHeapBytes, tags);
+            ValidationManagedHeapDeltaBytesHistogram.Record(managedHeapDeltaBytes, tags);
+            ValidationWorkingSetBytesHistogram.Record(processWorkingSetBytes, tags);
+            ValidationWorkingSetDeltaBytesHistogram.Record(processWorkingSetDeltaBytes, tags);
+
+            lastManagedHeapBytes = managedHeapBytes;
+            lastWorkingSetBytes = processWorkingSetBytes;
+        }
 
         try
         {
             _logger.StartingOpenApiTesting();
+            LogMemoryCheckpoint("start");
 
             // Ensure options has default values if not provided
             request.Options ??= new OpenApiValidationOptions();
@@ -176,6 +233,8 @@ public class OpenApiValidationService : IOpenApiValidationService
                 throw new ArgumentException("OpenAPI schema URL must be provided or BaseUrl must allow discovery");
             }
 
+            LogMemoryCheckpoint("schema-url-discovery");
+
             var claimedProfileVersion = _hsdsComplianceService.ExtractClaimedProfileVersion(request.ProfileReason, request.OwnSchemaUrl);
             JObject? resolvedHsdsProfileSpec = null;
             string? knownHsdsSchemaUrl = null;
@@ -188,6 +247,8 @@ public class OpenApiValidationService : IOpenApiValidationService
                     resolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(knownHsdsSchemaUrl, null, cancellationToken, cacheScope: "profile", collectedIssues: schemaResolutionIssues);
                 }
             }
+
+            LogMemoryCheckpoint("hsds-profile-resolution");
 
             // Always resolve and cache the feed OpenAPI specification before validation/testing.
             // Track whether the feed spec fell back to the HSDS profile spec so that we can avoid
@@ -231,6 +292,8 @@ public class OpenApiValidationService : IOpenApiValidationService
                 feedSpecFellBackToHsdsProfile = true;
                 result.Notifications.Add("Unable to fetch OpenAPI specification from the feed URL. Falling back to the HSDS profile OpenAPI specification.");
             }
+
+            LogMemoryCheckpoint("feed-openapi-resolution");
 
             // If discovery could not infer an HSDS profile version, try extracting it from the OpenAPI document itself.
             string? misplacedHsdsVersionWarning = null;
@@ -342,6 +405,8 @@ public class OpenApiValidationService : IOpenApiValidationService
                 }
             }
 
+            LogMemoryCheckpoint("specification-validation");
+
             // Test endpoints after specification and HSDS profile checks.
             // When OwnSchemaValidation is None, validate responses against the HSDS profile schema
             // instead of the feed's own schema.
@@ -396,6 +461,8 @@ public class OpenApiValidationService : IOpenApiValidationService
                 result.EndpointTests = endpointTests;
             }
 
+            LogMemoryCheckpoint("endpoint-testing");
+
             if (_openApiValidationOptions.ValidateSpecification && specValidation != null)
             {
                 AddCircularReferenceValidationIssues(schemaResolutionIssues, specValidationErrors!);
@@ -427,6 +494,8 @@ public class OpenApiValidationService : IOpenApiValidationService
                     result.Notifications.Add("Full HSDS runtime mode requested, but no known HSDS profile schema could be resolved.");
                 }
             }
+
+            LogMemoryCheckpoint("full-hsds-runtime");
 
             // Build summary after all validation stages have had a chance to update endpoint results.
             result.Summary = BuildTestSummary(specValidation, endpointTests, request.Options);
@@ -473,6 +542,8 @@ public class OpenApiValidationService : IOpenApiValidationService
                     ep.TestResults.Clear();
                 }
             }
+
+            LogMemoryCheckpoint("result-shaping");
         }
         catch (Exception ex)
         {
@@ -522,6 +593,13 @@ public class OpenApiValidationService : IOpenApiValidationService
                 collectedIssues.Add(issue);
             }
         }
+    }
+
+    private static string GetCurrentCorrelationId()
+    {
+        return Activity.Current?.TraceId.ToString()
+            ?? Activity.Current?.Id
+            ?? "n/a";
     }
 
     private static void AddCircularReferenceValidationIssues(

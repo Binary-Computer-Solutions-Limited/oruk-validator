@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -26,11 +27,30 @@ public interface IEndpointTestingService
 
 public class EndpointTestingService : IEndpointTestingService
 {
+    private const string EndpointTestingMetricsMeterName = "OpenReferralApi.Core.EndpointTestingService";
+    private static readonly Meter EndpointTestingMetricsMeter = new(EndpointTestingMetricsMeterName, "1.0.0");
+    private static readonly Histogram<long> EndpointTestingManagedHeapBytesHistogram = EndpointTestingMetricsMeter.CreateHistogram<long>(
+        "openreferral.openapi.endpoint_testing.memory.managed_heap_bytes",
+        unit: "By",
+        description: "Managed heap size observed at endpoint testing memory checkpoints");
+    private static readonly Histogram<long> EndpointTestingManagedHeapDeltaBytesHistogram = EndpointTestingMetricsMeter.CreateHistogram<long>(
+        "openreferral.openapi.endpoint_testing.memory.managed_heap_delta_bytes",
+        unit: "By",
+        description: "Managed heap delta between endpoint testing memory checkpoints");
+    private static readonly Histogram<long> EndpointTestingWorkingSetBytesHistogram = EndpointTestingMetricsMeter.CreateHistogram<long>(
+        "openreferral.openapi.endpoint_testing.memory.working_set_bytes",
+        unit: "By",
+        description: "Process working set observed at endpoint testing memory checkpoints");
+    private static readonly Histogram<long> EndpointTestingWorkingSetDeltaBytesHistogram = EndpointTestingMetricsMeter.CreateHistogram<long>(
+        "openreferral.openapi.endpoint_testing.memory.working_set_delta_bytes",
+        unit: "By",
+        description: "Process working set delta between endpoint testing memory checkpoints");
     private readonly ILogger<EndpointTestingService> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IJsonValidatorService _jsonValidatorService;
     private readonly IHsdsComplianceService _hsdsComplianceService;
     private readonly OpenApiValidationServerOptions? _openApiValidationOptions;
+    private readonly ConcurrentDictionary<string, JToken> _validationSchemaCache = new(StringComparer.Ordinal);
 
     public EndpointTestingService(
         ILogger<EndpointTestingService> logger,
@@ -48,10 +68,46 @@ public class EndpointTestingService : IEndpointTestingService
     public async Task<List<EndpointTestResult>> TestEndpointsAsync(JObject openApiSpec, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, string? documentUri, CancellationToken cancellationToken = default)
     {
         var results = new List<EndpointTestResult>();
+        var stopwatch = Stopwatch.StartNew();
+        var lastManagedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
+        var lastWorkingSetBytes = Environment.WorkingSet;
+
+        void LogMemoryCheckpoint(string stage, string groupName)
+        {
+            var managedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
+            var managedHeapDeltaBytes = managedHeapBytes - lastManagedHeapBytes;
+            var processWorkingSetBytes = Environment.WorkingSet;
+            var processWorkingSetDeltaBytes = processWorkingSetBytes - lastWorkingSetBytes;
+
+            _logger.EndpointTestingMemoryCheckpoint(
+                stage,
+                TextSanitizer.SanitizeForLogging(groupName),
+                Activity.Current?.TraceId.ToString() ?? Activity.Current?.Id ?? "n/a",
+                SchemaResolverService.SanitizeUrlForLogging(baseUrl),
+                managedHeapBytes,
+                managedHeapDeltaBytes,
+                processWorkingSetBytes,
+                processWorkingSetDeltaBytes,
+                stopwatch.Elapsed.TotalMilliseconds,
+                results.Count);
+
+            var tags = new TagList
+            {
+                { "stage", stage }
+            };
+            EndpointTestingManagedHeapBytesHistogram.Record(managedHeapBytes, tags);
+            EndpointTestingManagedHeapDeltaBytesHistogram.Record(managedHeapDeltaBytes, tags);
+            EndpointTestingWorkingSetBytesHistogram.Record(processWorkingSetBytes, tags);
+            EndpointTestingWorkingSetDeltaBytesHistogram.Record(processWorkingSetDeltaBytes, tags);
+
+            lastManagedHeapBytes = managedHeapBytes;
+            lastWorkingSetBytes = processWorkingSetBytes;
+        }
 
         try
         {
             _logger.TestingEndpointsWithDependencyOrdering();
+            LogMemoryCheckpoint("start", "all");
 
             // We already have a JObject, so use it directly
             if (!openApiSpec.ContainsKey("paths"))
@@ -74,11 +130,13 @@ public class EndpointTestingService : IEndpointTestingService
             var extractedIds = new ConcurrentDictionary<string, List<string>>();
 
             _logger.FoundEndpointGroups(endpointGroups.Count);
+            LogMemoryCheckpoint("grouping-complete", "all");
 
             // Test endpoints in dependency order - collection endpoints first, then parameterized
             foreach (var group in endpointGroups)
             {
                 _logger.TestingEndpointGroup(TextSanitizer.SanitizeForLogging(group.RootPath), group.Endpoints.Count);
+                LogMemoryCheckpoint("group-start", group.RootPath);
 
                 var semaphore = new SemaphoreSlim(options.MaxConcurrentRequests, options.MaxConcurrentRequests);
 
@@ -90,6 +148,8 @@ public class EndpointTestingService : IEndpointTestingService
                         baseUrl, options, authentication, extractedIds, semaphore, openApiSpec, documentUri, endpoint.PathItem, cancellationToken);
                     results.Add(result);
                 }
+
+                LogMemoryCheckpoint("group-collections-complete", group.RootPath);
 
                 // PHASE 2: Test parameterized endpoints concurrently using extracted IDs
                 // These endpoints (e.g., GET /users/{id}) use IDs from the extractedIds dictionary
@@ -107,9 +167,11 @@ public class EndpointTestingService : IEndpointTestingService
                 semaphore.Dispose();
 
                 _logger.CompletedEndpointGroup(TextSanitizer.SanitizeForLogging(group.RootPath), group.CollectionEndpoints.Count, group.ParameterizedEndpoints.Count);
+                LogMemoryCheckpoint("group-complete", group.RootPath);
             }
 
             _logger.CompletedTestingEndpoints(results.Count);
+            LogMemoryCheckpoint("complete", "all");
         }
         catch (Exception ex)
         {
@@ -737,9 +799,7 @@ public class EndpointTestingService : IEndpointTestingService
                                 var schema = jsonContentObject["schema"];
                                 if (schema != null)
                                 {
-                                    var schemaForValidation = BuildValidationSchemaWithComponentsContext(schema, openApiDocument);
-                                    var schemaJson = schemaForValidation.ToString();
-                                    _logger.ResponseContentLength(schemaJson.Length);
+                                    var schemaForValidation = GetValidationSchemaForResponse(schema, openApiDocument);
                                     // Build schema in full OpenAPI context so internal refs like
                                     // #/components/schemas/* can be pre-resolved before JSchema creation.
                                     var validationRequest = new ValidationRequest
@@ -771,9 +831,22 @@ public class EndpointTestingService : IEndpointTestingService
         }
     }
 
+    private JToken GetValidationSchemaForResponse(JToken schema, JObject openApiDocument)
+    {
+        if (string.IsNullOrWhiteSpace(schema.Path))
+        {
+            return BuildValidationSchemaWithComponentsContext(schema, openApiDocument);
+        }
+
+        return _validationSchemaCache.GetOrAdd(
+            schema.Path,
+            _ => BuildValidationSchemaWithComponentsContext(schema, openApiDocument));
+    }
+
     private static JToken BuildValidationSchemaWithComponentsContext(JToken schema, JObject openApiDocument)
     {
-        if (openApiDocument["components"] is not JObject components)
+        if (!RequiresComponentsContext(schema)
+            || openApiDocument["components"] is not JObject components)
         {
             return schema.DeepClone();
         }
@@ -792,6 +865,27 @@ public class EndpointTestingService : IEndpointTestingService
         }
 
         return schema.DeepClone();
+    }
+
+    private static bool RequiresComponentsContext(JToken schema)
+    {
+        if (schema is JObject schemaObject
+            && schemaObject.TryGetValue("$ref", out var refToken)
+            && refToken.Type == JTokenType.String
+            && refToken.ToString().StartsWith("#/components/", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        foreach (var child in schema.Children())
+        {
+            if (RequiresComponentsContext(child))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void NormalizeValidationResultErrors(ValidationResult? validationResult)

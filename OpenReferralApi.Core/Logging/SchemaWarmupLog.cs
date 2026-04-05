@@ -27,5 +27,14 @@ namespace OpenReferralApi.Core.Logging
 
         [LoggerMessage(EventId = 3007, Level = LogLevel.Information, Message = "Schema warmup completed.")]
         public static partial void WarmupCompleted(this ILogger logger);
+
+        [LoggerMessage(EventId = 3008, Level = LogLevel.Information, Message = "Schema warmup memory checkpoint before caching begins. UrlCount: {UrlCount}, ManagedHeapBytes: {ManagedHeapBytes}, ProcessWorkingSetBytes: {ProcessWorkingSetBytes}, ElapsedMs: {ElapsedMs}")]
+        public static partial void WarmupMemoryBeforeCaching(this ILogger logger, int urlCount, long managedHeapBytes, long processWorkingSetBytes, double elapsedMs);
+
+        [LoggerMessage(EventId = 3009, Level = LogLevel.Information, Message = "Schema warmup memory checkpoint after attempt outcome success for schema {SchemaUrl}. CachedSchemaCount: {CachedSchemaCount}, TotalSchemaCount: {TotalSchemaCount}, ManagedHeapBytes: {ManagedHeapBytes}, ManagedHeapDeltaBytes: {ManagedHeapDeltaBytes}, ProcessWorkingSetBytes: {ProcessWorkingSetBytes}, ProcessWorkingSetDeltaBytes: {ProcessWorkingSetDeltaBytes}, ElapsedMs: {ElapsedMs}")]
+        public static partial void WarmupMemoryAfterCaching(this ILogger logger, string schemaUrl, int cachedSchemaCount, int totalSchemaCount, long managedHeapBytes, long managedHeapDeltaBytes, long processWorkingSetBytes, long processWorkingSetDeltaBytes, double elapsedMs);
+
+        [LoggerMessage(EventId = 3010, Level = LogLevel.Warning, Message = "Schema warmup memory checkpoint after attempt outcome failure for schema {SchemaUrl}. CachedSchemaCount: {CachedSchemaCount}, TotalSchemaCount: {TotalSchemaCount}, ManagedHeapBytes: {ManagedHeapBytes}, ManagedHeapDeltaBytes: {ManagedHeapDeltaBytes}, ProcessWorkingSetBytes: {ProcessWorkingSetBytes}, ProcessWorkingSetDeltaBytes: {ProcessWorkingSetDeltaBytes}, ElapsedMs: {ElapsedMs}")]
+        public static partial void WarmupMemoryAfterFailure(this ILogger logger, string schemaUrl, int cachedSchemaCount, int totalSchemaCount, long managedHeapBytes, long managedHeapDeltaBytes, long processWorkingSetBytes, long processWorkingSetDeltaBytes, double elapsedMs);
     }
 }

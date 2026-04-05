@@ -46,7 +46,10 @@ namespace OpenReferralApi.Core.Logging
         [LoggerMessage(EventId = 18013, Level = LogLevel.Warning, Message = "HSDS schema version was incorrectly defined in the 'openapi' field (value: {OpenapiValue}). The 'openapi' field specifies the OpenAPI specification version, not the HSDS schema version. Detected HSDS version {HsdsVersion} — please add an 'x-hsds-version' or 'version' field to the spec.")]
         public static partial void HsdsVersionMisplaced(this ILogger logger, string openapiValue, string hsdsVersion);
 
-        [LoggerMessage(EventId = 18014, Level = LogLevel.Information, Message = "OpenAPI validation run memory usage at completion. ManagedHeapBytes: {ManagedHeapBytes}, ProcessWorkingSetBytes: {ProcessWorkingSetBytes}, DurationMs: {DurationMs}")]
+        [LoggerMessage(EventId = 18014, Level = LogLevel.Information, Message = "OpenAPI validation memory checkpoint {Stage}. CorrelationId: {CorrelationId}, BaseUrl: {BaseUrl}, Profile: {Profile}, ManagedHeapBytes: {ManagedHeapBytes}, ManagedHeapDeltaBytes: {ManagedHeapDeltaBytes}, ProcessWorkingSetBytes: {ProcessWorkingSetBytes}, ProcessWorkingSetDeltaBytes: {ProcessWorkingSetDeltaBytes}, ElapsedMs: {ElapsedMs}")]
+        public static partial void OpenApiValidationMemoryCheckpoint(this ILogger logger, string stage, string correlationId, string baseUrl, string profile, long managedHeapBytes, long managedHeapDeltaBytes, long processWorkingSetBytes, long processWorkingSetDeltaBytes, double elapsedMs);
+
+        [LoggerMessage(EventId = 18015, Level = LogLevel.Information, Message = "OpenAPI validation run memory usage at completion. ManagedHeapBytes: {ManagedHeapBytes}, ProcessWorkingSetBytes: {ProcessWorkingSetBytes}, DurationMs: {DurationMs}")]
         public static partial void OpenApiValidationMemoryUsageAtCompletion(this ILogger logger, long managedHeapBytes, long processWorkingSetBytes, double durationMs);
     }
 }

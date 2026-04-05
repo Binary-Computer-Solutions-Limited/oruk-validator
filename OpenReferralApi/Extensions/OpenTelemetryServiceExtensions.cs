@@ -51,6 +51,9 @@ internal static class OpenTelemetryServiceExtensions
             {
                 _ = metricsBuilder
                     .AddMeter(Instrumentation.ServiceName)
+                    .AddMeter("OpenReferralApi.Core.OpenApiValidationService")
+                    .AddMeter("OpenReferralApi.Core.EndpointTestingService")
+                    .AddMeter("OpenReferralApi.SchemaWarmupExecutor")
                     .AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation();
 
