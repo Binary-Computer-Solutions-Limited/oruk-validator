@@ -822,7 +822,7 @@ public class OpenApiValidationService : IOpenApiValidationService
     private static void PurgeExpiredCacheEntries()
     {
         var now = DateTime.UtcNow;
-        foreach (var key in FeedResolvedSpecCache.Keys)
+        foreach (var key in FeedResolvedSpecCache.Keys.ToList())
         {
             if (FeedResolvedSpecCache.TryGetValue(key, out var entry) && entry.ExpiresAtUtc <= now)
             {
@@ -830,7 +830,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             }
         }
 
-        foreach (var key in ProfileResolvedSpecCache.Keys)
+        foreach (var key in ProfileResolvedSpecCache.Keys.ToList())
         {
             if (ProfileResolvedSpecCache.TryGetValue(key, out var entry) && entry.ExpiresAtUtc <= now)
             {

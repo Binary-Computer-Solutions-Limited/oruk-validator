@@ -411,7 +411,7 @@ public class JsonValidatorService : IJsonValidatorService
     private static void PurgeExpiredExternalSchemaEntries()
     {
         var now = DateTime.UtcNow;
-        foreach (var key in ExternalSchemaUriCache.Keys)
+        foreach (var key in ExternalSchemaUriCache.Keys.ToList())
         {
             if (ExternalSchemaUriCache.TryGetValue(key, out var entry) && entry.ExpiresAtUtc <= now)
             {
