@@ -214,6 +214,7 @@ public class HsdsComplianceService : IHsdsComplianceService
                     Schema = hsdsResponseSchema,
                     Options = new ValidationOptions
                     {
+                        MaxErrors = ResolveMaxValidationErrorsPerResponse(),
                         ReportAdditionalFields = true
                     }
                 };
@@ -339,6 +340,14 @@ public class HsdsComplianceService : IHsdsComplianceService
 
             destination[rawKey] = schemaUrl;
         }
+    }
+
+    private int ResolveMaxValidationErrorsPerResponse()
+    {
+        var configuredMaxErrors = _openApiValidationOptions?.MaxValidationErrorsPerResponse;
+        return configuredMaxErrors.HasValue && configuredMaxErrors.Value > 0
+            ? configuredMaxErrors.Value
+            : 100;
     }
     private static Dictionary<string, JObject> GetOperationMap(JObject spec, bool includeOptionalOperations)
     {

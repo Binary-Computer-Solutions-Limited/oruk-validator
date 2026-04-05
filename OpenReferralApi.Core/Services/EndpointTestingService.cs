@@ -899,6 +899,7 @@ public class EndpointTestingService : IEndpointTestingService
                                         Schema = compiledSchema,
                                         Options = new ValidationOptions
                                         {
+                                            MaxErrors = ResolveMaxValidationErrorsPerResponse(),
                                             ReportAdditionalFields = (options?.ReportAdditionalFields ?? false)
                                                 || ((_openApiValidationOptions?.OwnSchemaValidation
                                                      ?? OwnSchemaValidationMode.StrictOwnSchemaValidation)
@@ -1091,6 +1092,14 @@ public class EndpointTestingService : IEndpointTestingService
     {
         return options.IncludeResponseBody
             || (_openApiValidationOptions?.HsdsValidationMode == HsdsValidationMode.FullHsdsRuntime);
+    }
+
+    private int ResolveMaxValidationErrorsPerResponse()
+    {
+        var configuredMaxErrors = _openApiValidationOptions?.MaxValidationErrorsPerResponse;
+        return configuredMaxErrors.HasValue && configuredMaxErrors.Value > 0
+            ? configuredMaxErrors.Value
+            : 100;
     }
 
     private List<EndpointGroup> GroupEndpointsByDependencies(JObject pathsObject, OpenApiValidationOptions options)

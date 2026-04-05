@@ -113,4 +113,12 @@ public class OpenApiValidationServerOptions
     /// </summary>
     [DefaultValue(262144)]
     public int MaxRetainedResponseBodyCharacters { get; set; } = 262144;
+
+    /// <summary>
+    /// Maximum number of validation errors retained per endpoint response validation pass.
+    /// Lower values reduce memory pressure for large payloads that generate many repeated errors.
+    /// Set to 0 or a negative value to use the validator default.
+    /// </summary>
+    [DefaultValue(25)]
+    public int MaxValidationErrorsPerResponse { get; set; } = 25;
 }

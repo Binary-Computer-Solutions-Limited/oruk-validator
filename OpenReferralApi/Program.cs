@@ -15,6 +15,7 @@ using OpenReferralApi.Swagger;
 using Serilog;
 
 using OpenReferralApi.Logging;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,6 +27,26 @@ string[] selfHealthTags = ["ready"];
 string[] serviceHealthTags = ["ready", "service"];
 
 builder.Configuration.AddEnvironmentVariables("ORUK_API_");
+
+// 1. Load standard Environment Variables (including those with your prefix)
+builder.Configuration.AddEnvironmentVariables("ORUK_API_");
+
+// 2. Load the Custom JSON Strings (These will override/patch the above)
+// --- Specification URLs ---
+var urlsJson = Environment.GetEnvironmentVariable("ORUK_API_Specification__UrlsJson");
+if (!string.IsNullOrEmpty(urlsJson))
+{
+    var patch = $"{{\"Specification\":{{\"Urls\":{urlsJson}}}}}";
+    builder.Configuration.AddJsonStream(new MemoryStream(Encoding.UTF8.GetBytes(patch)));
+}
+
+// --- Schema URLs ---
+var schemasJson = Environment.GetEnvironmentVariable("ORUK_API_SchemaResolution__KnownUrlsJson");
+if (!string.IsNullOrEmpty(schemasJson))
+{
+    var patch = $"{{\"SchemaResolution\":{{\"KnownJsonSchemaUrls\":{schemasJson}}}}}";
+    builder.Configuration.AddJsonStream(new MemoryStream(Encoding.UTF8.GetBytes(patch)));
+}
 
 // Configure Serilog
 builder.Host.UseSerilog((context, configuration) =>
