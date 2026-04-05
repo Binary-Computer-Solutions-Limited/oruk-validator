@@ -285,7 +285,7 @@ public class EndpointTestingService : IEndpointTestingService
                 }
 
                 // Validate response if schema is defined
-                if (testResult.IsSuccessStatusCode && testResult.ResponseBody != null)
+                if (testResult.IsSuccessStatusCode && HasResponsePayload(testResult))
                 {
                     await ValidateResponseAsync(testResult, operation, openApiDocument, documentUri, options, compiledValidationSchemaCache, cancellationToken);
 
@@ -422,13 +422,13 @@ public class EndpointTestingService : IEndpointTestingService
         }
 
         // Validate first page response schema
-        if (firstPageResult.ResponseBody != null)
+        if (HasResponsePayload(firstPageResult))
         {
             await ValidateResponseAsync(firstPageResult, operation, openApiDocument, documentUri, options, compiledValidationSchemaCache, cancellationToken);
         }
 
         // Try to determine total pages and check for empty feed
-        var paginationInfo = ExtractPaginationInfo(firstPageResult.ResponseBody);
+        var paginationInfo = ExtractPaginationInfo(firstPageResult);
 
         // Warn if feed returns no rows
         if (paginationInfo.ItemCount == 0)
@@ -461,7 +461,7 @@ public class EndpointTestingService : IEndpointTestingService
                 var middlePageResult = await ExecuteHttpRequestAsync(middlePageUrl, method, operation, options, auth, cancellationToken);
                 result.TestResults.Add(middlePageResult);
 
-                if (middlePageResult.IsSuccessStatusCode && middlePageResult.ResponseBody != null)
+                if (middlePageResult.IsSuccessStatusCode && HasResponsePayload(middlePageResult))
                 {
                     await ValidateResponseAsync(middlePageResult, operation, openApiDocument, documentUri, options, compiledValidationSchemaCache, cancellationToken);
                 }
@@ -473,7 +473,7 @@ public class EndpointTestingService : IEndpointTestingService
             var lastPageResult = await ExecuteHttpRequestAsync(lastPageUrl, method, operation, options, auth, cancellationToken);
             result.TestResults.Add(lastPageResult);
 
-            if (lastPageResult.IsSuccessStatusCode && lastPageResult.ResponseBody != null)
+            if (lastPageResult.IsSuccessStatusCode && HasResponsePayload(lastPageResult))
             {
                 await ValidateResponseAsync(lastPageResult, operation, openApiDocument, documentUri, options, compiledValidationSchemaCache, cancellationToken);
             }
@@ -605,6 +605,16 @@ public class EndpointTestingService : IEndpointTestingService
             _logger.FailedToExtractPaginationInfo(ex);
             return (null, 0);
         }
+    }
+
+    private (int? TotalPages, int ItemCount) ExtractPaginationInfo(HttpTestResult response)
+    {
+        if (response.ParsedResponseJson != null)
+        {
+            return ExtractPaginationInfo(response.ParsedResponseJson.RootElement);
+        }
+
+        return ExtractPaginationInfo(response.ResponseBody);
     }
 
     private (int? TotalPages, int ItemCount) ExtractPaginationInfo(JsonElement json)
@@ -817,8 +827,8 @@ public class EndpointTestingService : IEndpointTestingService
             testResult.ResponseTime = timeToHeaders + contentTransferStopwatch.Elapsed;
             testResult.ResponseStatusCode = (int)response.StatusCode;
             testResult.IsSuccessStatusCode = response.IsSuccessStatusCode;
-            testResult.ResponseBody = responseBody;
             testResult.ParsedResponseJson = ParseJsonDocument(responseBody);
+            testResult.ResponseBody = ShouldRetainResponseBodies(options) ? responseBody : null;
 
             // Populate performance metrics (include best-effort DNS/TCP/TLS measurements if available)
             testResult.PerformanceMetrics = new EndpointPerformanceMetrics
@@ -998,6 +1008,11 @@ public class EndpointTestingService : IEndpointTestingService
         return false;
     }
 
+    private static bool HasResponsePayload(HttpTestResult response)
+    {
+        return response.ParsedResponseJson != null || !string.IsNullOrWhiteSpace(response.ResponseBody);
+    }
+
     private static void ReleaseParsedResponseJsonDocuments(IEnumerable<HttpTestResult> testResults)
     {
         foreach (var testResult in testResults)
@@ -1144,7 +1159,7 @@ public class EndpointTestingService : IEndpointTestingService
         var result = await TestSingleEndpointAsync(path, method, operation, baseUrl, options, authentication, semaphore, openApiDocument, documentUri, pathItem, compiledValidationSchemaCache, cancellationToken);
 
         // Extract IDs from successful GET responses for dependency testing
-        if (method == "GET" && result.TestResults.Any(r => r.IsSuccessStatusCode && !string.IsNullOrEmpty(r.ResponseBody)))
+        if (method == "GET" && result.TestResults.Any(r => r.IsSuccessStatusCode && HasResponsePayload(r)))
         {
             var rootPath = EndpointInfo.GetRootPath(path);
             var successfulResponse = result.TestResults.First(r => r.IsSuccessStatusCode);
@@ -1153,11 +1168,6 @@ public class EndpointTestingService : IEndpointTestingService
                 SchemaResolverService.SanitizeUrlForLogging(successfulResponse.RequestUrl ?? string.Empty),
                 successfulResponse.ResponseStatusCode ?? 0,
                 successfulResponse.ResponseBody?.Length ?? 0);
-
-            // Log first 500 characters of response for debugging
-            var responsePreview = successfulResponse.ResponseBody!.Length > 500
-                ? successfulResponse.ResponseBody[..500] + "..."
-                : successfulResponse.ResponseBody;
 
             _logger.ResponseContentLength(successfulResponse.ResponseBody?.Length ?? 0);
 
