@@ -227,8 +227,8 @@
       },
       "JsonSchema.Net": {
         "type": "Transitive",
-        "resolved": "9.1.3",
-        "contentHash": "xFRoACwojVG8X/9eaq6w53ZdKtfNxZcVx/6O4Cee0pYE5Ra1yU0MdKuThe3IVEeXz9nSQuxNqhJ4rZJ87ckXiA==",
+        "resolved": "9.1.4",
+        "contentHash": "qc+FSfwEFBhuxPEPNa2A3QdLTIBU5GIyK+eVQRUNjpS+ob15To+rDKB2CqseakCtf8zuiIGjuZwyn/3iSl6iPg==",
         "dependencies": {
           "JsonPointer.Net": "7.0.1"
         }
@@ -937,7 +937,7 @@
           "AspNetCore.HealthChecks.Uris": "[9.0.0, )",
           "FluentResults": "[4.0.0, )",
           "GitHubJwt": "[0.0.6, )",
-          "JsonSchema.Net": "[9.1.3, )",
+          "JsonSchema.Net": "[9.1.4, )",
           "Microsoft.AspNetCore.OpenApi": "[10.0.5, )",
           "MongoDB.Driver": "[3.7.1, )",
           "Newtonsoft.Json.Schema": "[4.0.1, )",
