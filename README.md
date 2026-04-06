@@ -73,6 +73,7 @@ This solution is built as a modern, cloud-native application with the following 
 ### Deployment
 
 - **Containerization**: Multi-stage Docker builds with Linux-based images
+- **Serverless**: AWS Lambda hosting enabled via `Amazon.Lambda.AspNetCoreServer.Hosting` and HTTP API event source
 - **Cloud Platform**: Heroku-ready with dynamic port configuration
 - **Orchestration**: Kubernetes-compatible health check endpoints
 - **CORS**: Configurable cross-origin resource sharing for frontend integration
@@ -93,7 +94,7 @@ For detailed information about specific components, see:
 When running locally in development mode, interactive API documentation is available at:
 
 - **Swagger UI**: `http://localhost:6969/` (or your configured port)
-- **OpenAPI Spec**: `http://localhost:6969/swagger/v1/swagger.json`
+- **OpenAPI Spec**: `http://localhost:6969/swagger/v3/swagger.json`
 
 ### Quick Start
 
@@ -118,6 +119,201 @@ When running locally in development mode, interactive API documentation is avail
    ```
 
 4. **Access Swagger UI**: Open `http://localhost:6969` in your browser
+
+## Configuration
+
+The application loads configuration in this order:
+
+1. `appsettings.json`
+2. `appsettings.{Environment}.json`
+3. Environment variables prefixed with `ORUK_API_`
+4. JSON patch environment variables for complex dictionary/list values:
+   - `ORUK_API_Specification__UrlsJson`
+   - `ORUK_API_SchemaResolution__KnownUrlsJson`
+
+Example for JSON patch environment variables:
+
+```bash
+export ORUK_API_Specification__UrlsJson='{"HSDS-UK-3.0":"https://openreferraluk.org/specifications/3.0/openapi.json"}'
+export ORUK_API_SchemaResolution__KnownUrlsJson='["https://json-schema.org/draft/2020-12/schema"]'
+```
+
+### Configuration Sections
+
+#### `Specification`
+
+- `WarmupEnabled` (bool): pre-fetch schemas at startup.
+- `WarmupStartupDelaySeconds` (int): delay before warmup starts.
+- `Urls` (object): map of profile key to OpenAPI URL.
+- `DefaultProfileVersion` (string|null): fallback profile key.
+
+#### `OpenApiValidation` (server-side)
+
+- `OwnSchemaValidation`: `None` | `AllowAdditionalProperties` | `StrictOwnSchemaValidation`.
+- `HsdsValidationMode`: `SpecAndFeedRuntimeFast` | `FullHsdsRuntime`.
+- `AllowUserSuppliedAuth` (bool): allow/reject request `dataSourceAuth`.
+- `ValidateSpecification` (bool): enable OpenAPI structure/profile comparison checks.
+- `TestEndpoints` (bool): enable live endpoint testing.
+- `TestOptionalEndpoints` (bool): test optional endpoints.
+- `TreatOptionalEndpointsAsWarnings` (bool): downgrade optional endpoint failures.
+- `MaxRetainedResponseBodyCharacters` (int): output/body retention cap.
+- `MaxValidationErrorsPerResponse` (int): cap validation errors retained per response.
+
+#### `Cache`
+
+- `Enabled` (bool): enable in-memory schema cache.
+- `ExpirationMinutes` (int): absolute expiration.
+- `MaxSizeMB` (int): memory cap.
+- `UseSlidingExpiration` (bool): enable sliding expiration.
+- `SlidingExpirationMinutes` (int): sliding window.
+
+#### `SchemaResolution`
+
+- `WarnOnUnknownJsonSchemaDraft` (bool): warn on unknown json-schema.org draft URL.
+- `KnownJsonSchemaUrls` (array): canonical draft/meta-schema URLs used in normalization.
+
+#### `Database`
+
+- `ConnectionString` (string): MongoDB connection; if empty, Mongo-backed services are disabled.
+- `DatabaseName` (string)
+- `ServicesCollection` (string)
+
+#### `FeedValidation`
+
+- `Enabled` (bool): enable periodic feed revalidation job.
+- `IntervalHours` (number): schedule interval.
+- `RunAtMidnight` (bool): align runs to midnight when enabled.
+
+#### `Security`
+
+- `AllowedCorsOrigins` (array): list of allowed origins (`"*"` permits all).
+- `ValidateSslCertificates` (bool): controls outbound HTTPS certificate validation.
+
+#### `RateLimiting`
+
+- `PermitLimit` (int): requests per fixed window.
+- `Window` (int): window length in seconds.
+- `QueueLimit` (int): queued requests allowed.
+
+#### `OpenTelemetry`
+
+- `Enabled` (bool): enable tracing/metrics.
+- `OtlpEndpoint` (string|null): OTLP endpoint; in Development with no endpoint, console exporter is used.
+
+#### `Swagger`
+
+- `DocName` (string)
+- `Version` (string)
+- `Title` (string)
+- `Description` (string)
+- `OpenApiSpecVersion` (string, for example `OpenApi3_1_0`)
+
+#### Other standard sections
+
+- `Serilog`: sink and level configuration.
+- `AllowedHosts`: ASP.NET Core host filtering.
+
+### Request-level Validation Options
+
+Clients can set validation request options in payload `options`:
+
+- `timeoutSeconds` (default 30)
+- `maxConcurrentRequests` (default 5)
+- `includeResponseBody` (default false)
+- `includeTestResults` (default true)
+
+Server `OpenApiValidation` settings still apply and are not overridable by client payloads.
+
+## Deploying To AWS Lambda
+
+This project is Lambda-ready and uses `AddAWSLambdaHosting(LambdaEventSource.HttpApi)`.
+
+### Prerequisites
+
+1. AWS CLI configured (`aws configure`) with permissions for Lambda, CloudWatch Logs, and API Gateway.
+2. .NET 10 SDK installed.
+3. Amazon Lambda .NET tooling installed:
+
+```bash
+dotnet tool install -g Amazon.Lambda.Tools
+```
+
+### Deploy The Function
+
+From repository root:
+
+```bash
+dotnet lambda deploy-function OpenReferralApi \
+  --project-location OpenReferralApi \
+  --region eu-west-1 \
+  --configuration Release \
+  --framework net10.0 \
+  --function-runtime dotnet10 \
+  --function-memory-size 2048 \
+  --function-timeout 60
+```
+
+You can also run `dotnet lambda deploy-function` from `OpenReferralApi/` and it will use `aws-lambda-tools-defaults.json`.
+
+### Configure Environment Variables
+
+Set runtime settings as Lambda environment variables:
+
+```bash
+aws lambda update-function-configuration \
+  --function-name OpenReferralApi \
+  --environment "Variables={ASPNETCORE_ENVIRONMENT=Production,ORUK_API_OpenApiValidation__AllowUserSuppliedAuth=false,ORUK_API_FeedValidation__Enabled=false}"
+```
+
+For larger settings such as profile URL maps, prefer `ORUK_API_Specification__UrlsJson`.
+
+### Attach API Gateway HTTP API
+
+1. Create an API Gateway HTTP API.
+2. Add Lambda integration targeting `OpenReferralApi` function.
+3. Add route `ANY /{proxy+}` (or explicit routes as needed).
+4. Deploy a stage and use that invoke URL.
+
+After deployment, open the API base URL and verify:
+
+- `/`
+- `/health-check/live`
+- `/health-check/ready`
+- `/swagger/v3/swagger.json`
+
+### AWS Lambda Reference Architecture
+
+```text
+Client (Web/App/CLI)
+  |
+  v
+Amazon API Gateway (HTTP API)
+  |
+  v
+AWS Lambda: OpenReferralApi (.NET 10)
+  - ASP.NET Core pipeline
+  - Validation services
+  - Swagger endpoint
+  - Health endpoints
+  |
+  +------------------------------+
+  |                              |
+  v                              v
+External ORUK/HSDS Spec URLs      CloudWatch Logs/Metrics
+(schema/profile discovery)         (runtime observability)
+  |
+  v
+Optional MongoDB (if Database:ConnectionString is set)
+  - feed registry
+  - feed validation history
+```
+
+Request path summary:
+
+1. Client sends request to API Gateway route.
+2. API Gateway forwards request to Lambda using HTTP API proxy integration.
+3. Lambda executes ASP.NET Core middleware/controllers and returns the response.
+4. Lambda writes logs/metrics to CloudWatch; validation may call remote OpenAPI/schema URLs and optional MongoDB.
 
 ## Current API Routes
 
