@@ -189,5 +189,8 @@ namespace OpenReferralApi.Core.Logging
 
         [LoggerMessage(EventId = 5061, Level = LogLevel.Information, Message = "Compiled endpoint schema cache state at stage {Stage}. EntryCount: {EntryCount}, TotalKeyChars: {TotalKeyChars}")]
         public static partial void CompiledEndpointSchemaCacheState(this ILogger logger, string stage, int entryCount, long totalKeyChars);
+
+        [LoggerMessage(EventId = 5062, Level = LogLevel.Information, Message = "Endpoint testing retention snapshot at stage {Stage}. ParsedJsonDocumentsInFlight: {ParsedJsonDocumentsInFlight}, RetainedResponseBodies: {RetainedResponseBodies}, RetainedResponseBodyChars: {RetainedResponseBodyChars}, ExtractedIdRoots: {ExtractedIdRoots}, ExtractedIdValues: {ExtractedIdValues}, ValidationSchemaCacheEntries: {ValidationSchemaCacheEntries}")]
+        public static partial void EndpointTestingRetentionSnapshot(this ILogger logger, string stage, int parsedJsonDocumentsInFlight, int retainedResponseBodies, long retainedResponseBodyChars, int extractedIdRoots, int extractedIdValues, int validationSchemaCacheEntries);
     }
 }

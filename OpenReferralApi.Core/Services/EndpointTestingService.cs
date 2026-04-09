@@ -75,6 +75,7 @@ public class EndpointTestingService : IEndpointTestingService
         var results = new List<EndpointTestResult>();
         var compiledValidationSchemaCache = CompiledValidationSchemaCache;
         var parsedResponseJsonByResult = new ConcurrentDictionary<HttpTestResult, JsonDocument>();
+        var extractedIds = new ConcurrentDictionary<string, List<string>>();
         var stopwatch = Stopwatch.StartNew();
         var lastManagedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
         var lastWorkingSetBytes = Environment.WorkingSet;
@@ -113,6 +114,20 @@ public class EndpointTestingService : IEndpointTestingService
                 compiledSchemaCacheState.EntryCount,
                 compiledSchemaCacheState.TotalKeyChars);
 
+            var retentionSnapshot = GetEndpointRetentionSnapshot(
+                results,
+                parsedResponseJsonByResult,
+                extractedIds,
+                _validationSchemaCache);
+            _logger.EndpointTestingRetentionSnapshot(
+                stage,
+                retentionSnapshot.ParsedJsonDocumentsInFlight,
+                retentionSnapshot.RetainedResponseBodies,
+                retentionSnapshot.RetainedResponseBodyChars,
+                retentionSnapshot.ExtractedIdRoots,
+                retentionSnapshot.ExtractedIdValues,
+                retentionSnapshot.ValidationSchemaCacheEntries);
+
             lastManagedHeapBytes = managedHeapBytes;
             lastWorkingSetBytes = processWorkingSetBytes;
         }
@@ -137,10 +152,6 @@ public class EndpointTestingService : IEndpointTestingService
 
             // Group and order endpoints with intelligent dependency handling
             var endpointGroups = GroupEndpointsByDependencies(pathsObject, options);
-
-            // Shared dictionary for ID extraction and usage across dependent endpoints
-            // This dictionary is populated by collection endpoints and consumed by parameterized endpoints
-            var extractedIds = new ConcurrentDictionary<string, List<string>>();
 
             _logger.FoundEndpointGroups(endpointGroups.Count);
             LogMemoryCheckpoint("grouping-complete", "all");
@@ -930,6 +941,44 @@ public class EndpointTestingService : IEndpointTestingService
         return (
             cache.Count,
             cache.Keys.Sum(static key => (long)key.Length));
+    }
+
+    private static (
+        int ParsedJsonDocumentsInFlight,
+        int RetainedResponseBodies,
+        long RetainedResponseBodyChars,
+        int ExtractedIdRoots,
+        int ExtractedIdValues,
+        int ValidationSchemaCacheEntries) GetEndpointRetentionSnapshot(
+            IEnumerable<EndpointTestResult> endpointResults,
+            ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult,
+            ConcurrentDictionary<string, List<string>> extractedIds,
+            ConcurrentDictionary<string, JToken> validationSchemaCache)
+    {
+        int retainedResponseBodies = 0;
+        long retainedResponseBodyChars = 0;
+
+        foreach (var endpointResult in endpointResults)
+        {
+            foreach (var httpResult in endpointResult.TestResults)
+            {
+                if (string.IsNullOrEmpty(httpResult.ResponseBody))
+                {
+                    continue;
+                }
+
+                retainedResponseBodies++;
+                retainedResponseBodyChars += httpResult.ResponseBody.Length;
+            }
+        }
+
+        return (
+            parsedResponseJsonByResult.Count,
+            retainedResponseBodies,
+            retainedResponseBodyChars,
+            extractedIds.Count,
+            extractedIds.Values.Sum(static ids => ids.Count),
+            validationSchemaCache.Count);
     }
 
     private static async Task<JsonDocument?> TryParseJsonDocumentFromStreamAsync(Stream stream, CancellationToken cancellationToken)
