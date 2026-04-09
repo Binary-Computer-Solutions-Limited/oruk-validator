@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Text.Json.Nodes;
 using System.Text.Json;
 using System.Collections.Concurrent;
@@ -755,8 +756,18 @@ public class EndpointTestingService : IEndpointTestingService
             {
                 if (ShouldRetainResponseBodies(options))
                 {
-                    responseBody = await response.Content.ReadAsStringAsync(cts.Token);
-                    parsedResponseJson = ParseJsonDocument(responseBody);
+                    // Retain path: buffer via ArrayPool to avoid MemoryStream doubling,
+                    // then decode to string for ResponseBody output.
+                    var (rentedBuffer, bufferLength) = await CopyToRentedBufferAsync(response.Content, cts.Token);
+                    try
+                    {
+                        parsedResponseJson = TryParseJsonDocumentFromBuffer(rentedBuffer, bufferLength);
+                        responseBody = Encoding.UTF8.GetString(rentedBuffer, 0, bufferLength);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(rentedBuffer);
+                    }
                 }
                 else
                 {
@@ -897,23 +908,6 @@ public class EndpointTestingService : IEndpointTestingService
             _ => JSchema.Parse(schemaForValidation.ToString(Formatting.None)));
     }
 
-    private static JsonDocument? ParseJsonDocument(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return null;
-        }
-
-        try
-        {
-            return JsonDocument.Parse(json);
-        }
-        catch (System.Text.Json.JsonException)
-        {
-            return null;
-        }
-    }
-
     private static async Task<JsonDocument?> TryParseJsonDocumentFromStreamAsync(Stream stream, CancellationToken cancellationToken)
     {
         try
@@ -924,6 +918,44 @@ public class EndpointTestingService : IEndpointTestingService
         {
             return null;
         }
+    }
+
+    private static JsonDocument? TryParseJsonDocumentFromBuffer(byte[] buffer, int length)
+    {
+        try
+        {
+            return JsonDocument.Parse(buffer.AsMemory(0, length));
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Copies HTTP content to a pooled byte array, growing it as needed.
+    /// The caller is responsible for returning the rented buffer to <see cref="ArrayPool{T}.Shared"/>.
+    /// </summary>
+    private static async Task<(byte[] RentedBuffer, int Length)> CopyToRentedBufferAsync(
+        HttpContent content, CancellationToken cancellationToken)
+    {
+        const int InitialCapacity = 16 * 1024;
+        var buffer = ArrayPool<byte>.Shared.Rent(InitialCapacity);
+        int total = 0;
+        await using var stream = await content.ReadAsStreamAsync(cancellationToken);
+        int read;
+        while ((read = await stream.ReadAsync(buffer.AsMemory(total), cancellationToken)) > 0)
+        {
+            total += read;
+            if (total + 4096 > buffer.Length)
+            {
+                var larger = ArrayPool<byte>.Shared.Rent(buffer.Length * 2);
+                buffer.AsSpan(0, total).CopyTo(larger);
+                ArrayPool<byte>.Shared.Return(buffer);
+                buffer = larger;
+            }
+        }
+        return (buffer, total);
     }
 
     private static bool TryGetPropertyIgnoreCase(JsonElement element, string propertyName, out JsonElement value)
