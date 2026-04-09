@@ -245,7 +245,7 @@ From repository root:
 ```bash
 dotnet lambda deploy-function OpenReferralApi \
   --project-location OpenReferralApi \
-  --region eu-west-1 \
+  --region eu-west-2 \
   --configuration Release \
   --framework net10.0 \
   --function-runtime dotnet10 \
