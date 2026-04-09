@@ -51,5 +51,11 @@ namespace OpenReferralApi.Core.Logging
 
         [LoggerMessage(EventId = 18015, Level = LogLevel.Information, Message = "OpenAPI validation run memory usage at completion. ManagedHeapBytes: {ManagedHeapBytes}, ProcessWorkingSetBytes: {ProcessWorkingSetBytes}, DurationMs: {DurationMs}")]
         public static partial void OpenApiValidationMemoryUsageAtCompletion(this ILogger logger, long managedHeapBytes, long processWorkingSetBytes, double durationMs);
+
+        [LoggerMessage(EventId = 18016, Level = LogLevel.Information, Message = "Resolved OpenAPI cache state at stage {Stage}. FeedEntries: {FeedEntries}, ProfileEntries: {ProfileEntries}, ExpiredEntries: {ExpiredEntries}, FeedJsonChars: {FeedJsonChars}, ProfileJsonChars: {ProfileJsonChars}")]
+        public static partial void ResolvedOpenApiCacheState(this ILogger logger, string stage, int feedEntries, int profileEntries, int expiredEntries, long feedJsonChars, long profileJsonChars);
+
+        [LoggerMessage(EventId = 18017, Level = LogLevel.Information, Message = "Resolved OpenAPI cache lookup {Outcome} (scope: {CacheScope}) for URL {SpecUrl}. ManagedHeapBytes: {ManagedHeapBytes}, ManagedHeapDeltaBytes: {ManagedHeapDeltaBytes}, ProcessWorkingSetBytes: {ProcessWorkingSetBytes}, ProcessWorkingSetDeltaBytes: {ProcessWorkingSetDeltaBytes}, ElapsedMs: {ElapsedMs}")]
+        public static partial void ResolvedOpenApiCacheLookupMemoryCheckpoint(this ILogger logger, string outcome, string cacheScope, string specUrl, long managedHeapBytes, long managedHeapDeltaBytes, long processWorkingSetBytes, long processWorkingSetDeltaBytes, double elapsedMs);
     }
 }

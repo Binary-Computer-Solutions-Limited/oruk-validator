@@ -147,6 +147,15 @@ public class OpenApiValidationService : IOpenApiValidationService
             ValidationWorkingSetBytesHistogram.Record(processWorkingSetBytes, tags);
             ValidationWorkingSetDeltaBytesHistogram.Record(processWorkingSetDeltaBytes, tags);
 
+            var cacheState = GetResolvedOpenApiCacheState();
+            _logger.ResolvedOpenApiCacheState(
+                stage,
+                cacheState.FeedEntries,
+                cacheState.ProfileEntries,
+                cacheState.ExpiredEntries,
+                cacheState.FeedJsonChars,
+                cacheState.ProfileJsonChars);
+
             lastManagedHeapBytes = managedHeapBytes;
             lastWorkingSetBytes = processWorkingSetBytes;
         }
@@ -287,7 +296,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     SchemaResolverService.SanitizeUrlForLogging(request.OwnSchemaUrl),
                     SchemaResolverService.SanitizeUrlForLogging(knownHsdsSchemaUrl));
 
-                openApiSpec = (JObject)resolvedHsdsProfileSpec.DeepClone();
+                openApiSpec = resolvedHsdsProfileSpec;
                 request.OwnSchemaUrl = knownHsdsSchemaUrl;
                 feedSpecFellBackToHsdsProfile = true;
                 result.Notifications.Add("Unable to fetch OpenAPI specification from the feed URL. Falling back to the HSDS profile OpenAPI specification.");
@@ -435,7 +444,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     endpointValidationSpec = openApiSpec;
                 }
 
-                var pathDeduplicationWarning = RemoveDuplicatedBasePathFromOpenApiPaths(endpointValidationSpec, request.BaseUrl);
+                endpointValidationSpec = PrepareEndpointValidationSpecForEndpointTesting(endpointValidationSpec, request.BaseUrl, out var pathDeduplicationWarning);
                 if (!string.IsNullOrWhiteSpace(pathDeduplicationWarning))
                 {
                     if (_openApiValidationOptions.ValidateSpecification && specValidation != null)
@@ -721,6 +730,54 @@ public class OpenApiValidationService : IOpenApiValidationService
         return $"Warning: Removed duplicated base URL prefix '{basePath}' from {duplicatedEntries.Count} OpenAPI endpoint path(s) before endpoint testing.";
     }
 
+    private static JObject PrepareEndpointValidationSpecForEndpointTesting(JObject openApiSpec, string? baseUrl, out string? pathDeduplicationWarning)
+    {
+        pathDeduplicationWarning = null;
+
+        if (!WouldDuplicateBasePathRequireMutation(openApiSpec, baseUrl))
+        {
+            return openApiSpec;
+        }
+
+        var clonedSpec = (JObject)openApiSpec.DeepClone();
+        pathDeduplicationWarning = RemoveDuplicatedBasePathFromOpenApiPaths(clonedSpec, baseUrl);
+        return clonedSpec;
+    }
+
+    private static bool WouldDuplicateBasePathRequireMutation(JObject openApiSpec, string? baseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(baseUrl)
+            || openApiSpec["paths"] is not JObject pathsObject
+            || pathsObject.Count == 0)
+        {
+            return false;
+        }
+
+        var baseUri = TryParseBaseUri(baseUrl);
+        if (baseUri == null)
+        {
+            return false;
+        }
+
+        var basePath = NormalizePath(baseUri.AbsolutePath);
+        if (string.IsNullOrEmpty(basePath) || basePath == "/")
+        {
+            return false;
+        }
+
+        foreach (var property in pathsObject.Properties())
+        {
+            var originalPath = NormalizePath(property.Name);
+            var deduplicatedPath = TryStripDuplicateBasePath(originalPath, basePath) ?? originalPath;
+            if (!string.Equals(deduplicatedPath, originalPath, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static Uri? TryParseBaseUri(string? baseUrl)
     {
         if (string.IsNullOrWhiteSpace(baseUrl))
@@ -856,6 +913,27 @@ public class OpenApiValidationService : IOpenApiValidationService
         string cacheScope,
         ICollection<SchemaResolutionIssue>? collectedIssues = null)
     {
+        var lookupStopwatch = Stopwatch.StartNew();
+        var lookupStartManagedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
+        var lookupStartWorkingSetBytes = Environment.WorkingSet;
+        var sanitizedSpecUrl = SchemaResolverService.SanitizeUrlForLogging(specUrl);
+
+        void LogLookupCheckpoint(string outcome)
+        {
+            var managedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
+            var processWorkingSetBytes = Environment.WorkingSet;
+
+            _logger.ResolvedOpenApiCacheLookupMemoryCheckpoint(
+                outcome,
+                cacheScope,
+                sanitizedSpecUrl,
+                managedHeapBytes,
+                managedHeapBytes - lookupStartManagedHeapBytes,
+                processWorkingSetBytes,
+                processWorkingSetBytes - lookupStartWorkingSetBytes,
+                lookupStopwatch.Elapsed.TotalMilliseconds);
+        }
+
         var cache = ResolveCacheByScope(cacheScope);
         var cacheKey = $"resolved-openapi:{specUrl}";
 
@@ -864,12 +942,13 @@ public class OpenApiValidationService : IOpenApiValidationService
             && !string.IsNullOrWhiteSpace(cachedEntry.ResolvedSpecJson))
         {
             ResolvedOpenApiCacheHitsCounter.Add(1, new KeyValuePair<string, object?>("scope", cacheScope));
-            _logger.ResolvedOpenApiCacheHit(cacheScope, SchemaResolverService.SanitizeUrlForLogging(specUrl));
-            return JObject.Parse(cachedEntry.ResolvedSpecJson);
+            _logger.ResolvedOpenApiCacheHit(cacheScope, sanitizedSpecUrl);
+            LogLookupCheckpoint("cache-hit");
+            return cachedEntry.ResolvedSpecDocument;
         }
 
         ResolvedOpenApiCacheMissesCounter.Add(1, new KeyValuePair<string, object?>("scope", cacheScope));
-        _logger.ResolvedOpenApiCacheMiss(cacheScope, SchemaResolverService.SanitizeUrlForLogging(specUrl));
+        _logger.ResolvedOpenApiCacheMiss(cacheScope, sanitizedSpecUrl);
 
         if (string.Equals(cacheScope, "profile", StringComparison.Ordinal))
         {
@@ -895,16 +974,18 @@ public class OpenApiValidationService : IOpenApiValidationService
                     PurgeExpiredCacheEntries();
                     cache[cacheKey] = new CachedResolvedSpec(
                         resolvedFromWarmup,
-                    DateTime.UtcNow.Add(GetProfileSchemaCacheTtl()));
+                        resolvedFromWarmupObject,
+                        DateTime.UtcNow.Add(GetProfileSchemaCacheTtl()));
                 }
 
-                _logger.ResolvedProfileViaWarmup(SchemaResolverService.SanitizeUrlForLogging(specUrl));
+                _logger.ResolvedProfileViaWarmup(sanitizedSpecUrl);
+                LogLookupCheckpoint("cache-miss-warmup-hit");
 
                 return resolvedFromWarmupObject;
             }
             catch (Exception ex)
             {
-                _logger.WarmupPathResolutionUnavailable(ex, SchemaResolverService.SanitizeUrlForLogging(specUrl));
+                _logger.WarmupPathResolutionUnavailable(ex, sanitizedSpecUrl);
             }
         }
 
@@ -920,11 +1001,16 @@ public class OpenApiValidationService : IOpenApiValidationService
         if (_cacheOptions.Enabled)
         {
             PurgeExpiredCacheEntries();
+            var resolvedSpecObject = JObject.Parse(resolvedSpecContent);
             cache[cacheKey] = new CachedResolvedSpec(
                 resolvedSpecContent,
+                resolvedSpecObject,
                 DateTime.UtcNow.Add(GetProfileSchemaCacheTtl()));
+            LogLookupCheckpoint("cache-miss-direct");
+            return resolvedSpecObject;
         }
 
+        LogLookupCheckpoint("cache-disabled-direct");
         return JObject.Parse(resolvedSpecContent);
     }
 
@@ -945,7 +1031,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         };
     }
 
-    private sealed record CachedResolvedSpec(string ResolvedSpecJson, DateTime ExpiresAtUtc);
+    private sealed record CachedResolvedSpec(string ResolvedSpecJson, JObject ResolvedSpecDocument, DateTime ExpiresAtUtc);
 
     private static bool IsLikelyOpenApiDocument(JObject candidate)
     {
@@ -960,6 +1046,20 @@ public class OpenApiValidationService : IOpenApiValidationService
         var expiredFeedEntries = FeedResolvedSpecCache.Values.Count(entry => entry.ExpiresAtUtc <= now);
         var expiredProfileEntries = ProfileResolvedSpecCache.Values.Count(entry => entry.ExpiresAtUtc <= now);
         return expiredFeedEntries + expiredProfileEntries;
+    }
+
+    private static (int FeedEntries, int ProfileEntries, int ExpiredEntries, long FeedJsonChars, long ProfileJsonChars) GetResolvedOpenApiCacheState()
+    {
+        var now = DateTime.UtcNow;
+        var expiredEntries = FeedResolvedSpecCache.Values.Count(entry => entry.ExpiresAtUtc <= now)
+            + ProfileResolvedSpecCache.Values.Count(entry => entry.ExpiresAtUtc <= now);
+
+        return (
+            FeedResolvedSpecCache.Count,
+            ProfileResolvedSpecCache.Count,
+            expiredEntries,
+            FeedResolvedSpecCache.Values.Sum(entry => (long)entry.ResolvedSpecJson.Length),
+            ProfileResolvedSpecCache.Values.Sum(entry => (long)entry.ResolvedSpecJson.Length));
     }
 
     private static void PurgeExpiredCacheEntries()
