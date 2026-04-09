@@ -113,6 +113,14 @@ public class OpenApiValidationService : IOpenApiValidationService
         var schemaResolutionIssues = new List<SchemaResolutionIssue>();
         var lastManagedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
         var lastWorkingSetBytes = Environment.WorkingSet;
+        var initialGcMemoryInfo = GC.GetGCMemoryInfo();
+        var lastGcHeapSizeBytes = initialGcMemoryInfo.HeapSizeBytes;
+        var lastGcFragmentedBytes = initialGcMemoryInfo.FragmentedBytes;
+        var lastGcTotalCommittedBytes = initialGcMemoryInfo.TotalCommittedBytes;
+        var lastGcMemoryLoadBytes = initialGcMemoryInfo.MemoryLoadBytes;
+        var lastGen0CollectionCount = GC.CollectionCount(0);
+        var lastGen1CollectionCount = GC.CollectionCount(1);
+        var lastGen2CollectionCount = GC.CollectionCount(2);
 
         void LogMemoryCheckpoint(string stage)
         {
@@ -120,6 +128,21 @@ public class OpenApiValidationService : IOpenApiValidationService
             var managedHeapDeltaBytes = managedHeapBytes - lastManagedHeapBytes;
             var processWorkingSetBytes = Environment.WorkingSet;
             var processWorkingSetDeltaBytes = processWorkingSetBytes - lastWorkingSetBytes;
+            var gcMemoryInfo = GC.GetGCMemoryInfo();
+            var gcHeapSizeBytes = gcMemoryInfo.HeapSizeBytes;
+            var gcHeapSizeDeltaBytes = gcHeapSizeBytes - lastGcHeapSizeBytes;
+            var gcFragmentedBytes = gcMemoryInfo.FragmentedBytes;
+            var gcFragmentedDeltaBytes = gcFragmentedBytes - lastGcFragmentedBytes;
+            var gcTotalCommittedBytes = gcMemoryInfo.TotalCommittedBytes;
+            var gcTotalCommittedDeltaBytes = gcTotalCommittedBytes - lastGcTotalCommittedBytes;
+            var gcMemoryLoadBytes = gcMemoryInfo.MemoryLoadBytes;
+            var gcMemoryLoadDeltaBytes = gcMemoryLoadBytes - lastGcMemoryLoadBytes;
+            var gen0CollectionCount = GC.CollectionCount(0);
+            var gen1CollectionCount = GC.CollectionCount(1);
+            var gen2CollectionCount = GC.CollectionCount(2);
+            var gen0CollectionsDelta = gen0CollectionCount - lastGen0CollectionCount;
+            var gen1CollectionsDelta = gen1CollectionCount - lastGen1CollectionCount;
+            var gen2CollectionsDelta = gen2CollectionCount - lastGen2CollectionCount;
             var correlationId = GetCurrentCorrelationId();
             var sanitizedBaseUrl = SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty);
             var profile = ResolveMetadataProfileIdentifier(
@@ -136,6 +159,17 @@ public class OpenApiValidationService : IOpenApiValidationService
                 managedHeapDeltaBytes,
                 processWorkingSetBytes,
                 processWorkingSetDeltaBytes,
+                gcHeapSizeBytes,
+                gcHeapSizeDeltaBytes,
+                gcFragmentedBytes,
+                gcFragmentedDeltaBytes,
+                gcTotalCommittedBytes,
+                gcTotalCommittedDeltaBytes,
+                gcMemoryLoadBytes,
+                gcMemoryLoadDeltaBytes,
+                gen0CollectionsDelta,
+                gen1CollectionsDelta,
+                gen2CollectionsDelta,
                 stopwatch.Elapsed.TotalMilliseconds);
 
             var tags = new TagList
@@ -158,6 +192,13 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             lastManagedHeapBytes = managedHeapBytes;
             lastWorkingSetBytes = processWorkingSetBytes;
+            lastGcHeapSizeBytes = gcHeapSizeBytes;
+            lastGcFragmentedBytes = gcFragmentedBytes;
+            lastGcTotalCommittedBytes = gcTotalCommittedBytes;
+            lastGcMemoryLoadBytes = gcMemoryLoadBytes;
+            lastGen0CollectionCount = gen0CollectionCount;
+            lastGen1CollectionCount = gen1CollectionCount;
+            lastGen2CollectionCount = gen2CollectionCount;
         }
 
         try
