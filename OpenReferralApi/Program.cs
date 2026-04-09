@@ -37,7 +37,8 @@ var urlsJson = Environment.GetEnvironmentVariable("ORUK_API_Specification__UrlsJ
 if (!string.IsNullOrEmpty(urlsJson))
 {
     var patch = $"{{\"Specification\":{{\"Urls\":{urlsJson}}}}}";
-    builder.Configuration.AddJsonStream(new MemoryStream(Encoding.UTF8.GetBytes(patch)));
+    using var urlsPatchStream = new MemoryStream(Encoding.UTF8.GetBytes(patch));
+    builder.Configuration.AddJsonStream(urlsPatchStream);
 }
 
 // --- Schema URLs ---
@@ -45,7 +46,8 @@ var schemasJson = Environment.GetEnvironmentVariable("ORUK_API_SchemaResolution_
 if (!string.IsNullOrEmpty(schemasJson))
 {
     var patch = $"{{\"SchemaResolution\":{{\"KnownJsonSchemaUrls\":{schemasJson}}}}}";
-    builder.Configuration.AddJsonStream(new MemoryStream(Encoding.UTF8.GetBytes(patch)));
+    using var schemasPatchStream = new MemoryStream(Encoding.UTF8.GetBytes(patch));
+    builder.Configuration.AddJsonStream(schemasPatchStream);
 }
 
 // Configure Serilog
