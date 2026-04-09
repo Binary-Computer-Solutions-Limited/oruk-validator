@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
@@ -901,13 +902,21 @@ public class EndpointTestingService : IEndpointTestingService
         ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache)
     {
         var schemaJson = schemaForValidation.ToString(Formatting.None);
+        var schemaHash = ComputeSha256Hex(schemaJson);
         var cacheKey = string.IsNullOrWhiteSpace(documentUri)
-            ? $"{schemaPath}::{schemaJson}"
-            : $"{documentUri}::{schemaPath}::{schemaJson}";
+            ? $"{schemaPath}::{schemaHash}"
+            : $"{documentUri}::{schemaPath}::{schemaHash}";
 
         return compiledValidationSchemaCache.GetOrAdd(
             cacheKey,
             _ => JSchema.Parse(schemaJson));
+    }
+
+    private static string ComputeSha256Hex(string value)
+    {
+        var bytes = Encoding.UTF8.GetBytes(value);
+        var hashBytes = SHA256.HashData(bytes);
+        return Convert.ToHexString(hashBytes);
     }
 
     private static async Task<JsonDocument?> TryParseJsonDocumentFromStreamAsync(Stream stream, CancellationToken cancellationToken)
