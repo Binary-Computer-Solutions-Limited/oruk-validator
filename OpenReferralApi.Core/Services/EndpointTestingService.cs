@@ -546,78 +546,6 @@ public class EndpointTestingService : IEndpointTestingService
         return EndpointTestStatus.PassedValidation;
     }
 
-    /// <summary>
-    /// Extracts pagination information from a response body to determine total pages and item count
-    /// </summary>
-    private (int? TotalPages, int ItemCount) ExtractPaginationInfo(string? responseBody)
-    {
-        if (string.IsNullOrEmpty(responseBody))
-        {
-            return (null, 0);
-        }
-
-        using var parsedDocument = ParseJsonDocument(responseBody);
-        if (parsedDocument != null)
-        {
-            return ExtractPaginationInfo(parsedDocument.RootElement);
-        }
-
-        try
-        {
-            var json = JToken.Parse(responseBody);
-            int? totalPages = null;
-            int itemCount = 0;
-
-            // Try to find total_pages field (common in paginated APIs)
-            var totalPagesToken = json.SelectToken("$.total_pages") ??
-                                  json.SelectToken("$.totalPages") ??
-                                  json.SelectToken("$.pagination.total_pages") ??
-                                  json.SelectToken("$.pagination.totalPages") ??
-                                  json.SelectToken("$.meta.total_pages") ??
-                                  json.SelectToken("$.meta.totalPages");
-
-            if (totalPagesToken != null && int.TryParse(totalPagesToken.ToString(), out var pages))
-            {
-                totalPages = pages;
-            }
-
-            // Count items in common collection properties
-            if (json is JArray array)
-            {
-                itemCount = array.Count;
-            }
-            else if (json is JObject obj)
-            {
-                // Check common collection property names
-                foreach (var propName in new[] { "data", "items", "results", "content", "contents" })
-                {
-                    if (obj[propName] is JArray items)
-                    {
-                        itemCount = items.Count;
-                        break;
-                    }
-                }
-
-                // Also check for size/count fields
-                if (itemCount == 0)
-                {
-                    var sizeToken = obj["size"] ?? obj["count"] ?? obj["length"];
-                    if (sizeToken != null && int.TryParse(sizeToken.ToString(), out var size))
-                    {
-                        itemCount = size;
-                    }
-                }
-            }
-
-            return (totalPages, itemCount);
-        }
-        catch (Exception ex)
-        {
-            _logger.FailedToExtractPaginationInfo(ex);
-            return (null, 0);
-        }
-    }
-
     private (int? TotalPages, int ItemCount) ExtractPaginationInfo(HttpTestResult response, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult)
     {
         if (parsedResponseJsonByResult.TryGetValue(response, out var parsedJson))
@@ -625,7 +553,7 @@ public class EndpointTestingService : IEndpointTestingService
             return ExtractPaginationInfo(parsedJson.RootElement);
         }
 
-        return ExtractPaginationInfo(response.ResponseBody);
+        return (null, 0);
     }
 
     private (int? TotalPages, int ItemCount) ExtractPaginationInfo(JsonElement json)
@@ -1443,90 +1371,17 @@ public class EndpointTestingService : IEndpointTestingService
             _logger.FallingBackToCommonFieldNames();
         }
 
-        try
+        if (parsedResponseJsonByResult.TryGetValue(response, out var parsedJson))
         {
-            if (parsedResponseJsonByResult.TryGetValue(response, out var parsedJson))
+            _logger.ParsedJsonType(parsedJson.RootElement.ValueKind.ToString());
+            try
             {
-                _logger.ParsedJsonType(parsedJson.RootElement.ValueKind.ToString());
                 ExtractIdsFromJsonElement(parsedJson.RootElement, schemaIdFields, operation, openApiDocument, ids);
-                return ids.Distinct().ToList();
             }
-
-            var json = JToken.Parse(response.ResponseBody ?? string.Empty);
-            _logger.ParsedJsonType(json.Type.ToString());
-
-            // Handle array responses (most common for collections)
-            if (json is JArray array)
+            catch (Exception ex)
             {
-                _logger.FoundJsonArray(array.Count);
-
-                foreach (var item in array)
-                {
-                    var id = ExtractIdFromObject(item, schemaIdFields);
-                    if (!string.IsNullOrEmpty(id))
-                    {
-                        _logger.FoundIdInArrayItem();
-                        ids.Add(id);
-                    }
-                }
+                _logger.FailedToExtractIds(ex, TextSanitizer.SanitizeForLogging(rootPath));
             }
-            // Handle object responses with data/items property
-            else if (json is JObject obj)
-            {
-                // First try to identify collection properties from the schema
-                var collectionProps = ExtractCollectionPropertiesFromSchema(operation, openApiDocument);
-                if (collectionProps.Any())
-                {
-                    var sanitizedProps = string.Join(", ", collectionProps.Select(p => TextSanitizer.SanitizeForLogging(p)));
-                    _logger.FoundCollectionProperties(sanitizedProps);
-
-                    foreach (var propName in collectionProps)
-                    {
-                        if (obj[propName] is JArray items)
-                        {
-                            _logger.ProcessingCollectionProperty(TextSanitizer.SanitizeForLogging(propName), items.Count);
-                            foreach (var item in items)
-                            {
-                                var id = ExtractIdFromObject(item, schemaIdFields);
-                                if (!string.IsNullOrEmpty(id))
-                                    ids.Add(id);
-                            }
-                            break;
-                        }
-                    }
-                }
-
-                // If no schema-based collection found, try common collection property names
-                if (!ids.Any())
-                {
-                    foreach (var propName in new[] { "data", "items", "results", "content", "contents" })
-                    {
-                        if (obj[propName] is JArray items)
-                        {
-                            _logger.ProcessingFallbackCollectionProperty(TextSanitizer.SanitizeForLogging(propName), items.Count);
-                            foreach (var item in items)
-                            {
-                                var id = ExtractIdFromObject(item, schemaIdFields);
-                                if (!string.IsNullOrEmpty(id))
-                                    ids.Add(id);
-                            }
-                            break;
-                        }
-                    }
-                }
-
-                // If no collection found, try to extract ID from the object itself
-                if (!ids.Any())
-                {
-                    var id = ExtractIdFromObject(json, schemaIdFields);
-                    if (!string.IsNullOrEmpty(id))
-                        ids.Add(id);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.FailedToExtractIds(ex, TextSanitizer.SanitizeForLogging(rootPath));
         }
 
         return ids.Distinct().ToList();
