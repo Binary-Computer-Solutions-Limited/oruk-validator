@@ -458,6 +458,28 @@ public class EndpointTestingServiceTests
         Assert.That(results, Is.Empty);
     }
 
+    [Test]
+    public async Task TestEndpointsAsync_WhenRetentionDisabled_ResponseBodyIsNullButValidationPasses()
+    {
+        SetupService((_, __) => new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"id\":\"abc\"}")
+        });
+
+        var results = await _service.TestEndpointsAsync(
+            CreateRequiredEndpointSpec(),
+            "https://api.example.com",
+            new OpenApiValidationOptions { IncludeResponseBody = false },
+            null,
+            null,
+            CancellationToken.None);
+
+        Assert.That(results, Has.Count.EqualTo(1));
+        var endpoint = results[0];
+        Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.PassedValidation));
+        Assert.That(endpoint.TestResults[0].ResponseBody, Is.Null);
+    }
+
     private void SetupService(Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> responder)
     {
         _httpClient?.Dispose();

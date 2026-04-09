@@ -817,18 +817,29 @@ public class EndpointTestingService : IEndpointTestingService
             using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
             var timeToHeaders = sendStart.Elapsed;
 
-            // Read response content without an intermediate MemoryStream to reduce peak allocations.
-            string responseBody = string.Empty;
+            // Stream response content to avoid materialising a full string on every request.
+            // On the retain path (FullHsdsRuntime / IncludeResponseBody) we still need the string;
+            // on the fast path we stream directly into a JsonDocument with no string allocation.
+            string? responseBody = null;
+            JsonDocument? parsedResponseJson = null;
             var contentTransferStopwatch = System.Diagnostics.Stopwatch.StartNew();
             try
             {
-                responseBody = await response.Content.ReadAsStringAsync(cts.Token);
+                if (ShouldRetainResponseBodies(options))
+                {
+                    responseBody = await response.Content.ReadAsStringAsync(cts.Token);
+                    parsedResponseJson = ParseJsonDocument(responseBody);
+                }
+                else
+                {
+                    await using var contentStream = await response.Content.ReadAsStreamAsync(cts.Token);
+                    parsedResponseJson = await TryParseJsonDocumentFromStreamAsync(contentStream, cts.Token);
+                }
                 contentTransferStopwatch.Stop();
             }
             catch (OperationCanceledException)
             {
                 contentTransferStopwatch.Stop();
-                responseBody = string.Empty;
             }
 
             // Stop the overall timers
@@ -838,12 +849,11 @@ public class EndpointTestingService : IEndpointTestingService
             testResult.ResponseTime = timeToHeaders + contentTransferStopwatch.Elapsed;
             testResult.ResponseStatusCode = (int)response.StatusCode;
             testResult.IsSuccessStatusCode = response.IsSuccessStatusCode;
-            var parsedResponseJson = ParseJsonDocument(responseBody);
             if (parsedResponseJson != null)
             {
                 parsedResponseJsonByResult[testResult] = parsedResponseJson;
             }
-            testResult.ResponseBody = ShouldRetainResponseBodies(options) ? responseBody : null;
+            testResult.ResponseBody = responseBody;
 
             // Populate performance metrics (include best-effort DNS/TCP/TLS measurements if available)
             testResult.PerformanceMetrics = new EndpointPerformanceMetrics
@@ -969,6 +979,18 @@ public class EndpointTestingService : IEndpointTestingService
         try
         {
             return JsonDocument.Parse(json);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static async Task<JsonDocument?> TryParseJsonDocumentFromStreamAsync(Stream stream, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
         }
         catch (System.Text.Json.JsonException)
         {
