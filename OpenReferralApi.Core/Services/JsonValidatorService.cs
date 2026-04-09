@@ -368,7 +368,7 @@ public class JsonValidatorService : IJsonValidatorService
                 _logger.LoadingSchemaFromUri(normalizedSchemaUri);
 
                 var httpClient = _httpClientFactory.CreateClient();
-                var response = await httpClient.GetAsync(validatedUri, ct);
+                using var response = await httpClient.GetAsync(validatedUri, ct);
             _ = response.EnsureSuccessStatusCode();
                 var schemaJson = await response.Content.ReadAsStringAsync(ct);
 
@@ -794,7 +794,7 @@ public class JsonValidatorService : IJsonValidatorService
                 var validatedUri = await _pathParsingService.ValidateAndParseDataUrlAsync(dataUrl, options);
                 var httpClient = _httpClientFactory.CreateClient();
                 using var request = new HttpRequestMessage(HttpMethod.Get, validatedUri);
-                var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+                using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
                 _ = response.EnsureSuccessStatusCode();
                 await using var stream = await response.Content.ReadAsStreamAsync(ct);
                 return await System.Text.Json.JsonDocument.ParseAsync(stream, cancellationToken: ct);

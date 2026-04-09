@@ -60,7 +60,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             using var request = new HttpRequestMessage(HttpMethod.Get, baseUrl);
             ApplyAuthentication(request, authentication);
 
-            var resp = await httpClient.SendAsync(request, cancellationToken);
+            using var resp = await httpClient.SendAsync(request, cancellationToken);
             if (!resp.IsSuccessStatusCode)
             {
                 _logger.BaseUrlRequestFailed((int)resp.StatusCode);

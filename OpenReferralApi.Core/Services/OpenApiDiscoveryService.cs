@@ -117,7 +117,7 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
             {
                 var specUrl = BuildAbsoluteUrl(baseUrl, path);
                 _logger.ProbingStandardPath(SchemaResolverService.SanitizeUrlForLogging(specUrl));
-                var response = await client.GetAsync(specUrl, cancellationToken);
+                using var response = await client.GetAsync(specUrl, cancellationToken);
                 if (response.IsSuccessStatusCode)
                 {
                     string content = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -187,7 +187,7 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
             var html = baseUrlContent;
             if (string.IsNullOrWhiteSpace(html))
             {
-                var response = await client.GetAsync(baseUrl, cancellationToken);
+                using var response = await client.GetAsync(baseUrl, cancellationToken);
                 if (!response.IsSuccessStatusCode)
                 {
                     return new OpenApiDiscoveryResult();
@@ -227,7 +227,7 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
             {
                 var uiUrl = BuildAbsoluteUrl(baseUrl, uiPath);
                 _logger.ProbingUiRoute(SchemaResolverService.SanitizeUrlForLogging(uiUrl));
-                var response = await client.GetAsync(uiUrl, cancellationToken);
+                using var response = await client.GetAsync(uiUrl, cancellationToken);
                 if (!response.IsSuccessStatusCode)
                 {
                     _logger.UiRouteReturnedStatusCode(uiPath, (int)response.StatusCode);
@@ -270,7 +270,7 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
     {
         try
         {
-            var response = await client.GetAsync(specUrl, cancellationToken);
+            using var response = await client.GetAsync(specUrl, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
                 _logger.DiscoveredSpecUrlReturnedStatusCode(SchemaResolverService.SanitizeUrlForLogging(specUrl), (int)response.StatusCode);
@@ -358,7 +358,7 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
     private async Task<List<string>> DiscoverFromSwaggerConfigEndpointAsync(HttpClient client, string baseUrl, string configUrl, CancellationToken cancellationToken)
     {
         _logger.RequestingSwaggerConfigEndpoint(SchemaResolverService.SanitizeUrlForLogging(configUrl));
-        var response = await client.GetAsync(configUrl, cancellationToken);
+        using var response = await client.GetAsync(configUrl, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             _logger.SwaggerConfigEndpointReturnedStatusCode(SchemaResolverService.SanitizeUrlForLogging(configUrl), (int)response.StatusCode);
