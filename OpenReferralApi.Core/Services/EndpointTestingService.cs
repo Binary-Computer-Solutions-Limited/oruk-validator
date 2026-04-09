@@ -107,6 +107,12 @@ public class EndpointTestingService : IEndpointTestingService
             EndpointTestingWorkingSetBytesHistogram.Record(processWorkingSetBytes, tags);
             EndpointTestingWorkingSetDeltaBytesHistogram.Record(processWorkingSetDeltaBytes, tags);
 
+            var compiledSchemaCacheState = GetCompiledSchemaCacheState(compiledValidationSchemaCache);
+            _logger.CompiledEndpointSchemaCacheState(
+                stage,
+                compiledSchemaCacheState.EntryCount,
+                compiledSchemaCacheState.TotalKeyChars);
+
             lastManagedHeapBytes = managedHeapBytes;
             lastWorkingSetBytes = processWorkingSetBytes;
         }
@@ -917,6 +923,13 @@ public class EndpointTestingService : IEndpointTestingService
         var bytes = Encoding.UTF8.GetBytes(value);
         var hashBytes = SHA256.HashData(bytes);
         return Convert.ToHexString(hashBytes);
+    }
+
+    private static (int EntryCount, long TotalKeyChars) GetCompiledSchemaCacheState(ConcurrentDictionary<string, JSchema> cache)
+    {
+        return (
+            cache.Count,
+            cache.Keys.Sum(static key => (long)key.Length));
     }
 
     private static async Task<JsonDocument?> TryParseJsonDocumentFromStreamAsync(Stream stream, CancellationToken cancellationToken)
