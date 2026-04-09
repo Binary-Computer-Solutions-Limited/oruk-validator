@@ -124,7 +124,7 @@ public class OpenApiSpecFetcher
             }
 
             var httpClient = _httpClientFactory.CreateClient(nameof(OpenApiValidationService));
-            var response = await httpClient.SendAsync(request, cancellationToken);
+            using var response = await httpClient.SendAsync(request, cancellationToken);
       _ = response.EnsureSuccessStatusCode();
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);

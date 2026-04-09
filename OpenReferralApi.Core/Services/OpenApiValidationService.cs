@@ -493,6 +493,21 @@ public class OpenApiValidationService : IOpenApiValidationService
                 {
                     result.Notifications.Add("Full HSDS runtime mode requested, but no known HSDS profile schema could be resolved.");
                 }
+
+                // Response bodies were retained solely for the HSDS runtime validation pass above.
+                // If the caller did not request them, release them immediately now that the pass is
+                // complete to reduce peak memory usage.
+                if (!request.Options.IncludeResponseBody)
+                {
+                    foreach (var ep in endpointTests)
+                    {
+                        if (ep.TestResults == null) continue;
+                        foreach (var tr in ep.TestResults)
+                        {
+                            tr.ResponseBody = null;
+                        }
+                    }
+                }
             }
 
             LogMemoryCheckpoint("full-hsds-runtime");
