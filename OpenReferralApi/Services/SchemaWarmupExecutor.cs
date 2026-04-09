@@ -143,8 +143,9 @@ namespace OpenReferralApi.Services
 
                         var managedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
                         var processWorkingSetBytes = Environment.WorkingSet;
+                        var sanitizedUrl = SchemaResolverService.SanitizeUrlForLogging(url);
                         logger.WarmupMemoryAfterCaching(
-                            SchemaResolverService.SanitizeUrlForLogging(url),
+                            sanitizedUrl,
                             cachedSchemaCount,
                             urls.Count,
                             managedHeapBytes,

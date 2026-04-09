@@ -432,6 +432,9 @@ public class EndpointTestingService : IEndpointTestingService
         // Try to determine total pages and check for empty feed
         var paginationInfo = ExtractPaginationInfo(firstPageResult, parsedResponseJsonByResult);
 
+        // Release the first page's parsed JSON document now that validation and pagination info extraction are complete.
+        ReleaseParsedResponseJsonDocuments([firstPageResult], parsedResponseJsonByResult);
+
         // Warn if feed returns no rows
         if (paginationInfo.ItemCount == 0)
         {
@@ -467,6 +470,9 @@ public class EndpointTestingService : IEndpointTestingService
                 {
                     await ValidateResponseAsync(middlePageResult, operation, openApiDocument, documentUri, options, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
                 }
+
+                // Release the middle page's parsed JSON document after validation is complete.
+                ReleaseParsedResponseJsonDocuments([middlePageResult], parsedResponseJsonByResult);
             }
 
             // Test last page
@@ -479,6 +485,9 @@ public class EndpointTestingService : IEndpointTestingService
             {
                 await ValidateResponseAsync(lastPageResult, operation, openApiDocument, documentUri, options, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
             }
+
+            // Release the last page's parsed JSON document after validation is complete.
+            ReleaseParsedResponseJsonDocuments([lastPageResult], parsedResponseJsonByResult);
         }
         else
         {
@@ -805,7 +814,7 @@ public class EndpointTestingService : IEndpointTestingService
             TimeSpan dnsLookup = TimeSpan.Zero, tcpConnection = TimeSpan.Zero, tlsHandshake = TimeSpan.Zero;
             var sendStart = Stopwatch.StartNew();
             var httpClient = _httpClientFactory.CreateClient(nameof(EndpointTestingService));
-            var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+            using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
             var timeToHeaders = sendStart.Elapsed;
 
             // Read response content without an intermediate MemoryStream to reduce peak allocations.
@@ -1304,6 +1313,10 @@ public class EndpointTestingService : IEndpointTestingService
                 {
                     allTestsSuccessful = false;
                 }
+
+                // Release parsed JSON documents immediately after each individual ID test to
+                // avoid accumulating all responses in memory simultaneously.
+                ReleaseParsedResponseJsonDocuments(singleResult.TestResults, parsedResponseJsonByResult);
             }
 
             compositeResult.IsTested = compositeResult.TestResults.Any();
@@ -1336,8 +1349,6 @@ public class EndpointTestingService : IEndpointTestingService
                     tr.ResponseBody = null;
                 }
             }
-
-            ReleaseParsedResponseJsonDocuments(compositeResult.TestResults, parsedResponseJsonByResult);
 
             return compositeResult;
         }

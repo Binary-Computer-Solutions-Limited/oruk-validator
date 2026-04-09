@@ -97,7 +97,7 @@ public class RemoteSchemaLoader
             }
 
             var httpClient = _httpClientFactory.CreateClient("OpenApiValidationService");
-            var response = await httpClient.SendAsync(request, cancellationToken);
+            using var response = await httpClient.SendAsync(request, cancellationToken);
       _ = response.EnsureSuccessStatusCode();
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
