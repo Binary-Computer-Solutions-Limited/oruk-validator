@@ -125,14 +125,16 @@ public class JsonValidatorService : IJsonValidatorService
                 }
             }
 
+            // Materialise once so validation, additional-field detection and metadata all share the same string.
+            var jsonText = jsonDataDoc.RootElement.GetRawText();
+
             // Selective parsing: only validate properties present in schema
-            var validationErrors = await ValidateJsonAgainstSchemaAsync(jsonDataDoc, schema, request.Options);
+            var validationErrors = await ValidateJsonAgainstSchemaAsync(jsonText, schema, request.Options);
 
             // Report additional fields if requested
             if (request.Options?.ReportAdditionalFields == true)
             {
-                var jsonDataString = jsonDataDoc.RootElement.GetRawText();
-                var additionalFieldWarnings = DetectAdditionalFields(jsonDataString, schema);
+                var additionalFieldWarnings = DetectAdditionalFields(jsonText, schema);
                 validationErrors.AddRange(additionalFieldWarnings);
             }
 
@@ -144,7 +146,7 @@ public class JsonValidatorService : IJsonValidatorService
             {
                 SchemaTitle = GetSchemaTitle(request, schema),
                 SchemaDescription = GetSchemaDescription(request, schema),
-                DataSize = jsonDataDoc.RootElement.GetRawText().Length,
+                DataSize = jsonText.Length,
                 ValidationTimestamp = DateTime.UtcNow,
                 DataSource = !string.IsNullOrEmpty(request.DataUrl) ? request.DataUrl : "direct"
             };
@@ -734,16 +736,15 @@ public class JsonValidatorService : IJsonValidatorService
         public JsonStructureViolationKind ViolationKind { get; }
     }
 
-    private Task<List<ValidationError>> ValidateJsonAgainstSchemaAsync(System.Text.Json.JsonDocument jsonDataDoc, JSchema schema, ValidationOptions? options)
+    private Task<List<ValidationError>> ValidateJsonAgainstSchemaAsync(string jsonText, JSchema schema, ValidationOptions? options)
     {
         var errors = new List<ValidationError>();
         var maxErrors = options?.MaxErrors ?? 100;
 
         try
         {
-            // Convert JsonDocument to JObject for schema validation (Newtonsoft)
-            var jsonString = jsonDataDoc.RootElement.GetRawText();
-            var jsonToken = JToken.Parse(jsonString);
+            // Convert to JToken for Newtonsoft JSchema validation.
+            var jsonToken = JToken.Parse(jsonText);
 
             // Only validate properties present in schema (selective parsing)
             bool isValid = jsonToken.IsValid(schema, out IList<string> errorMessages);
