@@ -54,6 +54,7 @@ public class EndpointTestingService : IEndpointTestingService
     private readonly IHsdsComplianceService _hsdsComplianceService;
     private readonly OpenApiValidationServerOptions? _openApiValidationOptions;
     private readonly ConcurrentDictionary<string, JToken> _validationSchemaCache = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, JSchema> CompiledValidationSchemaCache = new(StringComparer.Ordinal);
 
     public EndpointTestingService(
         ILogger<EndpointTestingService> logger,
@@ -71,7 +72,7 @@ public class EndpointTestingService : IEndpointTestingService
     public async Task<List<EndpointTestResult>> TestEndpointsAsync(JObject openApiSpec, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, string? documentUri, CancellationToken cancellationToken = default)
     {
         var results = new List<EndpointTestResult>();
-        var compiledValidationSchemaCache = new ConcurrentDictionary<string, JSchema>(StringComparer.Ordinal);
+        var compiledValidationSchemaCache = CompiledValidationSchemaCache;
         var parsedResponseJsonByResult = new ConcurrentDictionary<HttpTestResult, JsonDocument>();
         var stopwatch = Stopwatch.StartNew();
         var lastManagedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
@@ -899,13 +900,14 @@ public class EndpointTestingService : IEndpointTestingService
         string schemaPath,
         ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache)
     {
+        var schemaJson = schemaForValidation.ToString(Formatting.None);
         var cacheKey = string.IsNullOrWhiteSpace(documentUri)
-            ? schemaPath
-            : $"{documentUri}::{schemaPath}";
+            ? $"{schemaPath}::{schemaJson}"
+            : $"{documentUri}::{schemaPath}::{schemaJson}";
 
         return compiledValidationSchemaCache.GetOrAdd(
             cacheKey,
-            _ => JSchema.Parse(schemaForValidation.ToString(Formatting.None)));
+            _ => JSchema.Parse(schemaJson));
     }
 
     private static async Task<JsonDocument?> TryParseJsonDocumentFromStreamAsync(Stream stream, CancellationToken cancellationToken)

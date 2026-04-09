@@ -102,6 +102,9 @@ public class JsonValidatorService : IJsonValidatorService
             var schemaTask = GetSchemaAsync(request, effectiveToken);
 
             var jsonDataDoc = await dataTask;
+            using var ownedJsonDataDoc = request.JsonData is not System.Text.Json.JsonDocument
+                ? jsonDataDoc
+                : null;
             var schema = await schemaTask;
 
             // Fail fast: check for required root properties (example: "type")
