@@ -958,6 +958,7 @@
         "type": "Project",
         "dependencies": {
           "HtmlAgilityPack": "[1.12.4, )",
+          "JsonSchema.Net": "[9.1.4, )",
           "Microsoft.Extensions.Caching.Abstractions": "[10.0.5, )",
           "Microsoft.Extensions.Http": "[10.0.5, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.5, )",

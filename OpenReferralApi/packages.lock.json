@@ -467,6 +467,7 @@
         "type": "Project",
         "dependencies": {
           "HtmlAgilityPack": "[1.12.4, )",
+          "JsonSchema.Net": "[9.1.4, )",
           "MongoDB.Driver": "[3.7.1, )",
           "Newtonsoft.Json": "[13.0.4, )",
           "Newtonsoft.Json.Schema": "[4.0.1, )",

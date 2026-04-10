@@ -320,6 +320,10 @@ Services/
 <NUGET>/
  dnsclient/1.6.1/lib/net5.0/DnsClient.dll
  htmlagilitypack/1.12.4/lib/net7.0/HtmlAgilityPack.dll
+ humanizer.core/3.0.10/lib/net10.0/Humanizer.dll
+ json.more.net/3.0.1/lib/net10.0/Json.More.dll
+ jsonpointer.net/7.0.1/lib/net10.0/JsonPointer.Net.dll
+ jsonschema.net/9.1.4/lib/net9.0/JsonSchema.Net.dll
  microsoft.extensions.caching.abstractions/10.0.5/lib/net10.0/Microsoft.Extensions.Caching.Abstractions.dll
  microsoft.extensions.configuration.abstractions/10.0.5/lib/net10.0/Microsoft.Extensions.Configuration.Abstractions.dll
  microsoft.extensions.configuration.binder/10.0.5/lib/net10.0/Microsoft.Extensions.Configuration.Binder.dll
@@ -355,6 +359,7 @@ Services/
  Microsoft.CodeAnalysis.CSharp.NetAnalyzers.dll
  Microsoft.CodeAnalysis.NetAnalyzers.dll
 <NUGET>/
+ humanizer.core/3.0.10/analyzers/dotnet/roslyn4.14/cs/Humanizer.Analyzers.dll
  microsoft.extensions.logging.abstractions/10.0.5/analyzers/dotnet/roslyn4.4/cs/Microsoft.Extensions.Logging.Generators.dll
  microsoft.extensions.options/10.0.5/analyzers/dotnet/roslyn4.4/cs/Microsoft.Extensions.Options.SourceGeneration.dll
 
