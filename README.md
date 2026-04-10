@@ -221,6 +221,7 @@ Clients can set validation request options in payload `options`:
 - `maxConcurrentRequests` (default 5)
 - `includeResponseBody` (default false)
 - `includeTestResults` (default true)
+- `reportAdditionalFields` (default false)
 
 Server `OpenApiValidation` settings still apply and are not overridable by client payloads.
 
@@ -339,7 +340,7 @@ Request path summary:
 
 The OpenReferral API validation service supports multiple authentication methods for testing protected API endpoints. Authentication can be configured when making validation requests to ensure the validator can access secured endpoints.
 
-Only one authentication method is permitted per authentication object. For `openApiSchema.authentication` and `dataSourceAuth`, provide exactly one of: `apiKey` (+ optional `apiKeyHeader`), `bearerToken`, `basicAuth`, or `customHeaders`.
+Only one authentication method is permitted per authentication object. For `dataSourceAuth`, provide exactly one of: `apiKey` (+ optional `apiKeyHeader`), `bearerToken`, `basicAuth`, or `customHeaders`.
 
 ### Authentication Types
 
@@ -349,9 +350,7 @@ Use API keys passed via HTTP headers (default header: `X-API-Key`):
 
 ```json
 {
-  "openApiSchema": {
-    "url": "https://api.example.com/openapi.json"
-  },
+  "ownSchemaUrl": "https://api.example.com/openapi.json",
   "baseUrl": "https://api.example.com",
   "dataSourceAuth": {
     "apiKey": "your-api-key-here",
@@ -368,9 +367,7 @@ Use bearer tokens for OAuth 2.0 or JWT-based authentication:
 
 ```json
 {
-  "openApiSchema": {
-    "url": "https://api.example.com/openapi.json"
-  },
+  "ownSchemaUrl": "https://api.example.com/openapi.json",
   "baseUrl": "https://api.example.com",
   "dataSourceAuth": {
     "bearerToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
@@ -462,9 +459,7 @@ Use HTTP Basic Authentication with username and password:
 
 ```json
 {
-  "openApiSchema": {
-    "url": "https://api.example.com/openapi.json"
-  },
+  "ownSchemaUrl": "https://api.example.com/openapi.json",
   "baseUrl": "https://api.example.com",
   "dataSourceAuth": {
     "basicAuth": {
@@ -483,9 +478,7 @@ Add any custom HTTP headers required by your API:
 
 ```json
 {
-  "openApiSchema": {
-    "url": "https://api.example.com/openapi.json"
-  },
+  "ownSchemaUrl": "https://api.example.com/openapi.json",
   "baseUrl": "https://api.example.com",
   "dataSourceAuth": {
     "customHeaders": {
@@ -514,16 +507,12 @@ Custom headers must be used as the only configured method in the auth object.
 curl -X POST http://localhost:6969/openreferraluk/validate \
   -H "Content-Type: application/json" \
   -d '{
-    "openApiSchema": {
-      "url": "https://api.example.com/openapi.json"
-    },
+    "ownSchemaUrl": "https://api.example.com/openapi.json",
     "baseUrl": "https://api.example.com",
     "dataSourceAuth": {
       "bearerToken": "your-jwt-token-here"
     },
     "options": {
-      "testEndpoints": true,
-      "validateSpecification": true,
       "timeoutSeconds": 30,
       "maxConcurrentRequests": 5
     }
