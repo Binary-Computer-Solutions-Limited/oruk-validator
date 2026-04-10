@@ -128,16 +128,17 @@ public class JsonValidatorService : IJsonValidatorService
                 }
             }
 
-            // Materialise once so validation, additional-field detection and metadata all share the same string.
-            var jsonText = jsonDataDoc.RootElement.GetRawText();
+            // Convert JsonDocument to JToken once via a UTF-8 stream — avoids the large UTF-16
+            // string that GetRawText() would allocate and then re-parse twice below.
+            var (dataToken, dataSize) = JsonDocumentToJToken(jsonDataDoc);
 
             // Selective parsing: only validate properties present in schema
-            var validationErrors = await ValidateJsonAgainstSchemaAsync(jsonText, schema, request.Options);
+            var validationErrors = await ValidateJsonAgainstSchemaAsync(dataToken, schema, request.Options);
 
             // Report additional fields if requested
             if (request.Options?.ReportAdditionalFields == true)
             {
-                var additionalFieldWarnings = DetectAdditionalFields(jsonText, schema);
+                var additionalFieldWarnings = DetectAdditionalFields(dataToken, schema);
                 validationErrors.AddRange(additionalFieldWarnings);
             }
 
@@ -149,7 +150,7 @@ public class JsonValidatorService : IJsonValidatorService
             {
                 SchemaTitle = GetSchemaTitle(request, schema),
                 SchemaDescription = GetSchemaDescription(request, schema),
-                DataSize = jsonText.Length,
+                DataSize = dataSize,
                 ValidationTimestamp = DateTime.UtcNow,
                 DataSource = !string.IsNullOrEmpty(request.DataUrl) ? request.DataUrl : "direct"
             };
@@ -457,6 +458,26 @@ public class JsonValidatorService : IJsonValidatorService
         }
     }
 
+    /// <summary>
+    /// Converts a <see cref="System.Text.Json.JsonDocument"/> to a Newtonsoft <see cref="JToken"/>
+    /// via a UTF-8 byte stream, avoiding the large UTF-16 string that
+    /// <c>RootElement.GetRawText()</c> would allocate. Returns the token and the UTF-8 byte count
+    /// (used as a proxy for DataSize in validation metadata).
+    /// </summary>
+    private static (JToken Token, int DataSize) JsonDocumentToJToken(System.Text.Json.JsonDocument doc)
+    {
+        using var ms = new MemoryStream();
+        using (var writer = new System.Text.Json.Utf8JsonWriter(ms))
+        {
+            doc.RootElement.WriteTo(writer);
+        }
+        var dataSize = (int)ms.Length;
+        ms.Position = 0;
+        using var sr = new StreamReader(ms, System.Text.Encoding.UTF8, leaveOpen: false);
+        using var jr = new JsonTextReader(sr);
+        return (JToken.Load(jr), dataSize);
+    }
+
     private static bool IsCycleOrDepthViolation(System.Text.Json.JsonException exception)
     {
         var message = exception.Message;
@@ -739,15 +760,15 @@ public class JsonValidatorService : IJsonValidatorService
         public JsonStructureViolationKind ViolationKind { get; }
     }
 
-    private Task<List<ValidationError>> ValidateJsonAgainstSchemaAsync(string jsonText, JSchema schema, ValidationOptions? options)
+    private Task<List<ValidationError>> ValidateJsonAgainstSchemaAsync(JToken dataToken, JSchema schema, ValidationOptions? options)
     {
         var errors = new List<ValidationError>();
         var maxErrors = options?.MaxErrors ?? 100;
 
         try
         {
-            // Convert to JToken for Newtonsoft JSchema validation.
-            var jsonToken = JToken.Parse(jsonText);
+            // dataToken is already a parsed JToken — no further parsing needed.
+            var jsonToken = dataToken;
 
             // Only validate properties present in schema (selective parsing)
             bool isValid = jsonToken.IsValid(schema, out IList<string> errorMessages);
@@ -903,14 +924,14 @@ public class JsonValidatorService : IJsonValidatorService
     /// Returns a list of validation warnings for each additional field found.
     /// Normalizes array index segments (for example "items[0]" -> "items") and returns only unique results.
     /// </summary>
-    private List<ValidationError> DetectAdditionalFields(string jsonData, JSchema schema)
+    private List<ValidationError> DetectAdditionalFields(JToken dataToken, JSchema schema)
     {
         var warnings = new List<ValidationError>();
 
         try
         {
-            var jsonToken = JToken.Parse(jsonData);
-            DetectAdditionalFieldsRecursive(jsonToken, schema, "", warnings);
+            // dataToken is already parsed — reuse directly, no re-parse needed.
+            DetectAdditionalFieldsRecursive(dataToken, schema, "", warnings);
 
             // Normalize paths and keep only unique warnings by normalized path
             var uniqueWarnings = new Dictionary<string, ValidationError>();
