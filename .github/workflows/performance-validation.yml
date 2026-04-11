@@ -22,6 +22,8 @@ jobs:
   performance-validation:
     name: Build, Run & Validate (10 sequential requests)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       # -----------------------------------------------------------------------
