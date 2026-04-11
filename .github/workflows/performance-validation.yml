@@ -97,7 +97,6 @@ jobs:
       #    The full JSON body is read from the PERF_VALIDATION_REQUEST secret.
       # -----------------------------------------------------------------------
       - name: Run sequential validation requests
-        if: github.event_name != 'push'
         env:
           REQUEST_BODY: ${{ secrets.PERF_VALIDATION_REQUEST }}
         run: |
