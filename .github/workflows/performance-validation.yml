@@ -5,6 +5,8 @@ name: Performance Validation
 # a repository secret named PERF_VALIDATION_REQUEST before running this workflow.
 on:
   workflow_dispatch: {}
+  push:
+    branches: [feature/hsds-validation-flow]
 
 env:
   DOTNET_VERSION: "10.0.x"
@@ -95,6 +97,7 @@ jobs:
       #    The full JSON body is read from the PERF_VALIDATION_REQUEST secret.
       # -----------------------------------------------------------------------
       - name: Run sequential validation requests
+        if: github.event_name != 'push'
         env:
           REQUEST_BODY: ${{ secrets.PERF_VALIDATION_REQUEST }}
         run: |
