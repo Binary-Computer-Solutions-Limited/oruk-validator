@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
 using OpenReferralApi.Core.Logging;
 
@@ -15,30 +16,12 @@ public sealed class OpenApiDiscoveryResult
 {
     public string? Url { get; init; }
     public string? SpecContent { get; init; }
+    public string? DetectedHsdsProfileVersion { get; init; }
 }
 
 
 public class OpenApiDiscoveryService : IOpenApiDiscoveryService
 {
-    private static readonly string[] StandardPaths =
-    {
-        "openapi.json",
-        "openapi",
-        "swagger.json",
-        "swagger.yaml",
-        "swagger.yml",
-        ".well-known/openapi.json",  // RFC standard
-        "api-docs/openapi.json",
-        "api-docs/openapi.yaml",
-        "api-docs/openapi.yml",
-        "api-docs",
-        "v3/api-docs",
-        "v2/api-docs",
-        "swagger/v1/swagger.json",
-        "swagger/v1/swagger.yaml",
-        "swagger/v1/swagger.yml"
-    };
-
     private static readonly string[] SwaggerConfigPaths =
     {
         "swagger-config",
@@ -92,11 +75,13 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<OpenApiDiscoveryService> _logger;
+    private readonly OpenApiValidationServerOptions _openApiValidationOptions;
 
-    public OpenApiDiscoveryService(IHttpClientFactory httpClientFactory, ILogger<OpenApiDiscoveryService> logger)
+    public OpenApiDiscoveryService(IHttpClientFactory httpClientFactory, ILogger<OpenApiDiscoveryService> logger, IOptions<OpenApiValidationServerOptions>? openApiValidationOptions = null)
     {
         _httpClientFactory = httpClientFactory;
         _logger = logger;
+        _openApiValidationOptions = openApiValidationOptions?.Value ?? new OpenApiValidationServerOptions();
     }
 
     public async Task<string?> FindOpenApiSpecAsync(string baseUrl, string? baseUrlContent = null, CancellationToken cancellationToken = default)
@@ -109,10 +94,16 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
     {
         var client = _httpClientFactory.CreateClient("OpenApiValidationService");
         baseUrl = baseUrl.TrimEnd('/');
+        var discoverProfileVersionOnly = _openApiValidationOptions.OwnSchemaValidation == OwnSchemaValidationMode.None;
 
         // 1. Probing strategy — try common well-known OpenAPI spec paths.
-        foreach (var path in ExpandSpecPaths(StandardPaths))
+        foreach (var path in ExpandSpecPaths(OpenApiDiscoveryStandardPaths.Paths))
         {
+            if (!string.IsNullOrWhiteSpace(baseUrlContent) && string.IsNullOrWhiteSpace(path))
+            {
+                continue;
+            }
+
             try
             {
                 var specUrl = BuildAbsoluteUrl(baseUrl, path);
@@ -121,13 +112,26 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
                 if (response.IsSuccessStatusCode)
                 {
                     string content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                    var detectedHsdsProfileVersion = TryExtractPotentialHsdsProfileVersion(content);
+                    if (discoverProfileVersionOnly && !string.IsNullOrWhiteSpace(detectedHsdsProfileVersion))
+                    {
+                        return new OpenApiDiscoveryResult
+                        {
+                            Url = null,
+                            SpecContent = includeDiscoveredSpecContent ? content : null,
+                            DetectedHsdsProfileVersion = detectedHsdsProfileVersion
+                        };
+                    }
+
                     if (LooksLikeOpenApiSpec(content))
                     {
                         _logger.DiscoveredSpecViaProbing(path);
                         return new OpenApiDiscoveryResult
                         {
                             Url = specUrl,
-                            SpecContent = content
+                            SpecContent = content,
+                            DetectedHsdsProfileVersion = detectedHsdsProfileVersion
                         };
                     }
                     _logger.PathReturnedNonOpenApiContent(path);
@@ -145,6 +149,11 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
             {
                 _logger.ProbeFailed(ex, SchemaResolverService.SanitizeUrlForLogging(baseUrl), path);
             }
+        }
+
+        if (discoverProfileVersionOnly)
+        {
+            return new OpenApiDiscoveryResult();
         }
 
         // 2. Probe known swagger-config endpoints to discover one or more definitions.
@@ -264,6 +273,43 @@ public class OpenApiDiscoveryService : IOpenApiDiscoveryService
         _logger.UnableToDiscoverOpenApiSpec(SchemaResolverService.SanitizeUrlForLogging(baseUrl));
 
         return new OpenApiDiscoveryResult();
+    }
+
+    private static string? TryExtractPotentialHsdsProfileVersion(string specContent)
+    {
+        if (string.IsNullOrWhiteSpace(specContent))
+        {
+            return null;
+        }
+
+        try
+        {
+            var parsed = JToken.Parse(specContent);
+            var candidatePaths = new[]
+            {
+                "x-hsds-version",
+                "version",
+                "info.x-hsds-version",
+                "info.x-profile-version",
+                "info.version",
+                "openapi"
+            };
+
+            foreach (var path in candidatePaths)
+            {
+                var value = parsed.SelectToken(path)?.ToString()?.Trim();
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value;
+                }
+            }
+
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private async Task<string?> TryFetchDiscoveredSpecContentAsync(HttpClient client, string specUrl, CancellationToken cancellationToken)

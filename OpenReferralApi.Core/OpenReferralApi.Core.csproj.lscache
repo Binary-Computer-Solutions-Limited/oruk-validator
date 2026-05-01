@@ -2,12 +2,10 @@ version=1
 
 # This file caches language service data to improve the performance of C# Dev Kit.
 # It is not intended for manual editing. It can safely be deleted and will be
-# regenerated automatically.
+# regenerated automatically. For more information, see https://aka.ms/lscache
 #
-# To exclude from version control, add *.lscache to your .gitignore file.
-#
-# To disable caching, add the following to your VS Code settings:
-#   "dotnet.projectsystem.enableLanguageServiceCache": false
+# To control where cache files are stored, use the following VS Code setting:
+#   "dotnet.projectsystem.cacheInProjectFolder": true
 
 [project]
 language=C#
@@ -127,11 +125,13 @@ obj/Debug/net10.0/
 Services/
  AuthenticationValidationService.cs
  EndpointTestingService.cs
+ FastDiscoveryService.cs
  FeedValidationService.cs
  HsdsComplianceService.cs
  JsonValidatorService.cs
  OpenApiBootstrapService.cs
  OpenApiDiscoveryService.cs
+ OpenApiDiscoveryStandardPaths.cs
  OpenApiSpecFetcher.cs
  OpenApiSpecificationService.cs
  OpenApiValidationService.cs
@@ -149,7 +149,7 @@ Services/
  ValidationPathNormalizer.cs
 
 [metadataReferences]
-../../../../../../../usr/local/share/dotnet/packs/Microsoft.NETCore.App.Ref/10.0.1/ref/net10.0/
+<DOTNET>/packs/Microsoft.NETCore.App.Ref/10.0.1/ref/net10.0/
  Microsoft.CSharp.dll
  Microsoft.VisualBasic.Core.dll
  Microsoft.VisualBasic.dll
@@ -348,14 +348,14 @@ Services/
  zstdsharp.port/0.7.3/lib/net7.0/ZstdSharp.dll
 
 [analyzerReferences]
-../../../../../../../usr/local/share/dotnet/packs/Microsoft.NETCore.App.Ref/10.0.1/analyzers/dotnet/cs/
+<DOTNET>/packs/Microsoft.NETCore.App.Ref/10.0.1/analyzers/dotnet/cs/
  Microsoft.Interop.ComInterfaceGenerator.dll
  Microsoft.Interop.JavaScript.JSImportGenerator.dll
  Microsoft.Interop.LibraryImportGenerator.dll
  Microsoft.Interop.SourceGeneration.dll
  System.Text.Json.SourceGeneration.dll
  System.Text.RegularExpressions.Generator.dll
-../../../../../../../usr/local/share/dotnet/sdk/10.0.101/Sdks/Microsoft.NET.Sdk/analyzers/
+<DOTNET>/sdk/10.0.101/Sdks/Microsoft.NET.Sdk/analyzers/
  Microsoft.CodeAnalysis.CSharp.NetAnalyzers.dll
  Microsoft.CodeAnalysis.NetAnalyzers.dll
 <NUGET>/
@@ -364,5 +364,5 @@ Services/
  microsoft.extensions.options/10.0.5/analyzers/dotnet/roslyn4.4/cs/Microsoft.Extensions.Options.SourceGeneration.dll
 
 [analyzerConfigFiles]
-../../../../../../../usr/local/share/dotnet/sdk/10.0.101/Sdks/Microsoft.NET.Sdk/analyzers/build/config/analysislevel_10_default.globalconfig
+<DOTNET>/sdk/10.0.101/Sdks/Microsoft.NET.Sdk/analyzers/build/config/analysislevel_10_default.globalconfig
 obj/Debug/net10.0/OpenReferralApi.Core.GeneratedMSBuildEditorConfig.editorconfig

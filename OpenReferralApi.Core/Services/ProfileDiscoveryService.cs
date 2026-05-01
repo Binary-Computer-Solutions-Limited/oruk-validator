@@ -37,12 +37,18 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<ProfileDiscoveryService> _logger;
     private readonly SpecificationOptions _specificationOptions;
+    private readonly OpenApiValidationServerOptions _openApiValidationOptions;
 
-    public ProfileDiscoveryService(IHttpClientFactory httpClientFactory, ILogger<ProfileDiscoveryService> logger, IOptions<SpecificationOptions> specificationOptions)
+    public ProfileDiscoveryService(
+        IHttpClientFactory httpClientFactory,
+        ILogger<ProfileDiscoveryService> logger,
+        IOptions<SpecificationOptions> specificationOptions,
+        IOptions<OpenApiValidationServerOptions>? openApiValidationOptions = null)
     {
         _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _specificationOptions = specificationOptions?.Value ?? throw new ArgumentNullException(nameof(specificationOptions));
+        _openApiValidationOptions = openApiValidationOptions?.Value ?? new OpenApiValidationServerOptions();
     }
 
     public async Task<ProfileDiscoveryResult> DiscoverAsync(string baseUrl, DataSourceAuthentication? authentication = null, CancellationToken cancellationToken = default)
@@ -59,6 +65,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             _logger.RequestingBaseUrl(SchemaResolverService.SanitizeUrlForLogging(baseUrl));
             using var request = new HttpRequestMessage(HttpMethod.Get, baseUrl);
             ApplyAuthentication(request, authentication);
+            var discoverProfileVersionOnly = _openApiValidationOptions.OwnSchemaValidation == OwnSchemaValidationMode.None;
 
             using var resp = await httpClient.SendAsync(request, cancellationToken);
             if (!resp.IsSuccessStatusCode)
@@ -107,9 +114,16 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                             Url = versionedSpec,
                             Reason = $"Standard version {SchemaResolverService.SanitizeStringForLogging(version)} read from '/' endpoint",
                             BaseUrlRequestSucceeded = true,
-                            BaseUrlResponseContent = content
+                            BaseUrlResponseContent = content,
+                            DetectedHsdsProfileVersion = version
                         };
                     }
+                }
+
+                var discoveredFromStandardPaths = await DiscoverFromStandardPathsAsync(httpClient, baseUrl, content, discoverProfileVersionOnly, cancellationToken);
+                if (discoveredFromStandardPaths != null)
+                {
+                    return discoveredFromStandardPaths;
                 }
 
                 _logger.NoOpenApiUrlOrVersionFound();
@@ -124,6 +138,12 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             catch (Exception jex)
             {
                 _logger.FailedToParseBaseUrlJson(jex);
+
+                var discoveredFromStandardPaths = await DiscoverFromStandardPathsAsync(httpClient, baseUrl, content, discoverProfileVersionOnly, cancellationToken);
+                if (discoveredFromStandardPaths != null)
+                {
+                    return discoveredFromStandardPaths;
+                }
 
                 return new ProfileDiscoveryResult
                 {
@@ -150,6 +170,173 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         }
     }
 
+    private async Task<ProfileDiscoveryResult?> DiscoverFromStandardPathsAsync(
+        HttpClient httpClient,
+        string baseUrl,
+        string baseUrlContent,
+        bool discoverProfileVersionOnly,
+        CancellationToken cancellationToken)
+    {
+        var normalizedBaseUrl = baseUrl.TrimEnd('/');
+
+        foreach (var path in ExpandSpecPaths(OpenApiDiscoveryStandardPaths.Paths))
+        {
+            // if (string.IsNullOrWhiteSpace(path))
+            // {
+            //     continue;
+            // }
+
+            var specUrl = BuildAbsoluteUrl(normalizedBaseUrl, path);
+            try
+            {
+                using var response = await httpClient.GetAsync(specUrl, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    continue;
+                }
+
+                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                var detectedHsdsProfileVersion = TryExtractPotentialHsdsProfileVersion(content);
+
+                if (!string.IsNullOrWhiteSpace(detectedHsdsProfileVersion))
+                {
+                    var resolvedProfileSpecUrl = ResolveSpecificationUrl(detectedHsdsProfileVersion);
+                    if (discoverProfileVersionOnly)
+                    {
+                        return new ProfileDiscoveryResult
+                        {
+                            Url = resolvedProfileSpecUrl,
+                            Reason = $"Potential HSDS profile version {SchemaResolverService.SanitizeStringForLogging(detectedHsdsProfileVersion)} discovered via standard path probing",
+                            BaseUrlRequestSucceeded = true,
+                            BaseUrlResponseContent = baseUrlContent,
+                            DetectedHsdsProfileVersion = detectedHsdsProfileVersion
+                        };
+                    }
+
+                    if (LooksLikeOpenApiSpec(content))
+                    {
+                        return new ProfileDiscoveryResult
+                        {
+                            Url = specUrl,
+                            Reason = $"OpenAPI URL discovered by probing standard path '{path}'",
+                            BaseUrlRequestSucceeded = true,
+                            BaseUrlResponseContent = baseUrlContent,
+                            DetectedHsdsProfileVersion = detectedHsdsProfileVersion
+                        };
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(resolvedProfileSpecUrl))
+                    {
+                        return new ProfileDiscoveryResult
+                        {
+                            Url = resolvedProfileSpecUrl,
+                            Reason = $"Potential HSDS profile version {SchemaResolverService.SanitizeStringForLogging(detectedHsdsProfileVersion)} discovered via standard path probing",
+                            BaseUrlRequestSucceeded = true,
+                            BaseUrlResponseContent = baseUrlContent,
+                            DetectedHsdsProfileVersion = detectedHsdsProfileVersion
+                        };
+                    }
+                }
+
+                if (!discoverProfileVersionOnly && LooksLikeOpenApiSpec(content))
+                {
+                    return new ProfileDiscoveryResult
+                    {
+                        Url = specUrl,
+                        Reason = $"OpenAPI URL discovered by probing standard path '{path}'",
+                        BaseUrlRequestSucceeded = true,
+                        BaseUrlResponseContent = baseUrlContent
+                    };
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // Ignore per-path failures and continue probing.
+            }
+        }
+
+        return null;
+    }
+
+    private static bool LooksLikeOpenApiSpec(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return false;
+        }
+
+        var trimmed = content.TrimStart();
+        if (trimmed.StartsWith("{", StringComparison.Ordinal) || trimmed.StartsWith("[", StringComparison.Ordinal))
+        {
+            return content.Contains("\"openapi\"", StringComparison.OrdinalIgnoreCase)
+                   || content.Contains("\"swagger\"", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return content.Contains("openapi:", StringComparison.OrdinalIgnoreCase)
+               || content.Contains("swagger:", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? TryExtractPotentialHsdsProfileVersion(string specContent)
+    {
+        if (string.IsNullOrWhiteSpace(specContent))
+        {
+            return null;
+        }
+
+        try
+        {
+            var parsed = JToken.Parse(specContent);
+            var candidatePaths = new[]
+            {
+                "x-hsds-version",
+                "version",
+                "info.x-hsds-version",
+                "info.x-profile-version",
+                "info.version",
+                "openapi"
+            };
+
+            foreach (var path in candidatePaths)
+            {
+                var value = parsed.SelectToken(path)?.ToString()?.Trim();
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value;
+                }
+            }
+
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static IEnumerable<string> ExpandSpecPaths(IEnumerable<string> basePaths)
+    {
+        foreach (var path in basePaths)
+        {
+            yield return path;
+
+            if (path.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                var withoutJsonExt = path[..^".json".Length];
+                yield return withoutJsonExt + ".yaml";
+                yield return withoutJsonExt + ".yml";
+            }
+        }
+    }
+
+    private static string BuildAbsoluteUrl(string baseUrl, string relativePath)
+    {
+        return $"{baseUrl}/{relativePath.TrimStart('/')}";
+    }
+
     public async Task<(string? url, string? reason)> DiscoverOpenApiUrlAsync(string baseUrl, DataSourceAuthentication? authentication = null, CancellationToken cancellationToken = default)
     {
         var discovery = await DiscoverAsync(baseUrl, authentication, cancellationToken);
@@ -165,7 +352,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
 
         if (!string.IsNullOrWhiteSpace(auth.ApiKey) && !string.IsNullOrWhiteSpace(auth.ApiKeyHeader) && IsValidHeaderName(auth.ApiKeyHeader))
         {
-      _ = request.Headers.TryAddWithoutValidation(auth.ApiKeyHeader, auth.ApiKey);
+            _ = request.Headers.TryAddWithoutValidation(auth.ApiKeyHeader, auth.ApiKey);
         }
 
         if (!string.IsNullOrWhiteSpace(auth.BearerToken))
@@ -191,7 +378,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                 continue;
             }
 
-      _ = request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+            _ = request.Headers.TryAddWithoutValidation(header.Key, header.Value);
         }
     }
 

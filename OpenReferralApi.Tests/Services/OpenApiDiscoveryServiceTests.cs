@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Moq.Protected;
 using OpenReferralApi.Core.Services;
@@ -27,7 +28,10 @@ public class OpenApiDiscoveryServiceTests
             .Setup(f => f.CreateClient("OpenApiValidationService"))
             .Returns(_httpClient);
 
-        _service = new OpenApiDiscoveryService(_httpClientFactoryMock.Object, _loggerMock.Object);
+        _service = new OpenApiDiscoveryService(
+            _httpClientFactoryMock.Object,
+            _loggerMock.Object,
+            Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.StrictOwnSchemaValidation }));
     }
 
     [TearDown]
@@ -436,6 +440,45 @@ public class OpenApiDiscoveryServiceTests
         // Assert
         Assert.That(result, Is.EqualTo("https://api.example.com/swagger.json"));
         Assert.That(callCount, Is.GreaterThanOrEqualTo(2));
+    }
+
+    [Test]
+    public async Task DiscoverOpenApiSpecAsync_WhenOwnSchemaValidationNone_StopsAtFirstPotentialHsdsVersion()
+    {
+        // Arrange
+        var service = new OpenApiDiscoveryService(
+            _httpClientFactoryMock.Object,
+            _loggerMock.Object,
+            Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.None }));
+
+        SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode statusCode, string content)>
+        {
+            ["/openapi.json"] = (HttpStatusCode.OK, "{\"x-hsds-version\":\"HSDS-UK-3.0\",\"openapi\":\"3.0.0\"}")
+        });
+
+        // Act
+        var result = await service.DiscoverOpenApiSpecAsync("https://api.example.com");
+
+        // Assert
+        Assert.That(result.Url, Is.Null);
+        Assert.That(result.DetectedHsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
+    }
+
+    [Test]
+    public async Task DiscoverOpenApiSpecAsync_WhenOwnSchemaValidationStrict_ReturnsDiscoveredOpenApiUrl()
+    {
+        // Arrange
+        SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode statusCode, string content)>
+        {
+            ["/openapi.json"] = (HttpStatusCode.OK, "{\"x-hsds-version\":\"HSDS-UK-3.0\",\"openapi\":\"3.0.0\"}")
+        });
+
+        // Act
+        var result = await _service.DiscoverOpenApiSpecAsync("https://api.example.com");
+
+        // Assert
+        Assert.That(result.Url, Is.EqualTo("https://api.example.com/openapi.json"));
+        Assert.That(result.DetectedHsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
     }
 
     private void SetupHttpResponseMap(IDictionary<string, (HttpStatusCode statusCode, string content)> responses)

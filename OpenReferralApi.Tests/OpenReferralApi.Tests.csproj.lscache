@@ -2,12 +2,10 @@ version=1
 
 # This file caches language service data to improve the performance of C# Dev Kit.
 # It is not intended for manual editing. It can safely be deleted and will be
-# regenerated automatically.
+# regenerated automatically. For more information, see https://aka.ms/lscache
 #
-# To exclude from version control, add *.lscache to your .gitignore file.
-#
-# To disable caching, add the following to your VS Code settings:
-#   "dotnet.projectsystem.enableLanguageServiceCache": false
+# To control where cache files are stored, use the following VS Code setting:
+#   "dotnet.projectsystem.cacheInProjectFolder": true
 
 [project]
 language=C#
@@ -91,6 +89,7 @@ Services/
  OpenReferralUKValidationResponseMapperTests.cs
  OptionalEndpointExtensionsTests.cs
  PathParsingServiceTests.cs
+ ProfileDiscoveryServiceTests.cs
  ProfleDiscoveryServiceTests.cs
  ReferenceResolverTests.cs
  RemoteSchemaLoaderTests.cs
@@ -106,7 +105,10 @@ Swagger/
  SwaggerExamplesApplierTests.cs
 
 [metadataReferences]
-../../../../../../../usr/local/share/dotnet/packs/Microsoft.AspNetCore.App.Ref/10.0.1/ref/net10.0/
+../
+ OpenReferralApi.Core/obj/Debug/net10.0/ref/OpenReferralApi.Core.dll
+ OpenReferralApi/obj/Debug/net10.0/ref/OpenReferralApi.dll
+<DOTNET>/packs/Microsoft.AspNetCore.App.Ref/10.0.1/ref/net10.0/
  Microsoft.AspNetCore.Antiforgery.dll
  Microsoft.AspNetCore.Authentication.Abstractions.dll
  Microsoft.AspNetCore.Authentication.BearerToken.dll
@@ -217,7 +219,7 @@ Swagger/
  System.Formats.Cbor.dll
  System.Security.Cryptography.Xml.dll
  System.Threading.RateLimiting.dll
-../../../../../../../usr/local/share/dotnet/packs/Microsoft.NETCore.App.Ref/10.0.1/ref/net10.0/
+<DOTNET>/packs/Microsoft.NETCore.App.Ref/10.0.1/ref/net10.0/
  Microsoft.CSharp.dll
  Microsoft.VisualBasic.Core.dll
  Microsoft.VisualBasic.dll
@@ -385,9 +387,6 @@ Swagger/
  System.Xml.XPath.dll
  System.Xml.XPath.XDocument.dll
  WindowsBase.dll
-../
- OpenReferralApi.Core/obj/Debug/net10.0/ref/OpenReferralApi.Core.dll
- OpenReferralApi/obj/Debug/net10.0/ref/OpenReferralApi.dll
 <NUGET>/
  amazon.lambda.apigatewayevents/2.7.3/lib/net8.0/Amazon.Lambda.APIGatewayEvents.dll
  amazon.lambda.applicationloadbalancerevents/2.2.0/lib/net8.0/Amazon.Lambda.ApplicationLoadBalancerEvents.dll
@@ -504,20 +503,20 @@ Swagger/
  zstdsharp.port/0.7.3/lib/net7.0/ZstdSharp.dll
 
 [analyzerReferences]
-../../../../../../../usr/local/share/dotnet/packs/Microsoft.AspNetCore.App.Ref/10.0.1/analyzers/dotnet/cs/
+<DOTNET>/packs/Microsoft.AspNetCore.App.Ref/10.0.1/analyzers/dotnet/cs/
  Microsoft.AspNetCore.App.Analyzers.dll
  Microsoft.AspNetCore.App.CodeFixes.dll
  Microsoft.AspNetCore.App.SourceGenerators.dll
  Microsoft.AspNetCore.Components.Analyzers.dll
  Microsoft.Extensions.Validation.ValidationsGenerator.dll
-../../../../../../../usr/local/share/dotnet/packs/Microsoft.NETCore.App.Ref/10.0.1/analyzers/dotnet/cs/
+<DOTNET>/packs/Microsoft.NETCore.App.Ref/10.0.1/analyzers/dotnet/cs/
  Microsoft.Interop.ComInterfaceGenerator.dll
  Microsoft.Interop.JavaScript.JSImportGenerator.dll
  Microsoft.Interop.LibraryImportGenerator.dll
  Microsoft.Interop.SourceGeneration.dll
  System.Text.Json.SourceGeneration.dll
  System.Text.RegularExpressions.Generator.dll
-../../../../../../../usr/local/share/dotnet/sdk/10.0.101/Sdks/Microsoft.NET.Sdk/analyzers/
+<DOTNET>/sdk/10.0.101/Sdks/Microsoft.NET.Sdk/analyzers/
  Microsoft.CodeAnalysis.CSharp.NetAnalyzers.dll
  Microsoft.CodeAnalysis.NetAnalyzers.dll
 <NUGET>/
@@ -530,5 +529,5 @@ Swagger/
   nunit.analyzers.dll
 
 [analyzerConfigFiles]
-../../../../../../../usr/local/share/dotnet/sdk/10.0.101/Sdks/Microsoft.NET.Sdk/analyzers/build/config/analysislevel_10_default.globalconfig
+<DOTNET>/sdk/10.0.101/Sdks/Microsoft.NET.Sdk/analyzers/build/config/analysislevel_10_default.globalconfig
 obj/Debug/net10.0/OpenReferralApi.Tests.GeneratedMSBuildEditorConfig.editorconfig

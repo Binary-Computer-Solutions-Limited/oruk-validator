@@ -2,12 +2,10 @@ version=1
 
 # This file caches language service data to improve the performance of C# Dev Kit.
 # It is not intended for manual editing. It can safely be deleted and will be
-# regenerated automatically.
+# regenerated automatically. For more information, see https://aka.ms/lscache
 #
-# To exclude from version control, add *.lscache to your .gitignore file.
-#
-# To disable caching, add the following to your VS Code settings:
-#   "dotnet.projectsystem.enableLanguageServiceCache": false
+# To control where cache files are stored, use the following VS Code setting:
+#   "dotnet.projectsystem.cacheInProjectFolder": true
 
 [project]
 language=C#
@@ -105,7 +103,8 @@ Swagger/
 Telemetry/Instrumentation.cs
 
 [metadataReferences]
-../../../../../../../usr/local/share/dotnet/packs/Microsoft.AspNetCore.App.Ref/10.0.1/ref/net10.0/
+../OpenReferralApi.Core/obj/Debug/net10.0/ref/OpenReferralApi.Core.dll
+<DOTNET>/packs/Microsoft.AspNetCore.App.Ref/10.0.1/ref/net10.0/
  Microsoft.AspNetCore.Antiforgery.dll
  Microsoft.AspNetCore.Authentication.Abstractions.dll
  Microsoft.AspNetCore.Authentication.BearerToken.dll
@@ -246,7 +245,7 @@ Telemetry/Instrumentation.cs
  System.Formats.Cbor.dll
  System.Security.Cryptography.Xml.dll
  System.Threading.RateLimiting.dll
-../../../../../../../usr/local/share/dotnet/packs/Microsoft.NETCore.App.Ref/10.0.1/ref/net10.0/
+<DOTNET>/packs/Microsoft.NETCore.App.Ref/10.0.1/ref/net10.0/
  Microsoft.CSharp.dll
  Microsoft.VisualBasic.Core.dll
  Microsoft.VisualBasic.dll
@@ -414,7 +413,6 @@ Telemetry/Instrumentation.cs
  System.Xml.XPath.dll
  System.Xml.XPath.XDocument.dll
  WindowsBase.dll
-../OpenReferralApi.Core/obj/Debug/net10.0/ref/OpenReferralApi.Core.dll
 <NUGET>/
  amazon.lambda.apigatewayevents/2.7.3/lib/net8.0/Amazon.Lambda.APIGatewayEvents.dll
  amazon.lambda.applicationloadbalancerevents/2.2.0/lib/net8.0/Amazon.Lambda.ApplicationLoadBalancerEvents.dll
@@ -478,7 +476,7 @@ Telemetry/Instrumentation.cs
  zstdsharp.port/0.7.3/lib/net7.0/ZstdSharp.dll
 
 [analyzerReferences]
-../../../../../../../usr/local/share/dotnet/packs/Microsoft.AspNetCore.App.Ref/10.0.1/analyzers/dotnet/cs/
+<DOTNET>/packs/Microsoft.AspNetCore.App.Ref/10.0.1/analyzers/dotnet/cs/
  Microsoft.AspNetCore.App.Analyzers.dll
  Microsoft.AspNetCore.App.CodeFixes.dll
  Microsoft.AspNetCore.App.SourceGenerators.dll
@@ -486,24 +484,24 @@ Telemetry/Instrumentation.cs
  Microsoft.Extensions.Logging.Generators.dll
  Microsoft.Extensions.Options.SourceGeneration.dll
  Microsoft.Extensions.Validation.ValidationsGenerator.dll
-../../../../../../../usr/local/share/dotnet/packs/Microsoft.NETCore.App.Ref/10.0.1/analyzers/dotnet/cs/
+<DOTNET>/packs/Microsoft.NETCore.App.Ref/10.0.1/analyzers/dotnet/cs/
  Microsoft.Interop.ComInterfaceGenerator.dll
  Microsoft.Interop.JavaScript.JSImportGenerator.dll
  Microsoft.Interop.LibraryImportGenerator.dll
  Microsoft.Interop.SourceGeneration.dll
  System.Text.Json.SourceGeneration.dll
  System.Text.RegularExpressions.Generator.dll
-../../../../../../../usr/local/share/dotnet/sdk/10.0.101/Sdks/Microsoft.NET.Sdk.Razor/source-generators/
+<DOTNET>/sdk/10.0.101/Sdks/Microsoft.NET.Sdk.Razor/source-generators/
  Microsoft.AspNetCore.Razor.Utilities.Shared.dll
  Microsoft.CodeAnalysis.Razor.Compiler.dll
  Microsoft.Extensions.ObjectPool.dll
-../../../../../../../usr/local/share/dotnet/sdk/10.0.101/Sdks/Microsoft.NET.Sdk.Web/analyzers/cs/
+<DOTNET>/sdk/10.0.101/Sdks/Microsoft.NET.Sdk.Web/analyzers/cs/
  Microsoft.AspNetCore.Analyzers.dll
  Microsoft.AspNetCore.Mvc.Analyzers.dll
-../../../../../../../usr/local/share/dotnet/sdk/10.0.101/Sdks/Microsoft.NET.Sdk/analyzers/
+<DOTNET>/sdk/10.0.101/Sdks/Microsoft.NET.Sdk/analyzers/
  Microsoft.CodeAnalysis.CSharp.NetAnalyzers.dll
  Microsoft.CodeAnalysis.NetAnalyzers.dll
-../../../../../../../usr/local/share/dotnet/sdk/10.0.101/Sdks/Microsoft.NET.Sdk/codestyle/cs/
+<DOTNET>/sdk/10.0.101/Sdks/Microsoft.NET.Sdk/codestyle/cs/
  Microsoft.CodeAnalysis.CodeStyle.dll
  Microsoft.CodeAnalysis.CodeStyle.Fixes.dll
  Microsoft.CodeAnalysis.CSharp.CodeStyle.dll
@@ -513,6 +511,6 @@ Telemetry/Instrumentation.cs
  microsoft.aspnetcore.openapi/10.0.5/analyzers/dotnet/cs/Microsoft.AspNetCore.OpenApi.SourceGenerators.dll
 
 [analyzerConfigFiles]
-../../../../../../../usr/local/share/dotnet/sdk/10.0.101/Sdks/Microsoft.NET.Sdk/analyzers/build/config/analysislevel_9_all.globalconfig
 .editorconfig
+<DOTNET>/sdk/10.0.101/Sdks/Microsoft.NET.Sdk/analyzers/build/config/analysislevel_9_all.globalconfig
 obj/Debug/net10.0/OpenReferralApi.GeneratedMSBuildEditorConfig.editorconfig
