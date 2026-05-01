@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Logging;
 
 namespace OpenReferralApi.Core.Services;
@@ -125,7 +126,7 @@ public class FeedValidationService : IFeedValidationService
             updates.Add(updateBuilder.Set(f => f.LastTested, lastTestedDoc));
 
             var combinedUpdate = updateBuilder.Combine(updates);
-      _ = await _servicesCollection.UpdateOneAsync(filter, combinedUpdate, cancellationToken: cancellationToken);
+            _ = await _servicesCollection.UpdateOneAsync(filter, combinedUpdate, cancellationToken: cancellationToken);
 
             _logger.FeedStatusUpdated(feedId, isUp, isValid, responseTimeMs, validationErrorCount);
         }
@@ -251,7 +252,7 @@ public class FeedValidationService : IFeedValidationService
             }
             finally
             {
-            _ = semaphore.Release();
+                _ = semaphore.Release();
             }
         });
 

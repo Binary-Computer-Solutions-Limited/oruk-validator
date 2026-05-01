@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Schema;
+using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Logging;
 
 namespace OpenReferralApi.Core.Services;
@@ -95,13 +96,13 @@ public class SchemaResolverService : ISchemaResolverService
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _memoryCache = memoryCache ?? throw new ArgumentNullException(nameof(memoryCache));
         _cacheOptions = cacheOptions?.Value ?? throw new ArgumentNullException(nameof(cacheOptions));
-                _remoteSchemaLoader = new RemoteSchemaLoader(
-                    httpClientFactory,
-                    logger,
-                    memoryCache,
-                    cacheOptions,
-                    schemaResolutionOptions?.Value?.KnownJsonSchemaUrls,
-                    schemaResolutionOptions?.Value?.WarnOnUnknownJsonSchemaDraft ?? true);
+        _remoteSchemaLoader = new RemoteSchemaLoader(
+            httpClientFactory,
+            logger,
+            memoryCache,
+            cacheOptions,
+            schemaResolutionOptions?.Value?.KnownJsonSchemaUrls,
+            schemaResolutionOptions?.Value?.WarnOnUnknownJsonSchemaDraft ?? true);
         _referenceResolver = new ReferenceResolver(logger, _remoteSchemaLoader);
     }
 
@@ -170,127 +171,6 @@ public class SchemaResolverService : ISchemaResolverService
     }
 
     /// <summary>
-    /// Sanitizes a string for safe logging by stripping control characters (including newlines)
-    /// that could be used for log-forging attacks. This is a general-purpose method for 
-    /// sanitizing arbitrary user-supplied strings.
-    /// </summary>
-    public static string SanitizeStringForLogging(string input)
-    {
-        if (string.IsNullOrEmpty(input))
-            return string.Empty;
-
-        // Remove control characters (including CR/LF) and restrict to a conservative set of printable characters
-        // to prevent log forging or confusing log output.
-        var sanitizedChars = input
-          .Where(c =>
-            // Exclude control characters
-            !char.IsControl(c) &&
-            // Allow basic printable ASCII range; adjust as needed if wider Unicode is desired
-            c >= ' ' && c <= '~')
-          .ToArray();
-
-        var sanitized = new string(sanitizedChars);
-
-        // Normalize internal whitespace to a single space to avoid confusing spacing in logs.
-        if (sanitized.Length > 0)
-        {
-            sanitized = string.Join(' ',
-              sanitized
-                .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-        }
-
-        // Limit length to prevent log flooding
-        const int maxLength = 500;
-        if (sanitized.Length > maxLength)
-        {
-            sanitized = sanitized.Substring(0, maxLength) + "...(truncated)";
-        }
-
-        // Escape brace characters that might be interpreted specially by some logging frameworks
-        sanitized = sanitized
-          .Replace("{", "{{")
-          .Replace("}", "}}");
-
-        // Clearly mark user-supplied content so it cannot be mistaken for static log text.
-        return "[user: " + sanitized + "]";
-    }
-
-    /// <summary>
-    /// Sanitizes a URL for safe logging by removing query parameters and fragments
-    /// and stripping any control characters (including newlines) that could be used
-    /// for log-forging attacks.
-    /// </summary>
-    public static string SanitizeUrlForLogging(string url)
-    {
-        if (string.IsNullOrEmpty(url))
-            return string.Empty;
-
-        // Normalize whitespace and strip control characters (including CR/LF) to prevent log forging
-        var trimmed = url.Trim();
-        // Allow only a conservative set of URL-safe printable characters; replace others with '?'
-        var cleanedChars = trimmed
-          .Where(c => !char.IsControl(c))
-          .Select(c =>
-          {
-              // Unreserved and common reserved URL characters
-              const string allowedPunctuation = "-._~:/?#[]@!$&'()*+,;=%";
-              if ((c >= 'a' && c <= 'z') ||
-              (c >= 'A' && c <= 'Z') ||
-              (c >= '0' && c <= '9') ||
-              allowedPunctuation.IndexOf(c) >= 0)
-              {
-                  return c;
-              }
-              // Replace any unusual characters with a placeholder to keep logs safe and readable
-              return '?';
-          })
-          .ToArray();
-        var cleaned = new string(cleanedChars);
-
-        // Optionally limit length to avoid log flooding/obfuscation with attacker-controlled data
-        const int maxLength = 2048;
-        if (cleaned.Length > maxLength)
-        {
-            cleaned = cleaned.Substring(0, maxLength) + "...(truncated)";
-        }
-
-        try
-        {
-            // Prefer to log without query string or fragment where possible
-            if (Uri.TryCreate(cleaned, UriKind.Absolute, out var uri))
-            {
-                // Return URL without query string or fragment
-                var sanitized = $"{uri.Scheme}://{uri.Authority}{uri.AbsolutePath}";
-                // Ensure no control characters are present in the final value
-                return new string(sanitized.Where(c => !char.IsControl(c)).ToArray());
-            }
-            // For relative or non-absolute URLs, just remove query and fragment from the cleaned value
-            var questionMarkIndex = cleaned.IndexOf('?');
-            var hashIndex = cleaned.IndexOf('#');
-            var endIndex = cleaned.Length;
-
-            if (questionMarkIndex > 0)
-                endIndex = Math.Min(endIndex, questionMarkIndex);
-            if (hashIndex > 0)
-                endIndex = Math.Min(endIndex, hashIndex);
-
-            var withoutQueryOrFragment = cleaned[..endIndex];
-            return new string(withoutQueryOrFragment.Where(c => !char.IsControl(c)).ToArray());
-        }
-        catch
-        {
-            // If parsing fails, return a safely truncated, control-character-free version
-            var fallback = cleaned;
-            const int fallbackMaxLength = 100;
-            if (fallback.Length > fallbackMaxLength)
-            {
-                fallback = fallback[..fallbackMaxLength] + "...";
-            }
-            return new string(fallback.Where(c => !char.IsControl(c)).ToArray());
-        }
-    }
-
-    /// <summary>
     /// Creates a JSON schema from JSON string with proper reference resolution
     /// </summary>
     public async Task<JSchema> CreateSchemaFromJsonAsync(string schemaJson, CancellationToken cancellationToken = default)
@@ -306,13 +186,13 @@ public class SchemaResolverService : ISchemaResolverService
     {
         try
         {
-            _logger.CreatingJsonSchema(documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
+            _logger.CreatingJsonSchema(documentUri != null ? TextSanitizer.SanitizeUrlForLogging(documentUri) : "none");
 
             // Pre-resolve all external and internal references using System.Text.Json based resolution
             string resolvedSchemaJson = schemaJson;
             try
             {
-                _logger.PreResolvingSchemaReferences(documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
+                _logger.PreResolvingSchemaReferences(documentUri != null ? TextSanitizer.SanitizeUrlForLogging(documentUri) : "none");
                 resolvedSchemaJson = await ResolveAsync(schemaJson, documentUri, auth);
                 _logger.SuccessfullyPreResolvedSchemaReferences();
             }
@@ -343,7 +223,7 @@ public class SchemaResolverService : ISchemaResolverService
             // Set base URI for any remaining reference resolution if provided
             if (!string.IsNullOrEmpty(documentUri))
             {
-                _logger.LoadingSchemaWithBaseUri(SanitizeUrlForLogging(documentUri));
+                _logger.LoadingSchemaWithBaseUri(TextSanitizer.SanitizeUrlForLogging(documentUri));
                 settings.BaseUri = new Uri(documentUri);
             }
 
@@ -355,7 +235,7 @@ public class SchemaResolverService : ISchemaResolverService
             }
             catch (Exception ex)
             {
-                _logger.FailedToParseSchemaWithResolver(ex, documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
+                _logger.FailedToParseSchemaWithResolver(ex, documentUri != null ? TextSanitizer.SanitizeUrlForLogging(documentUri) : "none");
                 try
                 {
                     // Fallback: parse original schema with the same relaxed settings.
@@ -371,12 +251,12 @@ public class SchemaResolverService : ISchemaResolverService
 
                     _logger.FailedToParseSchemaWithoutResolver(
                       fallbackEx,
-                      documentUri != null ? SanitizeUrlForLogging(documentUri) : "none",
-                      SanitizeStringForLogging(fallbackEx.Message),
+                      documentUri != null ? TextSanitizer.SanitizeUrlForLogging(documentUri) : "none",
+                      TextSanitizer.SanitizeStringForLogging(fallbackEx.Message),
                       originalFingerprint,
                       resolvedFingerprint,
-                      SanitizeStringForLogging(originalSchemaId),
-                      SanitizeStringForLogging(resolvedSchemaId));
+                      TextSanitizer.SanitizeStringForLogging(originalSchemaId),
+                      TextSanitizer.SanitizeStringForLogging(resolvedSchemaId));
 
                     throw new InvalidOperationException("Unable to parse schema with or without resolver", fallbackEx);
                 }
@@ -386,7 +266,7 @@ public class SchemaResolverService : ISchemaResolverService
         }
         catch (Exception ex)
         {
-            _logger.FailedToCreateJsonSchema(ex, documentUri != null ? SanitizeUrlForLogging(documentUri) : "none");
+            _logger.FailedToCreateJsonSchema(ex, documentUri != null ? TextSanitizer.SanitizeUrlForLogging(documentUri) : "none");
             throw;
         }
     }

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Services;
 using OpenReferralApi.Logging;
 
@@ -48,7 +49,7 @@ internal sealed class OpenReferralUkController : BaseOpenApiController
     {
         if (_logger.IsEnabled(LogLevel.Information))
         {
-            var sanitizedBaseUrl = SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty);
+            var sanitizedBaseUrl = TextSanitizer.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty);
             OpenReferralUkControllerLog.ReceivedValidationRequest(_logger, sanitizedBaseUrl);
         }
 
@@ -62,7 +63,7 @@ internal sealed class OpenReferralUkController : BaseOpenApiController
 
         if (_logger.IsEnabled(LogLevel.Information))
         {
-            var sanitizedBaseUrl = SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty);
+            var sanitizedBaseUrl = TextSanitizer.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty);
             OpenReferralUkControllerLog.ValidationCompleted(_logger, sanitizedBaseUrl);
         }
 

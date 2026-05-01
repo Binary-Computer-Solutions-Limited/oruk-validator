@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 
 using Microsoft.Extensions.Options;
+using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Logging;
 
 namespace OpenReferralApi.Core.Services;

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Schema;
+using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Logging;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
 
@@ -178,7 +179,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                 }
 
                 var dialectInfo = specObject.ContainsKey("jsonSchemaDialect")
-                    ? $"using jsonSchemaDialect: {SchemaResolverService.SanitizeStringForLogging(specObject["jsonSchemaDialect"]?.ToString() ?? string.Empty)}"
+                    ? $"using jsonSchemaDialect: {TextSanitizer.SanitizeStringForLogging(specObject["jsonSchemaDialect"]?.ToString() ?? string.Empty)}"
                     : $"using version-based schema for OpenAPI {validation.OpenApiVersion}";
                 _logger.ValidatedOpenApiSpecification(dialectInfo, schemaUri);
             }

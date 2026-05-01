@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Logging;
 
 namespace OpenReferralApi.Core.Services;
@@ -72,7 +73,7 @@ public class RemoteSchemaLoader
             var cacheKey = GenerateCacheKey(resolvedUrl);
             if (_memoryCache.TryGetValue<string>(cacheKey, out var cachedContent) && cachedContent != null)
             {
-                _logger.RetrievedSchemaFromCache(SchemaResolverService.SanitizeUrlForLogging(resolvedUrl));
+                _logger.RetrievedSchemaFromCache(TextSanitizer.SanitizeUrlForLogging(resolvedUrl));
                 return JsonNode.Parse(cachedContent);
             }
         }
@@ -86,7 +87,7 @@ public class RemoteSchemaLoader
                 throw new ArgumentException($"Invalid schema URL: Only HTTP and HTTPS URLs are allowed", nameof(schemaUrl));
             }
 
-            _logger.FetchingRemoteSchema(SchemaResolverService.SanitizeUrlForLogging(resolvedUrl));
+            _logger.FetchingRemoteSchema(TextSanitizer.SanitizeUrlForLogging(resolvedUrl));
 
             using var request = new HttpRequestMessage(HttpMethod.Get, resolvedUrl);
 
@@ -98,7 +99,7 @@ public class RemoteSchemaLoader
 
             var httpClient = _httpClientFactory.CreateClient("OpenApiValidationService");
             using var response = await httpClient.SendAsync(request, cancellationToken);
-      _ = response.EnsureSuccessStatusCode();
+            _ = response.EnsureSuccessStatusCode();
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
             // Store in persistent cache if caching is enabled
@@ -125,15 +126,15 @@ public class RemoteSchemaLoader
                     }
                 }
 
-        _ = _memoryCache.Set(cacheKey, content, cacheEntryOptions);
-                _logger.CachedSchema(SchemaResolverService.SanitizeUrlForLogging(resolvedUrl), _cacheOptions.ExpirationMinutes);
+                _ = _memoryCache.Set(cacheKey, content, cacheEntryOptions);
+                _logger.CachedSchema(TextSanitizer.SanitizeUrlForLogging(resolvedUrl), _cacheOptions.ExpirationMinutes);
             }
 
             return JsonNode.Parse(content);
         }
         catch (Exception ex)
         {
-            _logger.FailedToFetchRemoteSchema(ex, SchemaResolverService.SanitizeUrlForLogging(schemaUrl));
+            _logger.FailedToFetchRemoteSchema(ex, TextSanitizer.SanitizeUrlForLogging(schemaUrl));
             throw;
         }
     }
@@ -252,7 +253,7 @@ public class RemoteSchemaLoader
             IsJsonSchemaDraftUrl(normalized) &&
             _unknownDraftWarnings.Add(normalized))
         {
-            _logger.UnknownJsonSchemaDraftUrl(SchemaResolverService.SanitizeUrlForLogging(normalized));
+            _logger.UnknownJsonSchemaDraftUrl(TextSanitizer.SanitizeUrlForLogging(normalized));
         }
 
         return null;

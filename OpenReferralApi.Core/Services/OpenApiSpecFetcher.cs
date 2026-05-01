@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
+using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Logging;
 using YamlDotNet.Serialization;
 
@@ -84,7 +85,7 @@ public class OpenApiSpecFetcher
     {
         try
         {
-            var safeSpecUrl = SchemaResolverService.SanitizeUrlForLogging(specUrl);
+            var safeSpecUrl = TextSanitizer.SanitizeUrlForLogging(specUrl);
             _logger.FetchingOpenApiSpec(safeSpecUrl);
 
             if (!Uri.IsWellFormedUriString(specUrl, UriKind.Absolute))
@@ -125,7 +126,7 @@ public class OpenApiSpecFetcher
 
             var httpClient = _httpClientFactory.CreateClient(nameof(OpenApiValidationService));
             using var response = await httpClient.SendAsync(request, cancellationToken);
-      _ = response.EnsureSuccessStatusCode();
+            _ = response.EnsureSuccessStatusCode();
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
             var normalizedContent = EnsureJson(content);
@@ -144,7 +145,7 @@ public class OpenApiSpecFetcher
         }
         catch (Exception ex)
         {
-            var sanitizedSpecUrl = SchemaResolverService.SanitizeUrlForLogging(specUrl);
+            var sanitizedSpecUrl = TextSanitizer.SanitizeUrlForLogging(specUrl);
             _logger.FailedToFetchOpenApiSpec(ex, sanitizedSpecUrl);
             throw new InvalidOperationException($"Failed to fetch OpenAPI specification from URL: {sanitizedSpecUrl}", ex);
         }
@@ -292,7 +293,7 @@ public class OpenApiSpecFetcher
         if (!string.IsNullOrEmpty(auth.ApiKey))
         {
             request.Headers.Add(auth.ApiKeyHeader, auth.ApiKey);
-            _logger.AppliedApiKeyAuthentication(SchemaResolverService.SanitizeStringForLogging(auth.ApiKeyHeader));
+            _logger.AppliedApiKeyAuthentication(TextSanitizer.SanitizeStringForLogging(auth.ApiKeyHeader));
         }
 
         // Apply Bearer Token authentication
@@ -318,7 +319,7 @@ public class OpenApiSpecFetcher
             foreach (var header in auth.CustomHeaders)
             {
                 request.Headers.Add(header.Key, header.Value);
-                OpenApiSpecFetcherLog.AppliedCustomHeader(_logger, SchemaResolverService.SanitizeStringForLogging(header.Key));
+                OpenApiSpecFetcherLog.AppliedCustomHeader(_logger, TextSanitizer.SanitizeStringForLogging(header.Key));
             }
         }
     }

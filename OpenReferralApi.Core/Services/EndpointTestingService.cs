@@ -15,6 +15,7 @@ using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Schema;
 using OpenReferralApi.Core.Logging;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
+using OpenReferralApi.Core.Helpers;
 
 namespace OpenReferralApi.Core.Services;
 
@@ -91,7 +92,7 @@ public class EndpointTestingService : IEndpointTestingService
                 stage,
                 TextSanitizer.SanitizeForLogging(groupName),
                 Activity.Current?.TraceId.ToString() ?? Activity.Current?.Id ?? "n/a",
-                SchemaResolverService.SanitizeUrlForLogging(baseUrl),
+                TextSanitizer.SanitizeUrlForLogging(baseUrl),
                 managedHeapBytes,
                 managedHeapDeltaBytes,
                 processWorkingSetBytes,
@@ -234,9 +235,9 @@ public class EndpointTestingService : IEndpointTestingService
             }
 
             // Check if this endpoint has pagination support
-            _logger.CheckingPaginationSupport(SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path));
+            _logger.CheckingPaginationSupport(TextSanitizer.SanitizeStringForLogging(method), TextSanitizer.SanitizeStringForLogging(path));
             bool hasPagination = method == "GET" && HasPageParameter(resolvedParams);
-            _logger.PaginationCheckResult(SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path), hasPagination);
+            _logger.PaginationCheckResult(TextSanitizer.SanitizeStringForLogging(method), TextSanitizer.SanitizeStringForLogging(path), hasPagination);
 
             if (hasPagination)
             {
@@ -362,7 +363,7 @@ public class EndpointTestingService : IEndpointTestingService
         }
         catch (Exception ex)
         {
-            _logger.ErrorTestingEndpoint(ex, SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path));
+            _logger.ErrorTestingEndpoint(ex, TextSanitizer.SanitizeStringForLogging(method), TextSanitizer.SanitizeStringForLogging(path));
             result.TestResults.Add(new HttpTestResult
             {
                 RequestUrl = $"{baseUrl}{path}",
@@ -375,7 +376,7 @@ public class EndpointTestingService : IEndpointTestingService
         }
         finally
         {
-      _ = semaphore.Release();
+            _ = semaphore.Release();
         }
 
         return result;
@@ -401,7 +402,7 @@ public class EndpointTestingService : IEndpointTestingService
         ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult,
         CancellationToken cancellationToken)
     {
-        _logger.TestingPaginatedEndpoint(SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path));
+        _logger.TestingPaginatedEndpoint(TextSanitizer.SanitizeStringForLogging(method), TextSanitizer.SanitizeStringForLogging(path));
 
         result.IsTested = true;
 
@@ -660,7 +661,7 @@ public class EndpointTestingService : IEndpointTestingService
             {
                 var name = paramObj["name"]?.ToString();
                 var inLocation = paramObj["in"]?.ToString();
-                _logger.CheckingParam(SchemaResolverService.SanitizeStringForLogging(name ?? string.Empty), SchemaResolverService.SanitizeStringForLogging(inLocation ?? string.Empty));
+                _logger.CheckingParam(TextSanitizer.SanitizeStringForLogging(name ?? string.Empty), TextSanitizer.SanitizeStringForLogging(inLocation ?? string.Empty));
 
                 if (name?.Equals("page", StringComparison.OrdinalIgnoreCase) == true &&
                     inLocation?.Equals("query", StringComparison.OrdinalIgnoreCase) == true)
@@ -692,7 +693,7 @@ public class EndpointTestingService : IEndpointTestingService
                 if (param is JObject paramObj)
                 {
                     var paramName = paramObj["name"]?.ToString();
-                    _logger.PathLevelParam(SchemaResolverService.SanitizeStringForLogging(paramName ?? string.Empty));
+                    _logger.PathLevelParam(TextSanitizer.SanitizeStringForLogging(paramName ?? string.Empty));
                 }
             }
         }
@@ -707,7 +708,7 @@ public class EndpointTestingService : IEndpointTestingService
                 if (param is JObject paramObj)
                 {
                     var paramName = paramObj["name"]?.ToString();
-                    _logger.OperationLevelParam(SchemaResolverService.SanitizeStringForLogging(paramName ?? string.Empty));
+                    _logger.OperationLevelParam(TextSanitizer.SanitizeStringForLogging(paramName ?? string.Empty));
                 }
             }
         }
@@ -896,7 +897,7 @@ public class EndpointTestingService : IEndpointTestingService
         }
         catch (Exception ex)
         {
-            _logger.CouldNotValidateResponse(ex, SchemaResolverService.SanitizeUrlForLogging(testResult.RequestUrl ?? string.Empty));
+            _logger.CouldNotValidateResponse(ex, TextSanitizer.SanitizeUrlForLogging(testResult.RequestUrl ?? string.Empty));
         }
     }
 
@@ -1248,7 +1249,7 @@ public class EndpointTestingService : IEndpointTestingService
             var successfulResponse = result.TestResults.First(r => r.IsSuccessStatusCode);
 
             _logger.ProcessingHttpResponse(
-                SchemaResolverService.SanitizeUrlForLogging(successfulResponse.RequestUrl ?? string.Empty),
+                TextSanitizer.SanitizeUrlForLogging(successfulResponse.RequestUrl ?? string.Empty),
                 successfulResponse.ResponseStatusCode ?? 0,
                 successfulResponse.ResponseBody?.Length ?? 0);
 

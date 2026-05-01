@@ -11,7 +11,7 @@ namespace OpenReferralApi.Tests.Services;
 public class FastDiscoveryServiceTests
 {
     private Mock<IHttpClientFactory> _httpClientFactoryMock = null!;
-    private Mock<ILogger<FastDiscoveryService>> _loggerMock = null!;
+    private Mock<ILogger<OpenApiBootstrapService>> _loggerMock = null!;
     private Mock<HttpMessageHandler> _httpMessageHandlerMock = null!;
     private HttpClient _httpClient = null!;
 
@@ -19,7 +19,7 @@ public class FastDiscoveryServiceTests
     public void Setup()
     {
         _httpClientFactoryMock = new Mock<IHttpClientFactory>();
-        _loggerMock = new Mock<ILogger<FastDiscoveryService>>();
+        _loggerMock = new Mock<ILogger<OpenApiBootstrapService>>();
         _httpMessageHandlerMock = new Mock<HttpMessageHandler>();
         _httpClient = TestHttpClientFactory.CreateClient(_httpMessageHandlerMock.Object);
 
@@ -152,11 +152,12 @@ public class FastDiscoveryServiceTests
         Assert.That(result.SpecContent, Does.Contain("openapi"));
     }
 
-    private FastDiscoveryService CreateService(OwnSchemaValidationMode ownSchemaValidation = OwnSchemaValidationMode.StrictOwnSchemaValidation)
+    private OpenApiBootstrapService CreateService(OwnSchemaValidationMode ownSchemaValidation = OwnSchemaValidationMode.StrictOwnSchemaValidation)
     {
-        return new FastDiscoveryService(
+        return new OpenApiBootstrapService(
+_loggerMock.Object,
+
             _httpClientFactoryMock.Object,
-            _loggerMock.Object,
             Options.Create(new SpecificationOptions
             {
                 Urls = new Dictionary<string, string>

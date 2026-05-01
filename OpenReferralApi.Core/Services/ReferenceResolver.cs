@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
+using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Logging;
 
 namespace OpenReferralApi.Core.Services;
@@ -254,11 +255,11 @@ public class ReferenceResolver
         }
         finally
         {
-                        _ = visitedRefs.Remove(resolvedRefKey);
-                        if (referencePath.Count > 0)
-                        {
-                                referencePath.RemoveAt(referencePath.Count - 1);
-                        }
+            _ = visitedRefs.Remove(resolvedRefKey);
+            if (referencePath.Count > 0)
+            {
+                referencePath.RemoveAt(referencePath.Count - 1);
+            }
         }
     }
 
@@ -300,7 +301,7 @@ public class ReferenceResolver
 
             if (schema == null)
             {
-                _logger.FailedToLoadSchema(SchemaResolverService.SanitizeStringForLogging(schemaLocation));
+                _logger.FailedToLoadSchema(TextSanitizer.SanitizeStringForLogging(schemaLocation));
                 return null;
             }
 
@@ -383,8 +384,8 @@ public class ReferenceResolver
     private void RecordCircularReference(string seenRefKey, string originalReference, IReadOnlyList<string> referencePath, bool isExternal)
     {
         var cyclePath = BuildCyclePath(referencePath, seenRefKey);
-        var cyclePathText = string.Join(" -> ", cyclePath.Select(ToDisplayReference).Select(SchemaResolverService.SanitizeStringForLogging));
-        var safeReference = SchemaResolverService.SanitizeStringForLogging(originalReference);
+        var cyclePathText = string.Join(" -> ", cyclePath.Select(ToDisplayReference).Select(TextSanitizer.SanitizeStringForLogging));
+        var safeReference = TextSanitizer.SanitizeStringForLogging(originalReference);
 
         if (isExternal)
         {
@@ -587,7 +588,7 @@ public class ReferenceResolver
 
         if (!File.Exists(localPath))
         {
-            _logger.SchemaFileNotFound(SchemaResolverService.SanitizeStringForLogging(localPath));
+            _logger.SchemaFileNotFound(TextSanitizer.SanitizeStringForLogging(localPath));
             return null;
         }
 
@@ -598,7 +599,7 @@ public class ReferenceResolver
         }
         catch (Exception ex)
         {
-            _logger.FailedToLoadLocalSchemaFile(ex, SchemaResolverService.SanitizeStringForLogging(localPath));
+            _logger.FailedToLoadLocalSchemaFile(ex, TextSanitizer.SanitizeStringForLogging(localPath));
             throw;
         }
     }

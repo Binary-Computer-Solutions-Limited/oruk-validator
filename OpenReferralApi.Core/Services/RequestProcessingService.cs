@@ -135,7 +135,7 @@ public class RequestProcessingService : IRequestProcessingService, IDisposable
 
         try
         {
-      _ = Interlocked.Increment(ref _activeRequests);
+            _ = Interlocked.Increment(ref _activeRequests);
             _lastRequestTime = DateTime.UtcNow;
 
             _logger.ExecutingWithConcurrencyControl(_activeRequests, maxConcurrent);
@@ -148,21 +148,21 @@ public class RequestProcessingService : IRequestProcessingService, IDisposable
             _requestTimes.Enqueue(DateTime.UtcNow);
             CleanupOldRequestTimes();
 
-      _ = Interlocked.Increment(ref _totalRequestsProcessed);
+            _ = Interlocked.Increment(ref _totalRequestsProcessed);
 
             _logger.FunctionExecutedSuccessfully(stopwatch.ElapsedMilliseconds);
             return result;
         }
         catch (Exception ex)
         {
-      _ = Interlocked.Increment(ref _failedRequests);
+            _ = Interlocked.Increment(ref _failedRequests);
             _logger.FunctionExecutionFailed(ex);
             throw;
         }
         finally
         {
-      _ = Interlocked.Decrement(ref _activeRequests);
-      _ = semaphore.Release();
+            _ = Interlocked.Decrement(ref _activeRequests);
+            _ = semaphore.Release();
         }
     }
 
@@ -295,7 +295,7 @@ public class RequestProcessingService : IRequestProcessingService, IDisposable
         var cutoff = DateTime.UtcNow.AddMinutes(-5); // Keep last 5 minutes
         while (_requestTimes.TryPeek(out var time) && time < cutoff)
         {
-      _ = _requestTimes.TryDequeue(out _);
+            _ = _requestTimes.TryDequeue(out _);
         }
     }
 

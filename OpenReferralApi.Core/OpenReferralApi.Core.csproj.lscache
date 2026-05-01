@@ -54,7 +54,11 @@ TemporaryDependencyNodeTargetIdentifier=net10.0
 /warnaserror+:NU1605,SYSLIB0011
 
 [sourceFiles]
+Extensions/JsonElementExtensions.cs
 GlobalUsings.cs
+Helpers/
+ Constants.cs
+ TextSanitizer.cs
 Logging/
  AuthenticationValidationLog.cs
  EndpointTestingLog.cs
@@ -129,9 +133,7 @@ Services/
  FeedValidationService.cs
  HsdsComplianceService.cs
  JsonValidatorService.cs
- LegacyDiscoveryContracts.cs
  OpenApiBootstrapService.cs
- OpenApiDiscoveryStandardPaths.cs
  OpenApiSpecFetcher.cs
  OpenApiSpecificationService.cs
  OpenApiValidationService.cs
@@ -143,7 +145,6 @@ Services/
  RemoteSchemaLoader.cs
  RequestProcessingService.cs
  SchemaResolverService.cs
- TextSanitizer.cs
  ValidationErrorNormalizer.cs
  ValidationPathNormalizer.cs
 

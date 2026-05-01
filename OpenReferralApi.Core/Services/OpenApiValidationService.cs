@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
+using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Logging;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
 
@@ -59,7 +60,6 @@ public class OpenApiValidationService : IOpenApiValidationService
 
     private readonly ILogger<OpenApiValidationService> _logger;
     private readonly ISchemaResolverService _schemaResolverService;
-    private readonly IFastDiscoveryService _fastDiscoveryService;
     private readonly IOpenApiBootstrapService _openApiBootstrapService;
     private readonly IOpenApiSpecificationService _openApiSpecificationService;
     private readonly IHsdsComplianceService _hsdsComplianceService;
@@ -75,21 +75,18 @@ public class OpenApiValidationService : IOpenApiValidationService
         IHttpClientFactory httpClientFactory,
         IJsonValidatorService jsonValidatorService,
         ISchemaResolverService schemaResolverService,
-        IFastDiscoveryService fastDiscoveryService,
-        IOpenApiSpecificationService? openApiSpecificationService = null,
-        IHsdsComplianceService? hsdsComplianceService = null,
-        IEndpointTestingService? endpointTestingService = null,
-        IAuthenticationValidationService? authenticationValidationService = null,
-        IOpenApiBootstrapService? openApiBootstrapService = null,
+        IOpenApiSpecificationService openApiSpecificationService,
+        IHsdsComplianceService hsdsComplianceService,
+        IEndpointTestingService endpointTestingService,
+        IAuthenticationValidationService authenticationValidationService,
+        IOpenApiBootstrapService openApiBootstrapService,
         IOptions<CacheOptions>? cacheOptions = null,
         IOptions<SpecificationOptions>? specificationOptions = null,
-        IOptions<OpenApiValidationServerOptions>? openApiValidationServerOptions = null,
-        IOptions<SchemaResolutionOptions>? schemaResolutionOptions = null)
+        IOptions<OpenApiValidationServerOptions>? openApiValidationServerOptions = null)
     {
         _logger = logger;
         _schemaResolverService = schemaResolverService;
-        _fastDiscoveryService = fastDiscoveryService;
-        _openApiSpecificationService = openApiSpecificationService ?? new OpenApiSpecificationService(NullLogger<OpenApiSpecificationService>.Instance, jsonValidatorService, schemaResolutionOptions);
+        _openApiSpecificationService = openApiSpecificationService;
         _hsdsComplianceService = hsdsComplianceService ?? new HsdsComplianceService(jsonValidatorService, specificationOptions, openApiValidationServerOptions);
         _endpointTestingService = endpointTestingService ?? new EndpointTestingService(NullLogger<EndpointTestingService>.Instance, httpClientFactory, jsonValidatorService, _hsdsComplianceService, openApiValidationServerOptions);
         _authenticationValidationService = authenticationValidationService ?? new AuthenticationValidationService(NullLogger<AuthenticationValidationService>.Instance, openApiValidationServerOptions ?? Options.Create(new OpenApiValidationServerOptions()));
@@ -97,86 +94,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         _cacheOptions = cacheOptions?.Value ?? new CacheOptions { Enabled = false };
         _specificationOptions = specificationOptions?.Value ?? new SpecificationOptions();
         _specFetcher = new OpenApiSpecFetcher(httpClientFactory, logger, schemaResolverService, allowUserSuppliedAuth: _openApiValidationOptions.AllowUserSuppliedAuth);
-        _openApiBootstrapService = openApiBootstrapService ?? new OpenApiBootstrapService(
-            _fastDiscoveryService,
-            NullLogger<OpenApiBootstrapService>.Instance);
-    }
-
-    public OpenApiValidationService(
-        ILogger<OpenApiValidationService> logger,
-        IHttpClientFactory httpClientFactory,
-        IJsonValidatorService jsonValidatorService,
-        ISchemaResolverService schemaResolverService,
-        IProfileDiscoveryService discoveryService,
-        IOpenApiDiscoveryService feedSpecDiscoveryService,
-        IOpenApiSpecificationService? openApiSpecificationService = null,
-        IHsdsComplianceService? hsdsComplianceService = null,
-        IEndpointTestingService? endpointTestingService = null,
-        IAuthenticationValidationService? authenticationValidationService = null,
-        IOpenApiBootstrapService? openApiBootstrapService = null,
-        IOptions<CacheOptions>? cacheOptions = null,
-        IOptions<SpecificationOptions>? specificationOptions = null,
-        IOptions<OpenApiValidationServerOptions>? openApiValidationServerOptions = null,
-        IOptions<SchemaResolutionOptions>? schemaResolutionOptions = null)
-        : this(
-            logger,
-            httpClientFactory,
-            jsonValidatorService,
-            schemaResolverService,
-            new CompatibilityFastDiscoveryService(discoveryService, feedSpecDiscoveryService),
-            openApiSpecificationService,
-            hsdsComplianceService,
-            endpointTestingService,
-            authenticationValidationService,
-            openApiBootstrapService,
-            cacheOptions,
-            specificationOptions,
-            openApiValidationServerOptions,
-            schemaResolutionOptions)
-    {
-    }
-
-    private sealed class CompatibilityFastDiscoveryService : IFastDiscoveryService
-    {
-        private readonly IProfileDiscoveryService _profileDiscoveryService;
-        private readonly IOpenApiDiscoveryService _openApiDiscoveryService;
-
-        public CompatibilityFastDiscoveryService(IProfileDiscoveryService profileDiscoveryService, IOpenApiDiscoveryService openApiDiscoveryService)
-        {
-            _profileDiscoveryService = profileDiscoveryService;
-            _openApiDiscoveryService = openApiDiscoveryService;
-        }
-
-        public async Task<UnifiedDiscoveryResult> DiscoverAsync(
-            string baseUrl,
-            DataSourceAuthentication? authentication = null,
-            string? baseUrlContent = null,
-            bool includeDiscoveredSpecContent = false,
-            CancellationToken cancellationToken = default)
-        {
-            var profileDiscovery = await _profileDiscoveryService.DiscoverAsync(baseUrl, authentication, cancellationToken);
-
-            OpenApiDiscoveryResult? feedSpecDiscovery = null;
-            if (!profileDiscovery.HasExplicitOpenApiUrl)
-            {
-                feedSpecDiscovery = await _openApiDiscoveryService.DiscoverOpenApiSpecAsync(
-                    baseUrl,
-                    profileDiscovery.BaseUrlResponseContent,
-                    includeDiscoveredSpecContent,
-                    cancellationToken);
-            }
-
-            return new UnifiedDiscoveryResult
-            {
-                Url = profileDiscovery.HasExplicitOpenApiUrl ? profileDiscovery.Url : feedSpecDiscovery?.Url,
-                Reason = profileDiscovery.Reason,
-                SpecContent = feedSpecDiscovery?.SpecContent,
-                DetectedHsdsProfileVersion = profileDiscovery.DetectedHsdsProfileVersion ?? feedSpecDiscovery?.DetectedHsdsProfileVersion,
-                BaseUrlRequestSucceeded = profileDiscovery.BaseUrlRequestSucceeded,
-                BaseUrlResponseContent = profileDiscovery.BaseUrlResponseContent,
-                HasExplicitOpenApiUrl = profileDiscovery.HasExplicitOpenApiUrl
-            };
-        }
+        _openApiBootstrapService = openApiBootstrapService;
     }
 
     public async Task<OpenApiValidationResult> ValidateOpenApiSpecificationAsync(OpenApiValidationRequest request, CancellationToken cancellationToken = default)
@@ -217,7 +135,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             var gen1CollectionsDelta = gen1CollectionCount - lastGen1CollectionCount;
             var gen2CollectionsDelta = gen2CollectionCount - lastGen2CollectionCount;
             var correlationId = GetCurrentCorrelationId();
-            var sanitizedBaseUrl = SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty);
+            var sanitizedBaseUrl = TextSanitizer.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty);
             var profile = ResolveMetadataProfileIdentifier(
                 request.ProfileReason,
                 _hsdsComplianceService.ExtractClaimedProfileVersion(request.ProfileReason, request.OwnSchemaUrl),
@@ -227,7 +145,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 stage,
                 correlationId,
                 sanitizedBaseUrl,
-                SchemaResolverService.SanitizeStringForLogging(profile ?? string.Empty),
+                TextSanitizer.SanitizeStringForLogging(profile ?? string.Empty),
                 managedHeapBytes,
                 managedHeapDeltaBytes,
                 processWorkingSetBytes,
@@ -316,11 +234,11 @@ public class OpenApiValidationService : IOpenApiValidationService
                         {
                             discoveredUrl = bootstrapMappedProfileSchemaUrl;
                             _logger.UsingProfileSchemaUrl(
-                                SchemaResolverService.SanitizeUrlForLogging(bootstrapMappedProfileSchemaUrl),
+                                TextSanitizer.SanitizeUrlForLogging(bootstrapMappedProfileSchemaUrl),
                                 bootstrap.ProfileVersion);
                         }
 
-                        _logger.DiscoveredOpenApiSchemaUrl(SchemaResolverService.SanitizeUrlForLogging(discoveredUrl), reason);
+                        _logger.DiscoveredOpenApiSchemaUrl(TextSanitizer.SanitizeUrlForLogging(discoveredUrl), reason);
                         request.OwnSchemaUrl = discoveredUrl;
                         request.ProfileReason = bootstrap.ProfileReason;
                     }
@@ -336,8 +254,8 @@ public class OpenApiValidationService : IOpenApiValidationService
 
                             result.Notifications.Add("OpenAPI schema URL could not be discovered from the base URL. Falling back to the configured default HSDS profile OpenAPI specification.");
                             _logger.UsingDefaultProfileSchemaUrl(
-                                SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty),
-                                SchemaResolverService.SanitizeUrlForLogging(defaultProfileSchemaUrl));
+                                TextSanitizer.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty),
+                                TextSanitizer.SanitizeUrlForLogging(defaultProfileSchemaUrl));
                         }
                         else
                         {
@@ -396,7 +314,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     {
                         _logger.DefaultProfileFallbackCouldNotBeResolved(
                             defaultFallbackEx,
-                            SchemaResolverService.SanitizeUrlForLogging(defaultProfileSchemaUrl));
+                            TextSanitizer.SanitizeUrlForLogging(defaultProfileSchemaUrl));
                     }
                 }
 
@@ -407,8 +325,8 @@ public class OpenApiValidationService : IOpenApiValidationService
 
                 _logger.FallingBackToHsdsProfileSchema(
                     ex,
-                    SchemaResolverService.SanitizeUrlForLogging(request.OwnSchemaUrl),
-                    SchemaResolverService.SanitizeUrlForLogging(knownHsdsSchemaUrl));
+                    TextSanitizer.SanitizeUrlForLogging(request.OwnSchemaUrl),
+                    TextSanitizer.SanitizeUrlForLogging(knownHsdsSchemaUrl));
 
                 openApiSpec = resolvedHsdsProfileSpec;
                 request.OwnSchemaUrl = knownHsdsSchemaUrl;
@@ -429,7 +347,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                     if (fromOpenapiField)
                     {
                         _logger.HsdsVersionMisplaced(
-                            SchemaResolverService.SanitizeStringForLogging(openApiSpec.SelectToken("openapi")?.ToString() ?? string.Empty),
+                            TextSanitizer.SanitizeStringForLogging(openApiSpec.SelectToken("openapi")?.ToString() ?? string.Empty),
                             versionFromSpec);
                         misplacedHsdsVersionWarning =
                             $"Warning: The HSDS schema version was incorrectly defined in the 'openapi' field. " +
@@ -691,7 +609,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             if (IsSpecFetchOrResolveFailure(ex))
             {
-                var safeSpecUrl = SchemaResolverService.SanitizeUrlForLogging(request.OwnSchemaUrl ?? string.Empty);
+                var safeSpecUrl = TextSanitizer.SanitizeUrlForLogging(request.OwnSchemaUrl ?? string.Empty);
                 var rootMessage = TextSanitizer.SanitizeExceptionMessage(GetInnermostException(ex).Message);
                 var notification = string.IsNullOrEmpty(safeSpecUrl)
                     ? $"Unable to get or resolve the OpenAPI specification. {rootMessage}"
@@ -1010,7 +928,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             || string.IsNullOrWhiteSpace(configuredDefaultSchemaUrl)
             || !Uri.IsWellFormedUriString(configuredDefaultSchemaUrl, UriKind.Absolute))
         {
-            _logger.InvalidDefaultProfileVersion(SchemaResolverService.SanitizeStringForLogging(configuredDefaultKey));
+            _logger.InvalidDefaultProfileVersion(TextSanitizer.SanitizeStringForLogging(configuredDefaultKey));
             return false;
         }
 
@@ -1030,7 +948,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         var lookupStopwatch = Stopwatch.StartNew();
         var lookupStartManagedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
         var lookupStartWorkingSetBytes = Environment.WorkingSet;
-        var sanitizedSpecUrl = SchemaResolverService.SanitizeUrlForLogging(specUrl);
+        var sanitizedSpecUrl = TextSanitizer.SanitizeUrlForLogging(specUrl);
 
         void LogLookupCheckpoint(string outcome)
         {

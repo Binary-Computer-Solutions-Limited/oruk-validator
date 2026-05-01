@@ -10,27 +10,27 @@ namespace OpenReferralApi.Tests.Services;
 [TestFixture]
 public class OpenApiSpecificationServiceTests
 {
-    private Mock<ILogger<OpenApiSpecificationService>> _loggerMock = null!;
-    private Mock<IJsonValidatorService> _jsonValidatorServiceMock = null!;
-    private OpenApiSpecificationService _service = null!;
+  private Mock<ILogger<OpenApiSpecificationService>> _loggerMock = null!;
+  private Mock<IJsonValidatorService> _jsonValidatorServiceMock = null!;
+  private OpenApiSpecificationService _service = null!;
 
-    [SetUp]
-    public void Setup()
-    {
-        _loggerMock = new Mock<ILogger<OpenApiSpecificationService>>();
-        _jsonValidatorServiceMock = new Mock<IJsonValidatorService>();
+  [SetUp]
+  public void Setup()
+  {
+    _loggerMock = new Mock<ILogger<OpenApiSpecificationService>>();
+    _jsonValidatorServiceMock = new Mock<IJsonValidatorService>();
 
-        _jsonValidatorServiceMock
-            .Setup(x => x.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ValidationResult
-            {
-                IsValid = true,
-                Errors = new List<ValidationError>()
-            });
-
-        var schemaResolutionOptions = Options.Create(new SchemaResolutionOptions
+    _jsonValidatorServiceMock
+        .Setup(x => x.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
+        .ReturnsAsync(new ValidationResult
         {
-            KnownJsonSchemaUrls = new List<string>
+          IsValid = true,
+          Errors = new List<ValidationError>()
+        });
+
+    var schemaResolutionOptions = Options.Create(new SchemaResolutionOptions
+    {
+      KnownJsonSchemaUrls = new List<string>
             {
                 "https://json-schema.org/draft/2020-12/schema",
                 "https://json-schema.org/draft/2020-12/meta/core",
@@ -41,33 +41,33 @@ public class OpenApiSpecificationServiceTests
                 "https://json-schema.org/draft/2020-12/meta/format-annotation",
                 "https://json-schema.org/draft/2020-12/meta/content"
             }
-        });
+    });
 
-        _service = new OpenApiSpecificationService(_loggerMock.Object, _jsonValidatorServiceMock.Object, schemaResolutionOptions);
-    }
+    _service = new OpenApiSpecificationService(_loggerMock.Object, _jsonValidatorServiceMock.Object, schemaResolutionOptions);
+  }
 
-    [Test]
-    public async Task ValidateAsync_WithMissingRequiredFields_ReturnsExpectedErrors()
-    {
-        var result = await _service.ValidateAsync(JObject.Parse("{}"), CancellationToken.None);
+  [Test]
+  public async Task ValidateAsync_WithMissingRequiredFields_ReturnsExpectedErrors()
+  {
+    var result = await _service.ValidateAsync(JObject.Parse("{}"), CancellationToken.None);
 
-        Assert.That(result.IsValid, Is.False);
-        Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "MISSING_OPENAPI_VERSION"));
-        Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "MISSING_INFO"));
-        Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "MISSING_PATHS"));
-    }
+    Assert.That(result.IsValid, Is.False);
+    Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "MISSING_OPENAPI_VERSION"));
+    Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "MISSING_INFO"));
+    Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "MISSING_PATHS"));
+  }
 
-    [Test]
-    public async Task ValidateAsync_WithKnownJsonSchemaDialect_UsesDialectAsSchemaUri()
-    {
-        ValidationRequest? capturedRequest = null;
+  [Test]
+  public async Task ValidateAsync_WithKnownJsonSchemaDialect_UsesDialectAsSchemaUri()
+  {
+    ValidationRequest? capturedRequest = null;
 
-        _jsonValidatorServiceMock
-            .Setup(x => x.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
-            .Callback<ValidationRequest, CancellationToken>((req, _) => capturedRequest = req)
-            .ReturnsAsync(new ValidationResult { IsValid = true, Errors = new List<ValidationError>() });
+    _jsonValidatorServiceMock
+        .Setup(x => x.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
+        .Callback<ValidationRequest, CancellationToken>((req, _) => capturedRequest = req)
+        .ReturnsAsync(new ValidationResult { IsValid = true, Errors = new List<ValidationError>() });
 
-        var spec = JObject.Parse("""
+    var spec = JObject.Parse("""
         {
           "openapi": "3.1.0",
           "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
@@ -84,24 +84,24 @@ public class OpenApiSpecificationServiceTests
         }
         """);
 
-        var result = await _service.ValidateAsync(spec, CancellationToken.None);
+    var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
-        Assert.That(result.IsValid, Is.True);
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.SchemaUri, Is.EqualTo("https://json-schema.org/draft/2020-12/schema"));
-    }
+    Assert.That(result.IsValid, Is.True);
+    Assert.That(capturedRequest, Is.Not.Null);
+    Assert.That(capturedRequest!.SchemaUri, Is.EqualTo("https://json-schema.org/draft/2020-12/schema"));
+  }
 
-    [Test]
-    public async Task ValidateAsync_WithOpenApi30Version_UsesDeclaredOpenApi30SchemaUri()
-    {
-        ValidationRequest? capturedRequest = null;
+  [Test]
+  public async Task ValidateAsync_WithOpenApi30Version_UsesDeclaredOpenApi30SchemaUri()
+  {
+    ValidationRequest? capturedRequest = null;
 
-        _jsonValidatorServiceMock
-            .Setup(x => x.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
-            .Callback<ValidationRequest, CancellationToken>((req, _) => capturedRequest = req)
-            .ReturnsAsync(new ValidationResult { IsValid = true, Errors = new List<ValidationError>() });
+    _jsonValidatorServiceMock
+        .Setup(x => x.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
+        .Callback<ValidationRequest, CancellationToken>((req, _) => capturedRequest = req)
+        .ReturnsAsync(new ValidationResult { IsValid = true, Errors = new List<ValidationError>() });
 
-        var spec = JObject.Parse("""
+    var spec = JObject.Parse("""
         {
           "openapi": "3.0.3",
           "info": { "title": "Test", "version": "1.0.0" },
@@ -117,21 +117,21 @@ public class OpenApiSpecificationServiceTests
         }
         """);
 
-        var result = await _service.ValidateAsync(spec, CancellationToken.None);
+    var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
-        Assert.That(result.IsValid, Is.True);
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.SchemaUri, Is.EqualTo("https://json-schema.org/draft/2020-12/schema"));
-    }
+    Assert.That(result.IsValid, Is.True);
+    Assert.That(capturedRequest, Is.Not.Null);
+    Assert.That(capturedRequest!.SchemaUri, Is.EqualTo("https://json-schema.org/draft/2020-12/schema"));
+  }
 
-    [Test]
-    public async Task ValidateAsync_WhenJsonValidatorThrows_AddsSchemaValidationFailedWarning()
-    {
-        _jsonValidatorServiceMock
-            .Setup(x => x.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new InvalidOperationException("schema boom"));
+  [Test]
+  public async Task ValidateAsync_WhenJsonValidatorThrows_AddsSchemaValidationFailedWarning()
+  {
+    _jsonValidatorServiceMock
+        .Setup(x => x.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
+        .ThrowsAsync(new InvalidOperationException("schema boom"));
 
-        var spec = JObject.Parse("""
+    var spec = JObject.Parse("""
         {
           "openapi": "3.0.0",
           "info": { "title": "Test", "version": "1.0.0" },
@@ -147,17 +147,17 @@ public class OpenApiSpecificationServiceTests
         }
         """);
 
-        var result = await _service.ValidateAsync(spec, CancellationToken.None);
+    var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
-        Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "SCHEMA_VALIDATION_FAILED"));
-        Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "SCHEMA_VALIDATION_FAILED" && e.Severity == "Error"));
-        Assert.That(result.IsValid, Is.False);
-    }
+    Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "SCHEMA_VALIDATION_FAILED"));
+    Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "SCHEMA_VALIDATION_FAILED" && e.Severity == "Error"));
+    Assert.That(result.IsValid, Is.False);
+  }
 
-    [Test]
-    public async Task ValidateAsync_WithUnsupportedJsonSchemaDialect_AddsUnsupportedSchemaVersionError()
-    {
-        var spec = JObject.Parse("""
+  [Test]
+  public async Task ValidateAsync_WithUnsupportedJsonSchemaDialect_AddsUnsupportedSchemaVersionError()
+  {
+    var spec = JObject.Parse("""
         {
           "openapi": "3.1.0",
           "jsonSchemaDialect": "https://example.com/unknown-schema",
@@ -174,28 +174,28 @@ public class OpenApiSpecificationServiceTests
         }
         """);
 
-        var result = await _service.ValidateAsync(spec, CancellationToken.None);
+    var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
-        Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "UNSUPPORTED_SCHEMA_VERSION" && e.Severity == "Error"));
-        Assert.That(result.IsValid, Is.False);
-    }
+    Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "UNSUPPORTED_SCHEMA_VERSION" && e.Severity == "Error"));
+    Assert.That(result.IsValid, Is.False);
+  }
 
-    [Test]
-    public async Task ValidateAsync_NormalizesAndDeduplicatesIndexedErrors()
-    {
-        _jsonValidatorServiceMock
-            .Setup(x => x.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ValidationResult
+  [Test]
+  public async Task ValidateAsync_NormalizesAndDeduplicatesIndexedErrors()
+  {
+    _jsonValidatorServiceMock
+        .Setup(x => x.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
+        .ReturnsAsync(new ValidationResult
+        {
+          IsValid = false,
+          Errors = new List<ValidationError>
             {
-                IsValid = false,
-                Errors = new List<ValidationError>
-                {
                     new() { Path = "paths[/services].get.responses[0].content", Message = "a[0]", ErrorCode = "V", Severity = "Error" },
                     new() { Path = "paths[/services].get.responses[1].content", Message = "a[1]", ErrorCode = "V", Severity = "Error" }
-                }
-            });
+            }
+        });
 
-        var spec = JObject.Parse("""
+    var spec = JObject.Parse("""
         {
           "openapi": "3.0.0",
           "info": { "title": "Test", "version": "1.0.0" },
@@ -211,16 +211,16 @@ public class OpenApiSpecificationServiceTests
         }
         """);
 
-        var result = await _service.ValidateAsync(spec, CancellationToken.None);
+    var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
-        Assert.That(result.Errors.Count(e => e.ErrorCode == "V"), Is.EqualTo(1));
-        Assert.That(result.Errors.First(e => e.ErrorCode == "V").Path, Is.EqualTo("paths[/services].get.responses[].content"));
-    }
+    Assert.That(result.Errors.Count(e => e.ErrorCode == "V"), Is.EqualTo(1));
+    Assert.That(result.Errors.First(e => e.ErrorCode == "V").Path, Is.EqualTo("paths[/services].get.responses[].content"));
+  }
 
-    [Test]
-    public async Task ValidateAsync_GeneratesInfoRecommendations_WhenDescriptionContactLicenseMissing()
-    {
-        var spec = JObject.Parse("""
+  [Test]
+  public async Task ValidateAsync_GeneratesInfoRecommendations_WhenDescriptionContactLicenseMissing()
+  {
+    var spec = JObject.Parse("""
         {
           "openapi": "3.0.0",
           "info": { "title": "Test", "version": "1.0.0" },
@@ -236,17 +236,17 @@ public class OpenApiSpecificationServiceTests
         }
         """);
 
-        var result = await _service.ValidateAsync(spec, CancellationToken.None);
+    var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
-        Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "info.description"));
-        Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "info.contact"));
-        Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "info.license"));
-    }
+    Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "info.description"));
+    Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "info.contact"));
+    Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "info.license"));
+  }
 
-    [Test]
-    public async Task ValidateAsync_SwaggerDefinitions_AppliesSchemaAnalysisCounts()
-    {
-        var spec = JObject.Parse("""
+  [Test]
+  public async Task ValidateAsync_SwaggerDefinitions_AppliesSchemaAnalysisCounts()
+  {
+    var spec = JObject.Parse("""
         {
           "swagger": "2.0",
           "info": { "title": "Test", "version": "1.0.0" },
@@ -266,16 +266,16 @@ public class OpenApiSpecificationServiceTests
         }
         """);
 
-        var result = await _service.ValidateAsync(spec, CancellationToken.None);
+    var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
-        Assert.That(result.SchemaAnalysis, Is.Not.Null);
-        Assert.That(result.SchemaAnalysis.SchemaCount, Is.EqualTo(2));
-    }
+    Assert.That(result.SchemaAnalysis, Is.Not.Null);
+    Assert.That(result.SchemaAnalysis.SchemaCount, Is.EqualTo(2));
+  }
 
-    [Test]
-    public async Task ValidateAsync_ComponentsAndExamples_ComputesQualityAndStructureMetrics()
-    {
-        var spec = JObject.Parse("""
+  [Test]
+  public async Task ValidateAsync_ComponentsAndExamples_ComputesQualityAndStructureMetrics()
+  {
+    var spec = JObject.Parse("""
         {
           "openapi": "3.1.0",
           "info": {
@@ -314,22 +314,22 @@ public class OpenApiSpecificationServiceTests
         }
         """);
 
-        var result = await _service.ValidateAsync(spec, CancellationToken.None);
+    var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
-        Assert.That(result.SchemaAnalysis, Is.Not.Null);
-        Assert.That(result.SchemaAnalysis.ComponentCount, Is.EqualTo(1));
-        Assert.That(result.SchemaAnalysis.SchemaCount, Is.EqualTo(1));
-        Assert.That(result.SchemaAnalysis.ExampleCount, Is.GreaterThanOrEqualTo(1));
+    Assert.That(result.SchemaAnalysis, Is.Not.Null);
+    Assert.That(result.SchemaAnalysis.ComponentCount, Is.EqualTo(1));
+    Assert.That(result.SchemaAnalysis.SchemaCount, Is.EqualTo(1));
+    Assert.That(result.SchemaAnalysis.ExampleCount, Is.GreaterThanOrEqualTo(1));
 
-        Assert.That(result.QualityMetrics, Is.Not.Null);
-        Assert.That(result.QualityMetrics.DocumentationCoverage, Is.GreaterThan(0));
-        Assert.That(result.QualityMetrics.QualityScore, Is.GreaterThan(0));
-    }
+    Assert.That(result.QualityMetrics, Is.Not.Null);
+    Assert.That(result.QualityMetrics.DocumentationCoverage, Is.GreaterThan(0));
+    Assert.That(result.QualityMetrics.QualityScore, Is.GreaterThan(0));
+  }
 
-    [Test]
-    public async Task ValidateAsync_AddsEndpointTestingRecommendations_WhenOperationMetadataIsIncomplete()
-    {
-        var spec = JObject.Parse("""
+  [Test]
+  public async Task ValidateAsync_AddsEndpointTestingRecommendations_WhenOperationMetadataIsIncomplete()
+  {
+    var spec = JObject.Parse("""
         {
           "openapi": "3.1.0",
           "info": {
@@ -353,18 +353,18 @@ public class OpenApiSpecificationServiceTests
         }
         """);
 
-        var result = await _service.ValidateAsync(spec, CancellationToken.None);
+    var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
-        Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "servers"));
-        Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "paths./services.get.operationId"));
-        Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "paths./services.get.responses" && r.Message.Contains("error response codes", StringComparison.OrdinalIgnoreCase)));
-        Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "paths./services.get.responses" && r.Message.Contains("missing a response schema", StringComparison.OrdinalIgnoreCase)));
-    }
+    Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "servers"));
+    Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "paths./services.get.operationId"));
+    Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "paths./services.get.responses" && r.Message.Contains("error response codes", StringComparison.OrdinalIgnoreCase)));
+    Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "paths./services.get.responses" && r.Message.Contains("missing a response schema", StringComparison.OrdinalIgnoreCase)));
+  }
 
-    [Test]
-    public async Task ValidateAsync_DoesNotAddEndpointTestingRecommendations_WhenOperationMetadataIsComplete()
-    {
-        var spec = JObject.Parse("""
+  [Test]
+  public async Task ValidateAsync_DoesNotAddEndpointTestingRecommendations_WhenOperationMetadataIsComplete()
+  {
+    var spec = JObject.Parse("""
         {
           "openapi": "3.1.0",
           "servers": [
@@ -405,11 +405,11 @@ public class OpenApiSpecificationServiceTests
         }
         """);
 
-        var result = await _service.ValidateAsync(spec, CancellationToken.None);
+    var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
-        Assert.That(result.Recommendations.Any(r => r.Path == "servers"), Is.False);
-        Assert.That(result.Recommendations.Any(r => r.Path == "paths./services.get.operationId"), Is.False);
-        Assert.That(result.Recommendations.Any(r => r.Path == "paths./services.get.responses" && r.Message.Contains("error response codes", StringComparison.OrdinalIgnoreCase)), Is.False);
-        Assert.That(result.Recommendations.Any(r => r.Path == "paths./services.get.responses" && r.Message.Contains("missing a response schema", StringComparison.OrdinalIgnoreCase)), Is.False);
-    }
+    Assert.That(result.Recommendations.Any(r => r.Path == "servers"), Is.False);
+    Assert.That(result.Recommendations.Any(r => r.Path == "paths./services.get.operationId"), Is.False);
+    Assert.That(result.Recommendations.Any(r => r.Path == "paths./services.get.responses" && r.Message.Contains("error response codes", StringComparison.OrdinalIgnoreCase)), Is.False);
+    Assert.That(result.Recommendations.Any(r => r.Path == "paths./services.get.responses" && r.Message.Contains("missing a response schema", StringComparison.OrdinalIgnoreCase)), Is.False);
+  }
 }
