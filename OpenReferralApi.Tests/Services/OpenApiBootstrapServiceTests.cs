@@ -7,21 +7,18 @@ namespace OpenReferralApi.Tests.Services;
 [TestFixture]
 public class OpenApiBootstrapServiceTests
 {
-    private Mock<IProfileDiscoveryService> _profileDiscoveryMock = null!;
-    private Mock<IOpenApiDiscoveryService> _openApiDiscoveryMock = null!;
+    private Mock<IFastDiscoveryService> _fastDiscoveryMock = null!;
     private Mock<ILogger<OpenApiBootstrapService>> _loggerMock = null!;
     private OpenApiBootstrapService _service = null!;
 
     [SetUp]
     public void Setup()
     {
-        _profileDiscoveryMock = new Mock<IProfileDiscoveryService>();
-        _openApiDiscoveryMock = new Mock<IOpenApiDiscoveryService>();
+        _fastDiscoveryMock = new Mock<IFastDiscoveryService>();
         _loggerMock = new Mock<ILogger<OpenApiBootstrapService>>();
 
         _service = new OpenApiBootstrapService(
-            _profileDiscoveryMock.Object,
-            _openApiDiscoveryMock.Object,
+            _fastDiscoveryMock.Object,
             _loggerMock.Object);
     }
 
@@ -29,9 +26,9 @@ public class OpenApiBootstrapServiceTests
     public async Task ResolveFromBaseUrlAsync_WithExplicitOpenApiUrl_UsesRootUrlAndVersion()
     {
         // Arrange
-        _profileDiscoveryMock
-            .Setup(x => x.DiscoverAsync("https://api.example.com", It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ProfileDiscoveryResult
+        _fastDiscoveryMock
+            .Setup(x => x.DiscoverAsync("https://api.example.com", It.IsAny<DataSourceAuthentication?>(), null, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UnifiedDiscoveryResult
             {
                 Url = "https://api.example.com/custom-openapi.json",
                 Reason = "OpenAPI URL read from '/' endpoint (openapi_url field)",
@@ -46,27 +43,15 @@ public class OpenApiBootstrapServiceTests
         Assert.That(result.OpenApiSchemaUrl, Is.EqualTo("https://api.example.com/custom-openapi.json"));
         Assert.That(result.ProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
         Assert.That(result.ProfileReason, Does.Contain("HSDS-UK-3.0"));
-
-        _openApiDiscoveryMock.Verify(x => x.DiscoverOpenApiSpecAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
     public async Task ResolveFromBaseUrlAsync_WithoutExplicitOpenApiUrl_UsesFeedDiscoveryAndReturnsNullProfileVersion()
     {
         // Arrange
-        _profileDiscoveryMock
-            .Setup(x => x.DiscoverAsync("https://api.example.com", It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ProfileDiscoveryResult
-            {
-                Url = null,
-                Reason = "No version or openapi_url found in '/' response",
-                BaseUrlResponseContent = "{}",
-                HasExplicitOpenApiUrl = false
-            });
-
-        _openApiDiscoveryMock
-            .Setup(x => x.DiscoverOpenApiSpecAsync("https://api.example.com", "{}", true, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OpenApiDiscoveryResult
+        _fastDiscoveryMock
+            .Setup(x => x.DiscoverAsync("https://api.example.com", It.IsAny<DataSourceAuthentication?>(), null, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UnifiedDiscoveryResult
             {
                 Url = "https://api.example.com/openapi.json"
             });
@@ -84,19 +69,15 @@ public class OpenApiBootstrapServiceTests
     public async Task ResolveFromBaseUrlAsync_WhenNoSchemaUrlFound_ReturnsNullProfileVersion()
     {
         // Arrange
-        _profileDiscoveryMock
-            .Setup(x => x.DiscoverAsync("https://api.example.com", It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ProfileDiscoveryResult
+        _fastDiscoveryMock
+            .Setup(x => x.DiscoverAsync("https://api.example.com", It.IsAny<DataSourceAuthentication?>(), null, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UnifiedDiscoveryResult
             {
                 Url = null,
                 Reason = "Base URL request failed",
                 BaseUrlResponseContent = null,
                 HasExplicitOpenApiUrl = false
             });
-
-        _openApiDiscoveryMock
-            .Setup(x => x.DiscoverOpenApiSpecAsync("https://api.example.com", null, true, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OpenApiDiscoveryResult());
 
         // Act
         var result = await _service.ResolveFromBaseUrlAsync("https://api.example.com");
@@ -112,9 +93,9 @@ public class OpenApiBootstrapServiceTests
         // Arrange
         var auth = new DataSourceAuthentication { BearerToken = "token-123" };
 
-        _profileDiscoveryMock
-            .Setup(x => x.DiscoverAsync("https://api.example.com", auth, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ProfileDiscoveryResult
+        _fastDiscoveryMock
+            .Setup(x => x.DiscoverAsync("https://api.example.com", auth, null, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UnifiedDiscoveryResult
             {
                 Url = "https://api.example.com/custom-openapi.json",
                 BaseUrlResponseContent = "{}",
@@ -126,6 +107,6 @@ public class OpenApiBootstrapServiceTests
 
         // Assert
         Assert.That(result.OpenApiSchemaUrl, Is.EqualTo("https://api.example.com/custom-openapi.json"));
-        _profileDiscoveryMock.Verify(x => x.DiscoverAsync("https://api.example.com", auth, It.IsAny<CancellationToken>()), Times.Once);
+        _fastDiscoveryMock.Verify(x => x.DiscoverAsync("https://api.example.com", auth, null, true, It.IsAny<CancellationToken>()), Times.Once);
     }
 }

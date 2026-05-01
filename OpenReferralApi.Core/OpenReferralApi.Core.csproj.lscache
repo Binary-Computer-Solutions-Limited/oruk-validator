@@ -129,8 +129,8 @@ Services/
  FeedValidationService.cs
  HsdsComplianceService.cs
  JsonValidatorService.cs
+ LegacyDiscoveryContracts.cs
  OpenApiBootstrapService.cs
- OpenApiDiscoveryService.cs
  OpenApiDiscoveryStandardPaths.cs
  OpenApiSpecFetcher.cs
  OpenApiSpecificationService.cs
@@ -138,7 +138,6 @@ Services/
  OpenReferralUKValidationResponseMapper.cs
  OptionalEndpointExtensions.cs
  PathParsingService.cs
- ProfileDiscoveryService.cs
  ProfileVersionNormalizer.cs
  ReferenceResolver.cs
  RemoteSchemaLoader.cs

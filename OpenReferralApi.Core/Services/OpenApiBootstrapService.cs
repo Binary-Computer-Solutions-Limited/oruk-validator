@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json.Linq;
+using System.Text.Json;
 using OpenReferralApi.Core.Logging;
+using Microsoft.Extensions.Options;
 
 namespace OpenReferralApi.Core.Services;
 
@@ -21,18 +22,19 @@ public class OpenApiBootstrapResult
 public class OpenApiBootstrapService : IOpenApiBootstrapService
 {
 
-    private readonly IProfileDiscoveryService _profileDiscoveryService;
-    private readonly IOpenApiDiscoveryService _openApiDiscoveryService;
+    private readonly IFastDiscoveryService _fastDiscoveryService;
     private readonly ILogger<OpenApiBootstrapService> _logger;
+    private readonly OpenApiValidationServerOptions _openApiValidationOptions;
+
 
     public OpenApiBootstrapService(
-        IProfileDiscoveryService profileDiscoveryService,
-        IOpenApiDiscoveryService openApiDiscoveryService,
-        ILogger<OpenApiBootstrapService> logger)
+        IFastDiscoveryService fastDiscoveryService,
+        ILogger<OpenApiBootstrapService> logger,
+        IOptions<OpenApiValidationServerOptions>? openApiValidationOptions = null)
     {
-        _profileDiscoveryService = profileDiscoveryService;
-        _openApiDiscoveryService = openApiDiscoveryService;
+        _fastDiscoveryService = fastDiscoveryService;
         _logger = logger;
+       _openApiValidationOptions = openApiValidationOptions?.Value ?? new OpenApiValidationServerOptions();
     }
 
     public async Task<OpenApiBootstrapResult> ResolveFromBaseUrlAsync(string baseUrl, DataSourceAuthentication? authentication = null, CancellationToken cancellationToken = default)
@@ -42,38 +44,27 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
             throw new ArgumentException("Base URL must be provided for OpenAPI bootstrap discovery", nameof(baseUrl));
         }
 
-        var profileDiscovery = await _profileDiscoveryService.DiscoverAsync(baseUrl, authentication, cancellationToken);
+        var discovery = await _fastDiscoveryService.DiscoverAsync(
+            baseUrl,
+            authentication,
+            baseUrlContent: null,
+            includeDiscoveredSpecContent: true,
+            cancellationToken);
 
-        // Try detected version from discovered OpenAPI spec first, then fall back to root endpoint
-        var rootProfileVersion = !string.IsNullOrWhiteSpace(profileDiscovery.DetectedHsdsProfileVersion)
-            ? profileDiscovery.DetectedHsdsProfileVersion
-            : TryExtractProfileVersionFromJson(profileDiscovery.BaseUrlResponseContent);
+        // Try detected version from discovered OpenAPI spec first, then fall back to root endpoint.
+        var rootProfileVersion = !string.IsNullOrWhiteSpace(discovery.DetectedHsdsProfileVersion)
+            ? discovery.DetectedHsdsProfileVersion
+            : TryExtractProfileVersionFromJson(discovery.BaseUrlResponseContent);
 
-        OpenApiDiscoveryResult? feedSpecDiscovery = null;
-        string? feedSpecUrl = null;
-        if (!profileDiscovery.HasExplicitOpenApiUrl)
+        if (string.IsNullOrWhiteSpace(rootProfileVersion) && !string.IsNullOrWhiteSpace(discovery.SpecContent))
         {
-            feedSpecDiscovery = await _openApiDiscoveryService.DiscoverOpenApiSpecAsync(
-                baseUrl,
-                profileDiscovery.BaseUrlResponseContent,
-                includeDiscoveredSpecContent: true,
-                cancellationToken)
-                ?? new OpenApiDiscoveryResult();
-            feedSpecUrl = feedSpecDiscovery.Url;
+            rootProfileVersion = TryExtractProfileVersionFromOpenApiSpec(discovery.SpecContent);
         }
 
-        if (string.IsNullOrWhiteSpace(rootProfileVersion) && !string.IsNullOrWhiteSpace(feedSpecDiscovery?.SpecContent))
-        {
-            rootProfileVersion = TryExtractProfileVersionFromOpenApiSpec(feedSpecDiscovery.SpecContent);
-        }
+        var discoveredUrl = discovery.Url;
+        var discoverProfileVersionOnly = _openApiValidationOptions.OwnSchemaValidation == OwnSchemaValidationMode.None;
 
-        var discoveredUrl = profileDiscovery.HasExplicitOpenApiUrl
-            ? profileDiscovery.Url
-            : !string.IsNullOrWhiteSpace(feedSpecUrl)
-                ? feedSpecUrl
-                : profileDiscovery.Url;
-
-        if (string.IsNullOrWhiteSpace(discoveredUrl))
+        if (string.IsNullOrWhiteSpace(discoveredUrl) || discoverProfileVersionOnly)
         {
             return new OpenApiBootstrapResult
             {
@@ -82,15 +73,15 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
                 ProfileReason = rootProfileVersion != null
                     ? $"Standard version [user: {rootProfileVersion}] detected"
                     : "Version not found in '/' response",
-                DiscoveryReason = profileDiscovery.Reason,
+                DiscoveryReason = discovery.Reason,
                 UsedDataServiceOpenApi = false
             };
         }
 
-        var discoveryReason = !string.IsNullOrWhiteSpace(feedSpecUrl)
-            ? $"Feed spec discovered at {SchemaResolverService.SanitizeUrlForLogging(feedSpecUrl)}"
-              + (!string.IsNullOrWhiteSpace(profileDiscovery.Reason) ? $"; {profileDiscovery.Reason}" : string.Empty)
-            : profileDiscovery.Reason;
+        var discoveryReason = !string.IsNullOrWhiteSpace(discovery.Url)
+            ? $"Feed spec discovered at {SchemaResolverService.SanitizeUrlForLogging(discovery.Url)}"
+              + (!string.IsNullOrWhiteSpace(discovery.Reason) ? $"; {discovery.Reason}" : string.Empty)
+            : discovery.Reason;
 
         var profileReason = rootProfileVersion != null
             ? $"Standard version [user: {rootProfileVersion}] detected"
@@ -104,7 +95,7 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
             ProfileVersion = rootProfileVersion,
             ProfileReason = profileReason,
             DiscoveryReason = discoveryReason,
-            UsedDataServiceOpenApi = profileDiscovery.HasExplicitOpenApiUrl || !string.IsNullOrWhiteSpace(feedSpecUrl)
+            UsedDataServiceOpenApi = true
         };
     }
 
@@ -117,9 +108,25 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
 
         try
         {
-            var parsed = JObject.Parse(json);
-            var rawVersion = parsed.SelectToken("version")?.ToString()?.Trim();
-            return string.IsNullOrWhiteSpace(rawVersion) ? null : rawVersion;
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+
+            // Only extract from legitimate HSDS version fields.
+            // Deliberately do NOT fall back to the "openapi" field — that field specifies the
+            // OpenAPI specification version, not the HSDS schema version. If a version can only
+            // be inferred from "openapi", leave it unset here so that OpenApiValidationService
+            // can detect and report the misplacement with a proper warning.
+            var candidateTokens = new[] { "x-hsds-version", "version", "info.x-hsds-version", "info.x-profile-version" };
+            foreach (var tokenPath in candidateTokens)
+            {
+                var tokenValue = TryGetPathString(root, tokenPath)?.Trim();
+                if (!string.IsNullOrWhiteSpace(tokenValue))
+                {
+                    return tokenValue;
+                }
+            }
+
+            return null;
         }
         catch
         {
@@ -136,7 +143,8 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
 
         try
         {
-            var parsed = JObject.Parse(specContent);
+            using var document = JsonDocument.Parse(specContent);
+            var root = document.RootElement;
 
             // Only extract from legitimate HSDS version fields.
             // Deliberately do NOT fall back to the "openapi" field — that field specifies the
@@ -146,7 +154,7 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
             var candidateTokens = new[] { "x-hsds-version", "version", "info.x-hsds-version", "info.x-profile-version" };
             foreach (var tokenPath in candidateTokens)
             {
-                var tokenValue = parsed.SelectToken(tokenPath)?.ToString()?.Trim();
+                var tokenValue = TryGetPathString(root, tokenPath)?.Trim();
                 if (!string.IsNullOrWhiteSpace(tokenValue))
                 {
                     return tokenValue;
@@ -159,5 +167,26 @@ public class OpenApiBootstrapService : IOpenApiBootstrapService
         {
             return null;
         }
+    }
+
+    private static string? TryGetPathString(JsonElement root, string path)
+    {
+        var current = root;
+        foreach (var segment in path.Split('.'))
+        {
+            if (current.ValueKind != JsonValueKind.Object || !current.TryGetProperty(segment, out current))
+            {
+                return null;
+            }
+        }
+
+        return current.ValueKind switch
+        {
+            JsonValueKind.String => current.GetString(),
+            JsonValueKind.Number => current.GetRawText(),
+            JsonValueKind.True => bool.TrueString,
+            JsonValueKind.False => bool.FalseString,
+            _ => null
+        };
     }
 }

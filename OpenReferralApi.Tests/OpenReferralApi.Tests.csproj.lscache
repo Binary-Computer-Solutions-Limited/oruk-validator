@@ -77,20 +77,18 @@ Services/
  CommonValidationMetadataTests.cs
  EndpointTestingServiceTests.cs
  EndpointTestResultTests.cs
+ FastDiscoveryServiceTests.cs
  FeedValidationBackgroundServiceTests.cs
  FeedValidationServiceTests.cs
  HsdsComplianceServiceTests.cs
  JsonValidatorServiceTests.cs
  OpenApiBootstrapServiceTests.cs
- OpenApiDiscoveryServiceTests.cs
  OpenApiSpecFetcherTests.cs
  OpenApiSpecificationServiceTests.cs
  OpenApiValidationServiceTests.cs
  OpenReferralUKValidationResponseMapperTests.cs
  OptionalEndpointExtensionsTests.cs
  PathParsingServiceTests.cs
- ProfileDiscoveryServiceTests.cs
- ProfleDiscoveryServiceTests.cs
  ReferenceResolverTests.cs
  RemoteSchemaLoaderTests.cs
  RequestProcessingServiceTests.cs

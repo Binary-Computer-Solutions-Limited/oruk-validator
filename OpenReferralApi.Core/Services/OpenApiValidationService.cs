@@ -59,8 +59,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
     private readonly ILogger<OpenApiValidationService> _logger;
     private readonly ISchemaResolverService _schemaResolverService;
-    private readonly IProfileDiscoveryService _profileDiscoveryService;
-    private readonly IOpenApiDiscoveryService _openApiDiscoveryService;
+    private readonly IFastDiscoveryService _fastDiscoveryService;
     private readonly IOpenApiBootstrapService _openApiBootstrapService;
     private readonly IOpenApiSpecificationService _openApiSpecificationService;
     private readonly IHsdsComplianceService _hsdsComplianceService;
@@ -70,6 +69,38 @@ public class OpenApiValidationService : IOpenApiValidationService
     private readonly OpenApiValidationServerOptions _openApiValidationOptions;
     private readonly CacheOptions _cacheOptions;
     private readonly SpecificationOptions _specificationOptions;
+
+    public OpenApiValidationService(
+        ILogger<OpenApiValidationService> logger,
+        IHttpClientFactory httpClientFactory,
+        IJsonValidatorService jsonValidatorService,
+        ISchemaResolverService schemaResolverService,
+        IFastDiscoveryService fastDiscoveryService,
+        IOpenApiSpecificationService? openApiSpecificationService = null,
+        IHsdsComplianceService? hsdsComplianceService = null,
+        IEndpointTestingService? endpointTestingService = null,
+        IAuthenticationValidationService? authenticationValidationService = null,
+        IOpenApiBootstrapService? openApiBootstrapService = null,
+        IOptions<CacheOptions>? cacheOptions = null,
+        IOptions<SpecificationOptions>? specificationOptions = null,
+        IOptions<OpenApiValidationServerOptions>? openApiValidationServerOptions = null,
+        IOptions<SchemaResolutionOptions>? schemaResolutionOptions = null)
+    {
+        _logger = logger;
+        _schemaResolverService = schemaResolverService;
+        _fastDiscoveryService = fastDiscoveryService;
+        _openApiSpecificationService = openApiSpecificationService ?? new OpenApiSpecificationService(NullLogger<OpenApiSpecificationService>.Instance, jsonValidatorService, schemaResolutionOptions);
+        _hsdsComplianceService = hsdsComplianceService ?? new HsdsComplianceService(jsonValidatorService, specificationOptions, openApiValidationServerOptions);
+        _endpointTestingService = endpointTestingService ?? new EndpointTestingService(NullLogger<EndpointTestingService>.Instance, httpClientFactory, jsonValidatorService, _hsdsComplianceService, openApiValidationServerOptions);
+        _authenticationValidationService = authenticationValidationService ?? new AuthenticationValidationService(NullLogger<AuthenticationValidationService>.Instance, openApiValidationServerOptions ?? Options.Create(new OpenApiValidationServerOptions()));
+        _openApiValidationOptions = openApiValidationServerOptions?.Value ?? new OpenApiValidationServerOptions();
+        _cacheOptions = cacheOptions?.Value ?? new CacheOptions { Enabled = false };
+        _specificationOptions = specificationOptions?.Value ?? new SpecificationOptions();
+        _specFetcher = new OpenApiSpecFetcher(httpClientFactory, logger, schemaResolverService, allowUserSuppliedAuth: _openApiValidationOptions.AllowUserSuppliedAuth);
+        _openApiBootstrapService = openApiBootstrapService ?? new OpenApiBootstrapService(
+            _fastDiscoveryService,
+            NullLogger<OpenApiBootstrapService>.Instance);
+    }
 
     public OpenApiValidationService(
         ILogger<OpenApiValidationService> logger,
@@ -87,23 +118,65 @@ public class OpenApiValidationService : IOpenApiValidationService
         IOptions<SpecificationOptions>? specificationOptions = null,
         IOptions<OpenApiValidationServerOptions>? openApiValidationServerOptions = null,
         IOptions<SchemaResolutionOptions>? schemaResolutionOptions = null)
+        : this(
+            logger,
+            httpClientFactory,
+            jsonValidatorService,
+            schemaResolverService,
+            new CompatibilityFastDiscoveryService(discoveryService, feedSpecDiscoveryService),
+            openApiSpecificationService,
+            hsdsComplianceService,
+            endpointTestingService,
+            authenticationValidationService,
+            openApiBootstrapService,
+            cacheOptions,
+            specificationOptions,
+            openApiValidationServerOptions,
+            schemaResolutionOptions)
     {
-        _logger = logger;
-        _schemaResolverService = schemaResolverService;
-        _profileDiscoveryService = discoveryService;
-        _openApiDiscoveryService = feedSpecDiscoveryService;
-        _openApiSpecificationService = openApiSpecificationService ?? new OpenApiSpecificationService(NullLogger<OpenApiSpecificationService>.Instance, jsonValidatorService, schemaResolutionOptions);
-        _hsdsComplianceService = hsdsComplianceService ?? new HsdsComplianceService(jsonValidatorService, specificationOptions, openApiValidationServerOptions);
-        _endpointTestingService = endpointTestingService ?? new EndpointTestingService(NullLogger<EndpointTestingService>.Instance, httpClientFactory, jsonValidatorService, _hsdsComplianceService, openApiValidationServerOptions);
-        _authenticationValidationService = authenticationValidationService ?? new AuthenticationValidationService(NullLogger<AuthenticationValidationService>.Instance, openApiValidationServerOptions ?? Options.Create(new OpenApiValidationServerOptions()));
-        _openApiValidationOptions = openApiValidationServerOptions?.Value ?? new OpenApiValidationServerOptions();
-        _cacheOptions = cacheOptions?.Value ?? new CacheOptions { Enabled = false };
-        _specificationOptions = specificationOptions?.Value ?? new SpecificationOptions();
-        _specFetcher = new OpenApiSpecFetcher(httpClientFactory, logger, schemaResolverService, allowUserSuppliedAuth: _openApiValidationOptions.AllowUserSuppliedAuth);
-        _openApiBootstrapService = openApiBootstrapService ?? new OpenApiBootstrapService(
-            _profileDiscoveryService,
-            _openApiDiscoveryService,
-            NullLogger<OpenApiBootstrapService>.Instance);
+    }
+
+    private sealed class CompatibilityFastDiscoveryService : IFastDiscoveryService
+    {
+        private readonly IProfileDiscoveryService _profileDiscoveryService;
+        private readonly IOpenApiDiscoveryService _openApiDiscoveryService;
+
+        public CompatibilityFastDiscoveryService(IProfileDiscoveryService profileDiscoveryService, IOpenApiDiscoveryService openApiDiscoveryService)
+        {
+            _profileDiscoveryService = profileDiscoveryService;
+            _openApiDiscoveryService = openApiDiscoveryService;
+        }
+
+        public async Task<UnifiedDiscoveryResult> DiscoverAsync(
+            string baseUrl,
+            DataSourceAuthentication? authentication = null,
+            string? baseUrlContent = null,
+            bool includeDiscoveredSpecContent = false,
+            CancellationToken cancellationToken = default)
+        {
+            var profileDiscovery = await _profileDiscoveryService.DiscoverAsync(baseUrl, authentication, cancellationToken);
+
+            OpenApiDiscoveryResult? feedSpecDiscovery = null;
+            if (!profileDiscovery.HasExplicitOpenApiUrl)
+            {
+                feedSpecDiscovery = await _openApiDiscoveryService.DiscoverOpenApiSpecAsync(
+                    baseUrl,
+                    profileDiscovery.BaseUrlResponseContent,
+                    includeDiscoveredSpecContent,
+                    cancellationToken);
+            }
+
+            return new UnifiedDiscoveryResult
+            {
+                Url = profileDiscovery.HasExplicitOpenApiUrl ? profileDiscovery.Url : feedSpecDiscovery?.Url,
+                Reason = profileDiscovery.Reason,
+                SpecContent = feedSpecDiscovery?.SpecContent,
+                DetectedHsdsProfileVersion = profileDiscovery.DetectedHsdsProfileVersion ?? feedSpecDiscovery?.DetectedHsdsProfileVersion,
+                BaseUrlRequestSucceeded = profileDiscovery.BaseUrlRequestSucceeded,
+                BaseUrlResponseContent = profileDiscovery.BaseUrlResponseContent,
+                HasExplicitOpenApiUrl = profileDiscovery.HasExplicitOpenApiUrl
+            };
+        }
     }
 
     public async Task<OpenApiValidationResult> ValidateOpenApiSpecificationAsync(OpenApiValidationRequest request, CancellationToken cancellationToken = default)
