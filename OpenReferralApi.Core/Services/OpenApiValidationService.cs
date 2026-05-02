@@ -60,7 +60,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
     private readonly ILogger<OpenApiValidationService> _logger;
     private readonly ISchemaResolverService _schemaResolverService;
-    private readonly IOpenApiBootstrapService _openApiBootstrapService;
+    private readonly IProfileDiscoveryService _profileDiscoveryService;
     private readonly IOpenApiSpecificationService _openApiSpecificationService;
     private readonly IHsdsComplianceService _hsdsComplianceService;
     private readonly IEndpointTestingService _endpointTestingService;
@@ -79,7 +79,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         IHsdsComplianceService hsdsComplianceService,
         IEndpointTestingService endpointTestingService,
         IAuthenticationValidationService authenticationValidationService,
-        IOpenApiBootstrapService openApiBootstrapService,
+        IProfileDiscoveryService profileDiscoveryService,
         IOptions<CacheOptions>? cacheOptions = null,
         IOptions<SpecificationOptions>? specificationOptions = null,
         IOptions<OpenApiValidationServerOptions>? openApiValidationServerOptions = null)
@@ -94,7 +94,7 @@ public class OpenApiValidationService : IOpenApiValidationService
         _cacheOptions = cacheOptions?.Value ?? new CacheOptions { Enabled = false };
         _specificationOptions = specificationOptions?.Value ?? new SpecificationOptions();
         _specFetcher = new OpenApiSpecFetcher(httpClientFactory, logger, schemaResolverService, allowUserSuppliedAuth: _openApiValidationOptions.AllowUserSuppliedAuth);
-        _openApiBootstrapService = openApiBootstrapService;
+        _profileDiscoveryService = profileDiscoveryService;
     }
 
     public async Task<OpenApiValidationResult> ValidateOpenApiSpecificationAsync(OpenApiValidationRequest request, CancellationToken cancellationToken = default)
@@ -222,25 +222,25 @@ public class OpenApiValidationService : IOpenApiValidationService
                 if (!string.IsNullOrEmpty(request.BaseUrl))
                 {
                     usedBaseUrlDiscovery = true;
-                    var bootstrap = await _openApiBootstrapService.ResolveFromBaseUrlAsync(request.BaseUrl, dataSourceRequestAuth, cancellationToken);
-                    var discoveredUrl = bootstrap.OpenApiSchemaUrl;
+                    var bootstrap = await _profileDiscoveryService.DiscoverFromBaseUrlAsync(request.BaseUrl, dataSourceRequestAuth, cancellationToken);
+                    var openApiSchemaContent = bootstrap.OpenApiSchemaContent;
                     var reason = bootstrap.DiscoveryReason ?? "unknown";
 
-                    if (!string.IsNullOrEmpty(discoveredUrl))
+                    if (!string.IsNullOrEmpty(openApiSchemaContent))
                     {
                         if (!bootstrap.UsedDataServiceOpenApi
-                            && !string.IsNullOrWhiteSpace(bootstrap.ProfileVersion)
-                            && _hsdsComplianceService.TryGetKnownHsdsSchemaUrl(bootstrap.ProfileVersion, out var bootstrapMappedProfileSchemaUrl))
+                            && !string.IsNullOrWhiteSpace(bootstrap.HsdsProfileVersion)
+                            && _hsdsComplianceService.TryGetKnownHsdsSchemaUrl(bootstrap.HsdsProfileVersion, out var bootstrapMappedProfileSchemaUrl))
                         {
-                            discoveredUrl = bootstrapMappedProfileSchemaUrl;
+                            openApiSchemaContent = bootstrapMappedProfileSchemaUrl;
                             _logger.UsingProfileSchemaUrl(
                                 TextSanitizer.SanitizeUrlForLogging(bootstrapMappedProfileSchemaUrl),
-                                bootstrap.ProfileVersion);
+                                bootstrap.HsdsProfileVersion);
                         }
 
-                        _logger.DiscoveredOpenApiSchemaUrl(TextSanitizer.SanitizeUrlForLogging(discoveredUrl), reason);
-                        request.OwnSchemaUrl = discoveredUrl;
-                        request.ProfileReason = bootstrap.ProfileReason;
+                        _logger.DiscoveredOpenApiSchemaUrl(TextSanitizer.SanitizeUrlForLogging(openApiSchemaContent), reason);
+                        request.OwnSchemaUrl = openApiSchemaContent;
+                        request.ProfileReason = bootstrap.HsdsProfileReason;
                     }
                     else
                     {

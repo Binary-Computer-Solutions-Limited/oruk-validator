@@ -214,7 +214,7 @@ builder.Services.AddScoped<IHsdsComplianceService, HsdsComplianceService>();
 builder.Services.AddScoped<IEndpointTestingService, EndpointTestingService>();
 builder.Services.AddScoped<IOpenApiValidationService, OpenApiValidationService>();
 
-builder.Services.AddScoped<IOpenApiBootstrapService, OpenApiBootstrapService>();
+builder.Services.AddScoped<IProfileDiscoveryService, ProfileDiscoveryService>();
 builder.Services.AddScoped<IOpenReferralUKValidationResponseMapper, OpenReferralUKValidationResponseMapper>();
 
 // Memory Cache configuration

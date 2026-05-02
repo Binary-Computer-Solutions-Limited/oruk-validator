@@ -1,7 +1,10 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Schema;
+using OpenReferralApi.Core.Models.Validation;
 using OpenReferralApi.Core.Services;
 
 namespace OpenReferralApi.Tests.Services;
@@ -12,7 +15,8 @@ public class OpenApiValidationServiceTests
     private Mock<ILogger<OpenApiValidationService>> _loggerMock;
     private Mock<IJsonValidatorService> _jsonValidatorServiceMock;
     private Mock<ISchemaResolverService> _schemaResolverServiceMock;
-    private Mock<IOpenApiBootstrapService> _openApiBootstrapServiceMock;
+    private Mock<IProfileDiscoveryService> _openApiBootstrapServiceMock;
+    private IOpenApiSpecificationService _openApiSpecificationService;
     private IOptions<OpenApiValidationServerOptions> _openApiValidationServerOptions;
     private HttpClient _httpClient;
     private OpenApiValidationService _service;
@@ -23,19 +27,21 @@ public class OpenApiValidationServiceTests
         _loggerMock = new Mock<ILogger<OpenApiValidationService>>();
         _jsonValidatorServiceMock = new Mock<IJsonValidatorService>();
         _schemaResolverServiceMock = new Mock<ISchemaResolverService>();
-        _openApiBootstrapServiceMock = new Mock<IOpenApiBootstrapService>();
+        _openApiBootstrapServiceMock = new Mock<IProfileDiscoveryService>();
         _openApiBootstrapServiceMock
-            .Setup(s => s.DiscoverAsync(
+            .Setup(s => s.DiscoverFromBaseUrlAsync(
                 It.IsAny<string>(),
                 It.IsAny<DataSourceAuthentication?>(),
-                It.IsAny<string?>(),
-                It.IsAny<bool>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new UnifiedDiscoveryResult
+            .ReturnsAsync(new ProfileDiscoveryResult
             {
-                Url = null,
-                Reason = "No version or openapi_url found in '/' response"
+                HsdsProfileUrl = null,
+                HsdsProfileReason = "No version or openapi_url found in '/' response"
             });
+
+        _openApiSpecificationService = new OpenApiSpecificationService(
+            NullLogger<OpenApiSpecificationService>.Instance,
+            _jsonValidatorServiceMock.Object);
 
         _jsonValidatorServiceMock
             .Setup(service => service.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
@@ -82,10 +88,10 @@ public class OpenApiValidationServiceTests
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            new Mock<IOpenApiSpecificationService>().Object,
-            new Mock<IHsdsComplianceService>().Object,
-            new Mock<IEndpointTestingService>().Object,
-             new Mock<IAuthenticationValidationService>().Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+             null!,
             _openApiBootstrapServiceMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
             {
@@ -175,10 +181,10 @@ public class OpenApiValidationServiceTests
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            new Mock<IOpenApiSpecificationService>().Object,
-            new Mock<IHsdsComplianceService>().Object,
-            new Mock<IEndpointTestingService>().Object,
-            new Mock<IAuthenticationValidationService>().Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
             _openApiBootstrapServiceMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
             {
@@ -352,10 +358,10 @@ public class OpenApiValidationServiceTests
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            new Mock<IOpenApiSpecificationService>().Object,
-            new Mock<IHsdsComplianceService>().Object,
-            new Mock<IEndpointTestingService>().Object,
-            new Mock<IAuthenticationValidationService>().Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
             _openApiBootstrapServiceMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
             {
@@ -436,10 +442,10 @@ public class OpenApiValidationServiceTests
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            new Mock<IOpenApiSpecificationService>().Object,
+            _openApiSpecificationService,
             hsdsComplianceMock.Object,
-            new Mock<IEndpointTestingService>().Object,
-             new Mock<IAuthenticationValidationService>().Object,
+            null!,
+             null!,
             _openApiBootstrapServiceMock.Object,
             openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
             {
@@ -509,10 +515,10 @@ public class OpenApiValidationServiceTests
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            new Mock<IOpenApiSpecificationService>().Object,
+            _openApiSpecificationService,
             hsdsComplianceMock.Object,
-            new Mock<IEndpointTestingService>().Object,
-            new Mock<IAuthenticationValidationService>().Object,
+            null!,
+            null!,
             _openApiBootstrapServiceMock.Object,
             openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
             {
@@ -859,10 +865,10 @@ public class OpenApiValidationServiceTests
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            new Mock<IOpenApiSpecificationService>().Object,
-            new Mock<IHsdsComplianceService>().Object,
-            new Mock<IEndpointTestingService>().Object,
-            new Mock<IAuthenticationValidationService>().Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
             _openApiBootstrapServiceMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
             {
@@ -925,10 +931,10 @@ public class OpenApiValidationServiceTests
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-new Mock<IOpenApiSpecificationService>().Object,
-            new Mock<IHsdsComplianceService>().Object,
-            new Mock<IEndpointTestingService>().Object,
-            new Mock<IAuthenticationValidationService>().Object,
+_openApiSpecificationService,
+            null!,
+            null!,
+            null!,
 
             _openApiBootstrapServiceMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
@@ -968,10 +974,10 @@ new Mock<IOpenApiSpecificationService>().Object,
             _loggerMock.Object,
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
-            _schemaResolverServiceMock.Object, new Mock<IOpenApiSpecificationService>().Object,
-            new Mock<IHsdsComplianceService>().Object,
-            new Mock<IEndpointTestingService>().Object,
-            new Mock<IAuthenticationValidationService>().Object,
+            _schemaResolverServiceMock.Object, _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
 
             _openApiBootstrapServiceMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
@@ -1014,12 +1020,12 @@ new Mock<IOpenApiSpecificationService>().Object,
             .Setup(s => s.TryGetValidatedRequestAuthentication("schema", It.IsAny<DataSourceAuthentication?>()))
             .Returns(auth);
 
-        var bootstrapServiceMock = new Mock<IOpenApiBootstrapService>();
+        var bootstrapServiceMock = new Mock<IProfileDiscoveryService>();
         bootstrapServiceMock
-            .Setup(s => s.ResolveFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OpenApiBootstrapResult
+            .Setup(s => s.DiscoverFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProfileDiscoveryResult
             {
-                OpenApiSchemaUrl = discoveredSchemaUrl,
+                OpenApiSchemaContent = discoveredSchemaUrl,
                 DiscoveryReason = "discovered from base URL",
                 UsedDataServiceOpenApi = true
             });
@@ -1044,11 +1050,11 @@ new Mock<IOpenApiSpecificationService>().Object,
             _loggerMock.Object,
             CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
-            _schemaResolverServiceMock.Object, new Mock<IOpenApiSpecificationService>().Object,
-            new Mock<IHsdsComplianceService>().Object,
-            new Mock<IEndpointTestingService>().Object,
+            _schemaResolverServiceMock.Object, _openApiSpecificationService,
+            null!,
+            null!,
             authenticationValidationServiceMock.Object,
-            _openApiBootstrapServiceMock.Object,
+            bootstrapServiceMock.Object,
             openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
             {
                 ValidateSpecification = false,
@@ -1090,7 +1096,7 @@ new Mock<IOpenApiSpecificationService>().Object,
             .Setup(s => s.TryGetValidatedRequestAuthentication("schema", It.IsAny<DataSourceAuthentication?>()))
             .Returns(auth);
 
-        var bootstrapServiceMock = new Mock<IOpenApiBootstrapService>();
+        var bootstrapServiceMock = new Mock<IProfileDiscoveryService>();
 
         var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>
         {
@@ -1113,9 +1119,9 @@ new Mock<IOpenApiSpecificationService>().Object,
             CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-new Mock<IOpenApiSpecificationService>().Object,
-            new Mock<IHsdsComplianceService>().Object,
-            new Mock<IEndpointTestingService>().Object,
+_openApiSpecificationService,
+            null!,
+            null!,
             authenticationValidationServiceMock.Object,
             _openApiBootstrapServiceMock.Object,
             openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
@@ -1137,7 +1143,7 @@ new Mock<IOpenApiSpecificationService>().Object,
             s => s.TryGetValidatedRequestAuthentication("schema", It.IsAny<DataSourceAuthentication?>()),
             Times.Once);
         bootstrapServiceMock.Verify(
-            s => s.ResolveFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()),
+            s => s.DiscoverFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -1565,10 +1571,10 @@ new Mock<IOpenApiSpecificationService>().Object,
             CreateFactory(fullModeHttpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-new Mock<IOpenApiSpecificationService>().Object,
+_openApiSpecificationService,
             hsdsComplianceServiceMock.Object,
             endpointTestingServiceMock.Object,
-            new Mock<IAuthenticationValidationService>().Object,
+            null!,
 
             _openApiBootstrapServiceMock.Object,
 
@@ -1705,10 +1711,10 @@ new Mock<IOpenApiSpecificationService>().Object,
             CreateFactory(fullModeHttpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-new Mock<IOpenApiSpecificationService>().Object,
+_openApiSpecificationService,
             hsdsComplianceServiceMock.Object,
             endpointTestingServiceMock.Object,
-            new Mock<IAuthenticationValidationService>().Object,
+            null!,
 
             _openApiBootstrapServiceMock.Object,
 
@@ -1828,10 +1834,10 @@ new Mock<IOpenApiSpecificationService>().Object,
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-new Mock<IOpenApiSpecificationService>().Object,
-            new Mock<IHsdsComplianceService>().Object,
-            new Mock<IEndpointTestingService>().Object,
-            new Mock<IAuthenticationValidationService>().Object,
+_openApiSpecificationService,
+            null!,
+            null!,
+            null!,
 
             _openApiBootstrapServiceMock.Object,
             openApiValidationServerOptions: lenientValidationOptions);
@@ -1908,10 +1914,10 @@ new Mock<IOpenApiSpecificationService>().Object,
             CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-new Mock<IOpenApiSpecificationService>().Object,
+_openApiSpecificationService,
             hsdsComplianceServiceMock.Object,
             endpointTestingServiceMock.Object,
-            new Mock<IAuthenticationValidationService>().Object,
+            null!,
 
             _openApiBootstrapServiceMock.Object,
 
@@ -1997,10 +2003,10 @@ new Mock<IOpenApiSpecificationService>().Object,
             CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            new Mock<IOpenApiSpecificationService>().Object,
+            _openApiSpecificationService,
             hsdsComplianceServiceMock.Object,
             endpointTestingServiceMock.Object,
-            new Mock<IAuthenticationValidationService>().Object,
+            null!,
             _openApiBootstrapServiceMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
             {
@@ -2076,10 +2082,10 @@ new Mock<IOpenApiSpecificationService>().Object,
             CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            new Mock<IOpenApiSpecificationService>().Object,
+            _openApiSpecificationService,
             hsdsComplianceServiceMock.Object,
             endpointTestingServiceMock.Object,
-            new Mock<IAuthenticationValidationService>().Object,
+            null!,
             _openApiBootstrapServiceMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions()),
             openApiValidationServerOptions: serverOptions);
@@ -2155,10 +2161,10 @@ new Mock<IOpenApiSpecificationService>().Object,
             CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            new Mock<IOpenApiSpecificationService>().Object,
+            _openApiSpecificationService,
             hsdsComplianceServiceMock.Object,
             endpointTestingServiceMock.Object,
-            new Mock<IAuthenticationValidationService>().Object,
+            null!,
             _openApiBootstrapServiceMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
             {
@@ -2202,10 +2208,10 @@ new Mock<IOpenApiSpecificationService>().Object,
             _loggerMock.Object, CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            new Mock<IOpenApiSpecificationService>().Object,
-            new Mock<IHsdsComplianceService>().Object,
-            new Mock<IEndpointTestingService>().Object,
-            new Mock<IAuthenticationValidationService>().Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
              _openApiBootstrapServiceMock.Object);
 
         try
@@ -2244,10 +2250,10 @@ new Mock<IOpenApiSpecificationService>().Object,
             _loggerMock.Object, CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            new Mock<IOpenApiSpecificationService>().Object,
-            new Mock<IHsdsComplianceService>().Object,
-            new Mock<IEndpointTestingService>().Object,
-            new Mock<IAuthenticationValidationService>().Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
              _openApiBootstrapServiceMock.Object);
 
         try
@@ -2285,10 +2291,10 @@ new Mock<IOpenApiSpecificationService>().Object,
             CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            new Mock<IOpenApiSpecificationService>().Object,
-            new Mock<IHsdsComplianceService>().Object,
-            new Mock<IEndpointTestingService>().Object,
-            new Mock<IAuthenticationValidationService>().Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
             _openApiBootstrapServiceMock.Object);
 
         try
@@ -2329,10 +2335,10 @@ new Mock<IOpenApiSpecificationService>().Object,
             CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            new Mock<IOpenApiSpecificationService>().Object,
-            new Mock<IHsdsComplianceService>().Object,
-            new Mock<IEndpointTestingService>().Object,
-            new Mock<IAuthenticationValidationService>().Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
             _openApiBootstrapServiceMock.Object);
 
         try
@@ -2447,10 +2453,10 @@ new Mock<IOpenApiSpecificationService>().Object,
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-new Mock<IOpenApiSpecificationService>().Object,
-            new Mock<IHsdsComplianceService>().Object,
-            new Mock<IEndpointTestingService>().Object,
-            new Mock<IAuthenticationValidationService>().Object,
+_openApiSpecificationService,
+            null!,
+            null!,
+            null!,
             _openApiBootstrapServiceMock.Object,
             cacheOptions: Options.Create(new CacheOptions
             {
@@ -2507,10 +2513,10 @@ new Mock<IOpenApiSpecificationService>().Object,
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            new Mock<IOpenApiSpecificationService>().Object,
-            new Mock<IHsdsComplianceService>().Object,
-            new Mock<IEndpointTestingService>().Object,
-            new Mock<IAuthenticationValidationService>().Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
             _openApiBootstrapServiceMock.Object);
 
         // Act
@@ -2567,10 +2573,10 @@ new Mock<IOpenApiSpecificationService>().Object,
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            new Mock<IOpenApiSpecificationService>().Object,
-            new Mock<IHsdsComplianceService>().Object,
-            new Mock<IEndpointTestingService>().Object,
-            new Mock<IAuthenticationValidationService>().Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
             _openApiBootstrapServiceMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
             {
@@ -2834,7 +2840,7 @@ new Mock<IOpenApiSpecificationService>().Object,
             specServiceMock.Object,
             hsdsServiceMock.Object,
             endpointTestingMock.Object,
-            new Mock<IAuthenticationValidationService>().Object,
+            null!,
             _openApiBootstrapServiceMock.Object);
 
         var request = new OpenApiValidationRequest
@@ -2980,10 +2986,10 @@ new Mock<IOpenApiSpecificationService>().Object,
             CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-             new Mock<IOpenApiSpecificationService>().Object,
-            new Mock<IHsdsComplianceService>().Object,
+             _openApiSpecificationService,
+            null!,
             endpointTestingServiceMock.Object,
-            new Mock<IAuthenticationValidationService>().Object,
+            null!,
             _openApiBootstrapServiceMock.Object,
 
             openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
@@ -3062,10 +3068,10 @@ new Mock<IOpenApiSpecificationService>().Object,
             CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-             new Mock<IOpenApiSpecificationService>().Object,
-            new Mock<IHsdsComplianceService>().Object,
+             _openApiSpecificationService,
+            null!,
             endpointTestingServiceMock.Object,
-            new Mock<IAuthenticationValidationService>().Object,
+            null!,
             _openApiBootstrapServiceMock.Object,
             openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
             {
@@ -3344,10 +3350,10 @@ new Mock<IOpenApiSpecificationService>().Object,
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-             new Mock<IOpenApiSpecificationService>().Object,
+             _openApiSpecificationService,
              hsdsComplianceMock.Object,
-             new Mock<IEndpointTestingService>().Object,
-             new Mock<IAuthenticationValidationService>().Object,
+             null!,
+             null!,
             _openApiBootstrapServiceMock.Object,
             openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
             {
@@ -3401,10 +3407,10 @@ new Mock<IOpenApiSpecificationService>().Object,
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-             new Mock<IOpenApiSpecificationService>().Object,
-             new Mock<IHsdsComplianceService>().Object,
-             new Mock<IEndpointTestingService>().Object,
-             new Mock<IAuthenticationValidationService>().Object,
+             _openApiSpecificationService,
+             null!,
+             null!,
+             null!,
             _openApiBootstrapServiceMock.Object,
             openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
             {
@@ -4040,10 +4046,10 @@ new Mock<IOpenApiSpecificationService>().Object,
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-             new Mock<IOpenApiSpecificationService>().Object,
-             new Mock<IHsdsComplianceService>().Object,
-             new Mock<IEndpointTestingService>().Object,
-             new Mock<IAuthenticationValidationService>().Object,
+             _openApiSpecificationService,
+             null!,
+             null!,
+             null!,
             _openApiBootstrapServiceMock.Object,
             openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions { AllowUserSuppliedAuth = false }));
 
@@ -4098,10 +4104,10 @@ new Mock<IOpenApiSpecificationService>().Object,
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-             new Mock<IOpenApiSpecificationService>().Object,
-             new Mock<IHsdsComplianceService>().Object,
-             new Mock<IEndpointTestingService>().Object,
-             new Mock<IAuthenticationValidationService>().Object,
+             _openApiSpecificationService,
+             null!,
+             null!,
+             null!,
             _openApiBootstrapServiceMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
             {
@@ -4125,10 +4131,10 @@ new Mock<IOpenApiSpecificationService>().Object,
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-                new Mock<IOpenApiSpecificationService>().Object,
-                new Mock<IHsdsComplianceService>().Object,
-                new Mock<IEndpointTestingService>().Object,
-                new Mock<IAuthenticationValidationService>().Object,
+                _openApiSpecificationService,
+                null!,
+                null!,
+                null!,
             _openApiBootstrapServiceMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
             {

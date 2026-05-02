@@ -129,17 +129,16 @@ obj/Debug/net10.0/
 Services/
  AuthenticationValidationService.cs
  EndpointTestingService.cs
- FastDiscoveryService.cs
  FeedValidationService.cs
  HsdsComplianceService.cs
  JsonValidatorService.cs
- OpenApiBootstrapService.cs
  OpenApiSpecFetcher.cs
  OpenApiSpecificationService.cs
  OpenApiValidationService.cs
  OpenReferralUKValidationResponseMapper.cs
  OptionalEndpointExtensions.cs
  PathParsingService.cs
+ ProfileDiscoveryService.cs
  ProfileVersionNormalizer.cs
  ReferenceResolver.cs
  RemoteSchemaLoader.cs
