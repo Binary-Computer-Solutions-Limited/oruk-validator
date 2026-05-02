@@ -139,6 +139,7 @@ Services/
  OptionalEndpointExtensions.cs
  PathParsingService.cs
  ProfileDiscoveryService.cs
+ ProfileResolverService.cs
  ProfileVersionNormalizer.cs
  ReferenceResolver.cs
  RemoteSchemaLoader.cs
