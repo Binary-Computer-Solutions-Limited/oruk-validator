@@ -4,7 +4,7 @@ namespace OpenReferralApi.Core.Helpers;
 
 internal static class Constants
 {
-  internal static readonly string[] Paths =
+    internal static readonly string[] OpenApiDocumentProbePaths =
   {
         "",
         "openapi.json",
@@ -24,7 +24,7 @@ internal static class Constants
         "swagger/v1/swagger.yml"
     };
 
-        internal static readonly string[] SwaggerConfigPaths =
+        internal static readonly string[] SwaggerConfigProbePaths =
     {
         "swagger-config",
         "swagger/swagger-config",
@@ -34,7 +34,7 @@ internal static class Constants
         "swagger/v1/swagger-config"
     };
 
-  internal static readonly string[] UiPaths =
+    internal static readonly string[] DocumentationUiProbePaths =
   {
         "swagger/index.html",
         "swagger",

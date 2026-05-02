@@ -43,7 +43,7 @@ public class ProfileDiscoveryServiceTests
     }
 
     [Test]
-    public async Task DiscoverFromBaseUrlAsync_WhenVersionFoundAtRoot_ReturnsConfiguredProfileUrl()
+    public async Task DiscoverFromBaseUrlAsync_WhenVersionFoundAtRoot_ReturnsProfileVersionOnly()
     {
         SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode, string)>
         {
@@ -53,12 +53,12 @@ public class ProfileDiscoveryServiceTests
         var service = CreateService();
         var result = await service.DiscoverFromBaseUrlAsync("https://api.example.com");
 
-        Assert.That(result.HsdsProfileUrl, Is.EqualTo("https://hsds.example.org/3.0/openapi.json"));
         Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
+        Assert.That(result.OpenApiSchemaContent, Is.Null);
     }
 
     [Test]
-    public async Task DiscoverFromBaseUrlAsync_WhenOpenApiSpecAtStandardPath_ReturnsSpecUrl()
+    public async Task DiscoverFromBaseUrlAsync_WhenOpenApiSpecAtStandardPath_ReturnsSpecContent()
     {
         SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode, string)>
         {
@@ -68,13 +68,12 @@ public class ProfileDiscoveryServiceTests
         var service = CreateService();
         var result = await service.DiscoverFromBaseUrlAsync("https://api.example.com");
 
-        Assert.That(result.HsdsProfileUrl, Is.EqualTo("https://api.example.com/openapi.json"));
         Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
         Assert.That(result.OpenApiSchemaContent, Does.Contain("openapi"));
     }
 
     [Test]
-    public async Task DiscoverFromBaseUrlAsync_WhenOwnSchemaValidationNone_ReturnsResolvedProfileUrl()
+    public async Task DiscoverFromBaseUrlAsync_WhenOwnSchemaValidationNone_ReturnsVersionWithoutSpecContent()
     {
         SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode, string)>
         {
@@ -84,21 +83,22 @@ public class ProfileDiscoveryServiceTests
         var service = CreateService(OwnSchemaValidationMode.None);
         var result = await service.DiscoverFromBaseUrlAsync("https://api.example.com");
 
-        Assert.That(result.HsdsProfileUrl, Is.EqualTo("https://hsds.example.org/3.0/openapi.json"));
         Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
+        Assert.That(result.OpenApiSchemaContent, Is.Null);
     }
 
     [Test]
-    public async Task DiscoverFromBaseUrlAsync_WhenNoSpecFound_ReturnsResultWithNullHsdsProfileUrl()
+    public async Task DiscoverFromBaseUrlAsync_WhenNoSpecFound_ReturnsResultWithNoDiscoveredVersion()
     {
         var service = CreateService();
         var result = await service.DiscoverFromBaseUrlAsync("https://api.example.com");
 
-        Assert.That(result.HsdsProfileUrl, Is.Null);
+        Assert.That(result.HsdsProfileVersion, Is.Null);
+        Assert.That(result.OpenApiSchemaContent, Is.Null);
     }
 
     [Test]
-    public async Task DiscoverFromBaseUrlAsync_WhenSwaggerConfigEndpointContainsUrl_ReturnsDiscoveredSpecUrl()
+    public async Task DiscoverFromBaseUrlAsync_WhenSwaggerConfigEndpointContainsUrl_ReturnsDiscoveredSpecContent()
     {
         // Use a URL not in Constants.Paths so it is only reachable via swagger-config probing
         SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode, string)>
@@ -110,7 +110,6 @@ public class ProfileDiscoveryServiceTests
         var service = CreateService();
         var result = await service.DiscoverFromBaseUrlAsync("https://api.example.com");
 
-        Assert.That(result.HsdsProfileUrl, Is.EqualTo("https://api.example.com/api/v2/openapi-custom.json"));
         Assert.That(result.OpenApiSchemaContent, Does.Contain("openapi"));
     }
 
@@ -130,7 +129,7 @@ public class ProfileDiscoveryServiceTests
     }
 
     [Test]
-    public async Task DiscoverFromBaseUrlAsync_WhenStandardPathReturnsSwaggerUiSpec_ReturnsResolvedSpecUrl()
+    public async Task DiscoverFromBaseUrlAsync_WhenStandardPathReturnsSwaggerUiSpec_ReturnsResolvedSpecContent()
     {
         var html = @"<!doctype html><html><body>
             <script>
@@ -150,7 +149,6 @@ public class ProfileDiscoveryServiceTests
         var service = CreateService();
         var result = await service.DiscoverFromBaseUrlAsync("https://api.example.com");
 
-        Assert.That(result.HsdsProfileUrl, Is.EqualTo("https://api.example.com/v3/api-docs"));
         Assert.That(result.OpenApiSchemaContent, Does.Contain("openapi"));
     }
 

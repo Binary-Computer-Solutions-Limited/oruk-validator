@@ -19,7 +19,6 @@ public interface IProfileDiscoveryService
 
 public sealed class ProfileDiscoveryResult
 {
-    public string? HsdsProfileUrl { get; init; }
     public string? HsdsProfileReason { get; init; }
     public string? OpenApiSchemaContent { get; init; }
     public string? HsdsProfileVersion { get; init; }
@@ -35,7 +34,6 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
     private readonly OpenApiValidationServerOptions _openApiValidationOptions;
 
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly SpecificationOptions _specificationOptions;
 
     private static readonly string[] HSDS_VERSION_candidateTokens = new[]
     {
@@ -43,8 +41,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         "version",
         "info.x-hsds-version",
         "info.x-profile-version",
-        "info.version",
-        "openapi"
+        "info.version"
     };
 
     public ProfileDiscoveryService(
@@ -56,7 +53,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         _logger = logger;
         _openApiValidationOptions = openApiValidationOptions?.Value ?? new OpenApiValidationServerOptions();
         _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
-        _specificationOptions = specificationOptions?.Value ?? throw new ArgumentNullException(nameof(specificationOptions));
+        _ = specificationOptions?.Value ?? throw new ArgumentNullException(nameof(specificationOptions));
     }
 
     private static string? TryExtractProfileVersionFromJson(string? json)
@@ -143,7 +140,10 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         using var client = _httpClientFactory.CreateClient("OpenApiValidationService");
         client.Timeout = TimeSpan.FromSeconds(10);
 
-        foreach (var path in ExpandSpecPaths(Constants.Paths))
+        var probePaths = BuildDiscoveryProbePaths();
+        var firstDiscoveredVersion = (string?)null;
+
+        foreach (var path in probePaths)
         {
             var discoveryUrl = BuildAbsoluteUrl(normalizedBaseUrl, path);
             try
@@ -161,15 +161,18 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
 
                 var content = await response.Content.ReadAsStringAsync(cancellationToken);
                 var hsdsProfileVersion = TryExtractPotentialHsdsProfileVersion(content);
-                var hsdsProfileUrl = ResolveSpecificationUrl(hsdsProfileVersion);
+                if (string.IsNullOrWhiteSpace(firstDiscoveredVersion)
+                    && !string.IsNullOrWhiteSpace(hsdsProfileVersion))
+                {
+                    firstDiscoveredVersion = hsdsProfileVersion;
+                }
 
                 if (!discoverOpenApiSpec && !string.IsNullOrWhiteSpace(hsdsProfileVersion))
                 {
                     return new ProfileDiscoveryResult
                     {
-                        HsdsProfileUrl = hsdsProfileUrl,
                         HsdsProfileReason = $"Potential HSDS profile version {TextSanitizer.SanitizeStringForLogging(hsdsProfileVersion ?? string.Empty)} discovered via standard path probing",
-                        OpenApiSchemaContent = discoverOpenApiSpec && LooksLikeOpenApiSpec(content) ? content : null,
+                        OpenApiSchemaContent = null,
                         HsdsProfileVersion = hsdsProfileVersion
                     };
                 }
@@ -179,18 +182,67 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                     _logger.DiscoveredSpecViaProbing(path);
                     return new ProfileDiscoveryResult
                     {
-                        HsdsProfileUrl = discoveryUrl,
-                        HsdsProfileReason = $"OpenAPI URL discovered by probing standard path '{path}'",
+                        HsdsProfileReason = $"OpenAPI schema discovered by probing path '{path}'",
                         OpenApiSchemaContent = discoverOpenApiSpec ? content : null,
                         HsdsProfileVersion = hsdsProfileVersion
                     };
                 }
 
-                if (!string.IsNullOrWhiteSpace(hsdsProfileUrl))
+                var discoveredFromConfigContent = DiscoverFromSwaggerConfigContent(content, normalizedBaseUrl);
+                if (discoveredFromConfigContent.Count > 0)
+                {
+                    var discoveredSpecUrl = discoveredFromConfigContent[0];
+                    _logger.DiscoveredSpecViaConfigEndpoint(TextSanitizer.SanitizeUrlForLogging(discoveredSpecUrl));
+                    var openApiSpecContent = discoverOpenApiSpec
+                        ? await TryFetchDiscoveredSpecContentAsync(client, discoveredSpecUrl, cancellationToken)
+                        : null;
+
+                    if (!string.IsNullOrWhiteSpace(openApiSpecContent))
+                    {
+                        var fetchedVersion = TryExtractPotentialHsdsProfileVersion(openApiSpecContent) ?? hsdsProfileVersion;
+                        if (string.IsNullOrWhiteSpace(firstDiscoveredVersion) && !string.IsNullOrWhiteSpace(fetchedVersion))
+                        {
+                            firstDiscoveredVersion = fetchedVersion;
+                        }
+
+                        return new ProfileDiscoveryResult
+                        {
+                            HsdsProfileReason = "OpenAPI schema discovered via Swagger config response",
+                            OpenApiSchemaContent = openApiSpecContent,
+                            HsdsProfileVersion = fetchedVersion
+                        };
+                    }
+                }
+
+                var discoveredFromHtml = await DiscoverFromUiHtmlAsync(client, content, normalizedBaseUrl, cancellationToken);
+                if (!string.IsNullOrWhiteSpace(discoveredFromHtml))
+                {
+                    _logger.DiscoveredSpecViaUiRouteScraping(TextSanitizer.SanitizeUrlForLogging(discoveredFromHtml));
+                    var openApiSpecContent = discoverOpenApiSpec
+                        ? await TryFetchDiscoveredSpecContentAsync(client, discoveredFromHtml, cancellationToken)
+                        : null;
+
+                    if (!string.IsNullOrWhiteSpace(openApiSpecContent))
+                    {
+                        var fetchedVersion = TryExtractPotentialHsdsProfileVersion(openApiSpecContent) ?? hsdsProfileVersion;
+                        if (string.IsNullOrWhiteSpace(firstDiscoveredVersion) && !string.IsNullOrWhiteSpace(fetchedVersion))
+                        {
+                            firstDiscoveredVersion = fetchedVersion;
+                        }
+
+                        return new ProfileDiscoveryResult
+                        {
+                            HsdsProfileReason = $"OpenAPI schema discovered via HTML/Swagger UI hints at path '{path}'",
+                            OpenApiSchemaContent = openApiSpecContent,
+                            HsdsProfileVersion = fetchedVersion
+                        };
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(hsdsProfileVersion))
                 {
                     return new ProfileDiscoveryResult
                     {
-                        HsdsProfileUrl = hsdsProfileUrl,
                         HsdsProfileReason = $"Potential HSDS profile version {TextSanitizer.SanitizeStringForLogging(hsdsProfileVersion ?? string.Empty)} discovered via standard path probing",
                         HsdsProfileVersion = hsdsProfileVersion
                     };
@@ -208,127 +260,23 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             }
         }
 
-        foreach (var configPath in Constants.SwaggerConfigPaths)
-        {
-            try
-            {
-                var configUrl = BuildAbsoluteUrl(normalizedBaseUrl, configPath);
-                _logger.ProbingSwaggerConfigPath(TextSanitizer.SanitizeUrlForLogging(configUrl));
-                var discoveredFromConfig = await DiscoverFromSwaggerConfigEndpointAsync(client, normalizedBaseUrl, configUrl, cancellationToken);
-                if (discoveredFromConfig.Count > 0)
-                {
-                    var discoveredSpecUrl = discoveredFromConfig[0];
-                    _logger.DiscoveredSpecViaConfigEndpoint(TextSanitizer.SanitizeUrlForLogging(discoveredSpecUrl));
-                    var openApiSpecContent = discoverOpenApiSpec
-                        ? await TryFetchDiscoveredSpecContentAsync(client, discoveredSpecUrl, cancellationToken)
-                        : null;
-                    return new ProfileDiscoveryResult
-                    {
-                        HsdsProfileUrl = discoveredSpecUrl,
-                        HsdsProfileReason = "OpenAPI URL discovered via Swagger config endpoint",
-                        OpenApiSchemaContent = openApiSpecContent
-                    };
-                }
-
-                _logger.NoDefinitionsAtConfigPath(configPath);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                _logger.ConfigProbeFailed(ex, configPath);
-            }
-        }
-
-        // try
-        // {
-        //     var htmlContent = rootContent;
-        //     if (string.IsNullOrWhiteSpace(htmlContent))
-        //     {
-        //         using var response = await client.GetAsync(normalizedBaseUrl, cancellationToken);
-        //         if (response.IsSuccessStatusCode)
-        //         {
-        //             htmlContent = await response.Content.ReadAsStringAsync(cancellationToken);
-        //         }
-        //     }
-
-        //     if (!string.IsNullOrWhiteSpace(htmlContent))
-        //     {
-        //         var discoveredFromHtml = await DiscoverFromUiHtmlAsync(client, htmlContent, normalizedBaseUrl, cancellationToken);
-        //         if (!string.IsNullOrWhiteSpace(discoveredFromHtml))
-        //         {
-        //             _logger.DiscoveredSpecViaHtmlScraping(TextSanitizer.SanitizeUrlForLogging(discoveredFromHtml));
-        //             var openApiSpecContent = discoverOpenApiSpec
-        //                 ? await TryFetchDiscoveredSpecContentAsync(client, discoveredFromHtml, cancellationToken)
-        //                 : null;
-        //             return new ProfileDiscoveryResult
-        //             {
-        //                 HsdsProfileUrl = discoveredFromHtml,
-        //                 HsdsProfileReason = "OpenAPI URL discovered by scraping HTML",
-        //                 OpenApiSpecContent = openApiSpecContent
-        //             };
-        //         }
-        //     }
-        // }
-        // catch (OperationCanceledException)
-        // {
-        //     throw;
-        // }
-        // catch (Exception ex)
-        // {
-        //     _logger.HtmlScrapingFailed(ex, TextSanitizer.SanitizeUrlForLogging(normalizedBaseUrl));
-        // }
-
-        foreach (var uiPath in Constants.UiPaths)
-        {
-            try
-            {
-                var uiUrl = BuildAbsoluteUrl(normalizedBaseUrl, uiPath);
-                _logger.ProbingUiRoute(TextSanitizer.SanitizeUrlForLogging(uiUrl));
-                using var response = await client.GetAsync(uiUrl, cancellationToken);
-                if (!response.IsSuccessStatusCode)
-                {
-                    _logger.UiRouteReturnedStatusCode(uiPath, (int)response.StatusCode);
-                    continue;
-                }
-
-                var content = await response.Content.ReadAsStringAsync(cancellationToken);
-                var discoveredFromHtml = await DiscoverFromUiHtmlAsync(client, content, normalizedBaseUrl, cancellationToken);
-                if (!string.IsNullOrWhiteSpace(discoveredFromHtml))
-                {
-                    _logger.DiscoveredSpecViaUiRouteScraping(TextSanitizer.SanitizeUrlForLogging(discoveredFromHtml));
-                    var openApiSpecContent = discoverOpenApiSpec
-                        ? await TryFetchDiscoveredSpecContentAsync(client, discoveredFromHtml, cancellationToken)
-                        : null;
-                    return new ProfileDiscoveryResult
-                    {
-                        HsdsProfileUrl = discoveredFromHtml,
-                        HsdsProfileReason = $"OpenAPI URL discovered by probing UI path '{uiPath}'",
-                        OpenApiSchemaContent = openApiSpecContent
-                    };
-                }
-
-                _logger.UiRouteNoSpecUrlFound(uiPath);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                _logger.UiProbeFailed(ex, TextSanitizer.SanitizeUrlForLogging(BuildAbsoluteUrl(normalizedBaseUrl, uiPath)));
-            }
-        }
-
         _logger.UnableToDiscoverOpenApiSpec(TextSanitizer.SanitizeUrlForLogging(normalizedBaseUrl));
         return new ProfileDiscoveryResult
         {
+            HsdsProfileVersion = firstDiscoveredVersion,
             HsdsProfileReason = discoverOpenApiSpec == true
                 ? "No Hsds Profile Version or OpenAPI specification could be discovered from the base URL"
-                : "Unable to discover Hsds Profile Version" 
+                : "Unable to discover Hsds Profile Version"
         };
+    }
+
+    private static IReadOnlyList<string> BuildDiscoveryProbePaths()
+    {
+        return ExpandSpecPaths(Constants.OpenApiDocumentProbePaths)
+            .Concat(Constants.SwaggerConfigProbePaths)
+            .Concat(Constants.DocumentationUiProbePaths)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private static IEnumerable<string> ExpandSpecPaths(IEnumerable<string> basePaths)
@@ -649,35 +597,6 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             JsonValueKind.False => bool.FalseString,
             _ => null
         };
-    }
-
-    private string? ResolveSpecificationUrl(string? rawVersion)
-    {
-        if (string.IsNullOrWhiteSpace(rawVersion))
-        {
-            return null;
-        }
-
-        if (_specificationOptions.Urls.TryGetValue(rawVersion, out var exactUrl)
-            && !string.IsNullOrWhiteSpace(exactUrl))
-        {
-            return exactUrl.Trim();
-        }
-
-        var versionNumber = ProfileVersionNormalizer.NormalizeVersionNumber(rawVersion);
-        if (string.IsNullOrWhiteSpace(versionNumber))
-        {
-            return null;
-        }
-
-        var firstMatch = _specificationOptions.Urls
-            .FirstOrDefault(entry => !string.IsNullOrWhiteSpace(entry.Value)
-                && string.Equals(
-                    ProfileVersionNormalizer.NormalizeVersionNumber(entry.Key),
-                    versionNumber,
-                    StringComparison.OrdinalIgnoreCase));
-
-        return string.IsNullOrWhiteSpace(firstMatch.Value) ? null : firstMatch.Value.Trim();
     }
 
 }

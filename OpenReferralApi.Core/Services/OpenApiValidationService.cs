@@ -217,30 +217,23 @@ public class OpenApiValidationService : IOpenApiValidationService
 
             // Discover OpenAPI schema URL if not provided
             var usedBaseUrlDiscovery = false;
+            var discoveredOpenApiSchemaContent = (string?)null;
             if (string.IsNullOrEmpty(request.OwnSchemaUrl))
             {
                 if (!string.IsNullOrEmpty(request.BaseUrl))
                 {
                     usedBaseUrlDiscovery = true;
                     var bootstrap = await _profileDiscoveryService.DiscoverFromBaseUrlAsync(request.BaseUrl, dataSourceRequestAuth, cancellationToken);
-                    var openApiSchemaContent = bootstrap.OpenApiSchemaContent;
+                    discoveredOpenApiSchemaContent = bootstrap.OpenApiSchemaContent;
                     var reason = bootstrap.DiscoveryReason ?? "unknown";
-
-                    if (!string.IsNullOrEmpty(openApiSchemaContent))
+                    if (!string.IsNullOrWhiteSpace(bootstrap.HsdsProfileVersion))
                     {
-                        if (!bootstrap.UsedDataServiceOpenApi
-                            && !string.IsNullOrWhiteSpace(bootstrap.HsdsProfileVersion)
-                            && _hsdsComplianceService.TryGetKnownHsdsSchemaUrl(bootstrap.HsdsProfileVersion, out var bootstrapMappedProfileSchemaUrl))
-                        {
-                            openApiSchemaContent = bootstrapMappedProfileSchemaUrl;
-                            _logger.UsingProfileSchemaUrl(
-                                TextSanitizer.SanitizeUrlForLogging(bootstrapMappedProfileSchemaUrl),
-                                bootstrap.HsdsProfileVersion);
-                        }
+                        request.ProfileReason = $"Potential HSDS profile version {bootstrap.HsdsProfileVersion} discovered via base URL probing";
+                    }
 
-                        _logger.DiscoveredOpenApiSchemaUrl(TextSanitizer.SanitizeUrlForLogging(openApiSchemaContent), reason);
-                        request.OwnSchemaUrl = openApiSchemaContent;
-                        request.ProfileReason = bootstrap.HsdsProfileReason;
+                    if (!string.IsNullOrEmpty(discoveredOpenApiSchemaContent))
+                    {
+                        _logger.DiscoveredOpenApiSchemaUrl("inline-schema-content", reason);
                     }
                     else
                     {
@@ -259,7 +252,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                         }
                         else
                         {
-                            throw new ArgumentException("Failed to discover OpenAPI schema URL from base URL");
+                            throw new ArgumentException("Failed to discover OpenAPI schema URL or schema content from base URL");
                         }
                     }
                 }
@@ -269,7 +262,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 }
             }
 
-            if (string.IsNullOrEmpty(request.OwnSchemaUrl))
+            if (string.IsNullOrEmpty(request.OwnSchemaUrl) && string.IsNullOrWhiteSpace(discoveredOpenApiSchemaContent))
             {
                 throw new ArgumentException("OpenAPI schema URL must be provided or BaseUrl must allow discovery");
             }
@@ -297,41 +290,60 @@ public class OpenApiValidationService : IOpenApiValidationService
             // be running against the HSDS profile schema in that case).
             var feedSpecFellBackToHsdsProfile = false;
             JObject openApiSpec;
-            try
+            if (!string.IsNullOrWhiteSpace(discoveredOpenApiSchemaContent))
             {
-                openApiSpec = await GetCachedResolvedOpenApiSpecAsync(request.OwnSchemaUrl, schemaRequestAuth, cancellationToken, cacheScope: "feed", collectedIssues: schemaResolutionIssues);
+                try
+                {
+                    openApiSpec = JObject.Parse(discoveredOpenApiSchemaContent);
+                }
+                catch
+                {
+                    if (string.IsNullOrWhiteSpace(request.OwnSchemaUrl))
+                    {
+                        throw new ArgumentException("Discovered OpenAPI schema content is not valid JSON and no schema URL is available for resolver fallback");
+                    }
+
+                    openApiSpec = await GetCachedResolvedOpenApiSpecAsync(request.OwnSchemaUrl!, schemaRequestAuth, cancellationToken, cacheScope: "feed", collectedIssues: schemaResolutionIssues);
+                }
             }
-            catch (Exception ex)
+            else
             {
-                if (resolvedHsdsProfileSpec == null && hasConfiguredDefaultProfile)
+                try
                 {
-                    try
-                    {
-                        resolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(defaultProfileSchemaUrl, null, cancellationToken, cacheScope: "profile", collectedIssues: schemaResolutionIssues);
-                        knownHsdsSchemaUrl = defaultProfileSchemaUrl;
-                    }
-                    catch (Exception defaultFallbackEx)
-                    {
-                        _logger.DefaultProfileFallbackCouldNotBeResolved(
-                            defaultFallbackEx,
-                            TextSanitizer.SanitizeUrlForLogging(defaultProfileSchemaUrl));
-                    }
+                    openApiSpec = await GetCachedResolvedOpenApiSpecAsync(request.OwnSchemaUrl!, schemaRequestAuth, cancellationToken, cacheScope: "feed", collectedIssues: schemaResolutionIssues);
                 }
-
-                if (string.IsNullOrWhiteSpace(knownHsdsSchemaUrl) || resolvedHsdsProfileSpec == null)
+                catch (Exception ex)
                 {
-                    throw;
+                    if (resolvedHsdsProfileSpec == null && hasConfiguredDefaultProfile)
+                    {
+                        try
+                        {
+                            resolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(defaultProfileSchemaUrl, null, cancellationToken, cacheScope: "profile", collectedIssues: schemaResolutionIssues);
+                            knownHsdsSchemaUrl = defaultProfileSchemaUrl;
+                        }
+                        catch (Exception defaultFallbackEx)
+                        {
+                            _logger.DefaultProfileFallbackCouldNotBeResolved(
+                                defaultFallbackEx,
+                                TextSanitizer.SanitizeUrlForLogging(defaultProfileSchemaUrl));
+                        }
+                    }
+
+                    if (string.IsNullOrWhiteSpace(knownHsdsSchemaUrl) || resolvedHsdsProfileSpec == null)
+                    {
+                        throw;
+                    }
+
+                    _logger.FallingBackToHsdsProfileSchema(
+                        ex,
+                        TextSanitizer.SanitizeUrlForLogging(request.OwnSchemaUrl ?? string.Empty),
+                        TextSanitizer.SanitizeUrlForLogging(knownHsdsSchemaUrl));
+
+                    openApiSpec = resolvedHsdsProfileSpec;
+                    request.OwnSchemaUrl = knownHsdsSchemaUrl;
+                    feedSpecFellBackToHsdsProfile = true;
+                    result.Notifications.Add("Unable to fetch OpenAPI specification from the feed URL. Falling back to the HSDS profile OpenAPI specification.");
                 }
-
-                _logger.FallingBackToHsdsProfileSchema(
-                    ex,
-                    TextSanitizer.SanitizeUrlForLogging(request.OwnSchemaUrl),
-                    TextSanitizer.SanitizeUrlForLogging(knownHsdsSchemaUrl));
-
-                openApiSpec = resolvedHsdsProfileSpec;
-                request.OwnSchemaUrl = knownHsdsSchemaUrl;
-                feedSpecFellBackToHsdsProfile = true;
-                result.Notifications.Add("Unable to fetch OpenAPI specification from the feed URL. Falling back to the HSDS profile OpenAPI specification.");
             }
 
             LogMemoryCheckpoint("feed-openapi-resolution");

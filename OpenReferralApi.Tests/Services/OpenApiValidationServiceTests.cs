@@ -35,7 +35,6 @@ public class OpenApiValidationServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProfileDiscoveryResult
             {
-                HsdsProfileUrl = null,
                 HsdsProfileReason = "No version or openapi_url found in '/' response"
             });
 
@@ -996,14 +995,14 @@ _openApiSpecificationService,
         Assert.That(result.IsValid, Is.False);
         Assert.That(result.Notifications, Has.Count.EqualTo(1));
         Assert.That(result.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
-        Assert.That(result.Notifications[0], Does.Contain("Failed to discover OpenAPI schema URL from base URL"));
+        Assert.That(result.Notifications[0], Does.Contain("Failed to discover OpenAPI schema URL or schema content from base URL"));
     }
 
     [Test]
     public async Task ValidateOpenApiSpecificationAsync_WhenSchemaIsDiscovered_DoesNotRequestSchemaAuth()
     {
         // Arrange
-        var discoveredSchemaUrl = "https://directory.example.com/openapi.json";
+        var discoveredSchemaContent = CreateOpenApi30Spec();
         var auth = new DataSourceAuthentication { BearerToken = "test-token" };
         var request = new OpenApiValidationRequest
         {
@@ -1025,24 +1024,12 @@ _openApiSpecificationService,
             .Setup(s => s.DiscoverFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProfileDiscoveryResult
             {
-                OpenApiSchemaContent = discoveredSchemaUrl,
-                DiscoveryReason = "discovered from base URL",
-                UsedDataServiceOpenApi = true
+                OpenApiSchemaContent = discoveredSchemaContent,
+                DiscoveryReason = "discovered from base URL"
             });
 
         var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>
-        {
-            var requestUrl = httpRequest.RequestUri?.ToString() ?? string.Empty;
-            if (string.Equals(requestUrl, discoveredSchemaUrl, StringComparison.OrdinalIgnoreCase))
-            {
-                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
-                {
-                    Content = new StringContent(CreateOpenApi30Spec())
-                };
-            }
-
-            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
-        }));
+            new HttpResponseMessage(System.Net.HttpStatusCode.NotFound)));
 
         using var _ = httpClient;
 
@@ -2306,7 +2293,7 @@ _openApiSpecificationService,
             Assert.That(result.IsValid, Is.False);
             Assert.That(result.Notifications, Has.Count.EqualTo(1));
             Assert.That(result.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
-            Assert.That(result.Notifications[0], Does.Contain("Failed to discover OpenAPI schema URL from base URL"));
+            Assert.That(result.Notifications[0], Does.Contain("Failed to discover OpenAPI schema URL or schema content from base URL"));
         }
         finally
         {
