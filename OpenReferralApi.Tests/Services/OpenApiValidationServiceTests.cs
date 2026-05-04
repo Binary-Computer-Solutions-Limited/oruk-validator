@@ -1024,8 +1024,7 @@ _openApiSpecificationService,
             .Setup(s => s.DiscoverFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProfileDiscoveryResult
             {
-                OpenApiSchemaContent = discoveredSchemaContent,
-                DiscoveryReason = "discovered from base URL"
+                OpenApiSchemaContent = discoveredSchemaContent
             });
 
         var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>

@@ -21,10 +21,7 @@ public sealed class ProfileDiscoveryResult
 {
     public string? HsdsProfileReason { get; init; }
     public string? OpenApiSchemaContent { get; init; }
-    public string? HsdsProfileVersion { get; init; }
-    public bool HasExplicitOpenApiUrl { get; init; }
-    public string? DiscoveryReason { get; init; }
-    public bool UsedDataServiceOpenApi { get; init; }
+    public string? HsdsProfileVersion { get; set; }
 }
 
 public class ProfileDiscoveryService : IProfileDiscoveryService
@@ -88,6 +85,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         {
             return null;
         }
+
     }
 
     private static string? TryExtractProfileVersionFromOpenApiSpec(string specContent)
@@ -129,22 +127,24 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         DataSourceAuthentication? authentication = null,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(baseUrl))
-        {
-            throw new ArgumentException("Base URL must be provided for OpenAPI discovery", nameof(baseUrl));
-        }
-
         var normalizedBaseUrl = baseUrl.TrimEnd('/');
-        var discoverOpenApiSpec = _openApiValidationOptions.OwnSchemaValidation != OwnSchemaValidationMode.None;
+        var needsSchema = _openApiValidationOptions.OwnSchemaValidation != OwnSchemaValidationMode.None;
+
+        string? discoveredVersion = null;
+        string? discoveredSchema = null;
+        string? discoveryReason = null;
 
         using var client = _httpClientFactory.CreateClient("OpenApiValidationService");
-        client.Timeout = TimeSpan.FromSeconds(10);
-
         var probePaths = BuildDiscoveryProbePaths();
-        var firstDiscoveredVersion = (string?)null;
 
         foreach (var path in probePaths)
         {
+            // 1. Check if we already have everything we need to stop
+            if (discoveredVersion != null && (!needsSchema || discoveredSchema != null))
+            {
+                break;
+            }
+
             var discoveryUrl = BuildAbsoluteUrl(normalizedBaseUrl, path);
             try
             {
@@ -153,106 +153,33 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                 ApplyAuthentication(request, authentication);
                 using var response = await client.SendAsync(request, cancellationToken);
 
-                if (!response.IsSuccessStatusCode)
-                {
-                    _logger.PathReturnedStatusCode(path, (int)response.StatusCode);
-                    continue;
-                }
+                if (!response.IsSuccessStatusCode) continue;
 
                 var content = await response.Content.ReadAsStringAsync(cancellationToken);
-                var hsdsProfileVersion = TryExtractPotentialHsdsProfileVersion(content);
-                if (string.IsNullOrWhiteSpace(firstDiscoveredVersion)
-                    && !string.IsNullOrWhiteSpace(hsdsProfileVersion))
-                {
-                    firstDiscoveredVersion = hsdsProfileVersion;
-                }
 
-                if (!discoverOpenApiSpec && !string.IsNullOrWhiteSpace(hsdsProfileVersion))
+                // 2. Extract version only if we don't have one yet
+                if (discoveredVersion == null)
                 {
-                    return new ProfileDiscoveryResult
+                    discoveredVersion = TryExtractPotentialHsdsProfileVersion(content);
+                    if (discoveredVersion != null)
                     {
-                        HsdsProfileReason = $"Potential HSDS profile version {TextSanitizer.SanitizeStringForLogging(hsdsProfileVersion ?? string.Empty)} discovered via standard path probing",
-                        OpenApiSchemaContent = null,
-                        HsdsProfileVersion = hsdsProfileVersion
-                    };
-                }
-
-                if (LooksLikeOpenApiSpec(content))
-                {
-                    _logger.DiscoveredSpecViaProbing(path);
-                    return new ProfileDiscoveryResult
-                    {
-                        HsdsProfileReason = $"OpenAPI schema discovered by probing path '{path}'",
-                        OpenApiSchemaContent = discoverOpenApiSpec ? content : null,
-                        HsdsProfileVersion = hsdsProfileVersion
-                    };
-                }
-
-                var discoveredFromConfigContent = DiscoverFromSwaggerConfigContent(content, normalizedBaseUrl);
-                if (discoveredFromConfigContent.Count > 0)
-                {
-                    var discoveredSpecUrl = discoveredFromConfigContent[0];
-                    _logger.DiscoveredSpecViaConfigEndpoint(TextSanitizer.SanitizeUrlForLogging(discoveredSpecUrl));
-                    var openApiSpecContent = discoverOpenApiSpec
-                        ? await TryFetchDiscoveredSpecContentAsync(client, discoveredSpecUrl, cancellationToken)
-                        : null;
-
-                    if (!string.IsNullOrWhiteSpace(openApiSpecContent))
-                    {
-                        var fetchedVersion = TryExtractPotentialHsdsProfileVersion(openApiSpecContent) ?? hsdsProfileVersion;
-                        if (string.IsNullOrWhiteSpace(firstDiscoveredVersion) && !string.IsNullOrWhiteSpace(fetchedVersion))
-                        {
-                            firstDiscoveredVersion = fetchedVersion;
-                        }
-
-                        return new ProfileDiscoveryResult
-                        {
-                            HsdsProfileReason = "OpenAPI schema discovered via Swagger config response",
-                            OpenApiSchemaContent = openApiSpecContent,
-                            HsdsProfileVersion = fetchedVersion
-                        };
+                        discoveryReason = $"HSDS version {discoveredVersion} found at {path}";
                     }
                 }
 
-                var discoveredFromHtml = await DiscoverFromUiHtmlAsync(client, content, normalizedBaseUrl, cancellationToken);
-                if (!string.IsNullOrWhiteSpace(discoveredFromHtml))
+                // 3. Extract schema if required and not yet found
+                if (needsSchema && discoveredSchema == null)
                 {
-                    _logger.DiscoveredSpecViaUiRouteScraping(TextSanitizer.SanitizeUrlForLogging(discoveredFromHtml));
-                    var openApiSpecContent = discoverOpenApiSpec
-                        ? await TryFetchDiscoveredSpecContentAsync(client, discoveredFromHtml, cancellationToken)
-                        : null;
-
-                    if (!string.IsNullOrWhiteSpace(openApiSpecContent))
+                    if (LooksLikeOpenApiSpec(content))
                     {
-                        var fetchedVersion = TryExtractPotentialHsdsProfileVersion(openApiSpecContent) ?? hsdsProfileVersion;
-                        if (string.IsNullOrWhiteSpace(firstDiscoveredVersion) && !string.IsNullOrWhiteSpace(fetchedVersion))
-                        {
-                            firstDiscoveredVersion = fetchedVersion;
-                        }
-
-                        return new ProfileDiscoveryResult
-                        {
-                            HsdsProfileReason = $"OpenAPI schema discovered via HTML/Swagger UI hints at path '{path}'",
-                            OpenApiSchemaContent = openApiSpecContent,
-                            HsdsProfileVersion = fetchedVersion
-                        };
+                        discoveredSchema = content;
+                    }
+                    else
+                    {
+                        // Attempt scraping for indirect schema (UI/Config)
+                        discoveredSchema = await TryFetchIndirectSchemaAsync(client, content, normalizedBaseUrl, cancellationToken);
                     }
                 }
-
-                if (!string.IsNullOrWhiteSpace(hsdsProfileVersion))
-                {
-                    return new ProfileDiscoveryResult
-                    {
-                        HsdsProfileReason = $"Potential HSDS profile version {TextSanitizer.SanitizeStringForLogging(hsdsProfileVersion ?? string.Empty)} discovered via standard path probing",
-                        HsdsProfileVersion = hsdsProfileVersion
-                    };
-                }
-
-                _logger.PathReturnedNonOpenApiContent(path);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
             }
             catch (Exception ex)
             {
@@ -260,13 +187,14 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             }
         }
 
-        _logger.UnableToDiscoverOpenApiSpec(TextSanitizer.SanitizeUrlForLogging(normalizedBaseUrl));
+        // if we get to here with no profile version, use the defaukt.
+        if (String.IsNullOrEmpty(discoveredVersion)) throw new InvalidOperationException($"Failed to discover any profile version information from base URL: {baseUrl}");
+
         return new ProfileDiscoveryResult
         {
-            HsdsProfileVersion = firstDiscoveredVersion,
-            HsdsProfileReason = discoverOpenApiSpec == true
-                ? "No Hsds Profile Version or OpenAPI specification could be discovered from the base URL"
-                : "Unable to discover Hsds Profile Version"
+            HsdsProfileVersion = discoveredVersion,
+            OpenApiSchemaContent = discoveredSchema,
+            HsdsProfileReason = discoveryReason ?? "Discovery completed with available information."
         };
     }
 
@@ -338,6 +266,30 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         {
             return null;
         }
+    }
+    private async Task<string?> TryFetchIndirectSchemaAsync(
+    HttpClient client,
+    string content,
+    string baseUrl,
+    CancellationToken cancellationToken)
+    {
+        // 1. Check if the content is a Swagger Config JSON
+        var configUrls = DiscoverFromSwaggerConfigContent(content, baseUrl);
+        if (configUrls.Count > 0)
+        {
+            // Try the first URL found in the config
+            var spec = await TryFetchDiscoveredSpecContentAsync(client, configUrls[0], cancellationToken);
+            if (spec != null) return spec;
+        }
+
+        // 2. Check if the content is HTML (Swagger UI / Redoc)
+        var htmlSpecUrl = await DiscoverFromUiHtmlAsync(client, content, baseUrl, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(htmlSpecUrl))
+        {
+            return await TryFetchDiscoveredSpecContentAsync(client, htmlSpecUrl, cancellationToken);
+        }
+
+        return null;
     }
 
     private async Task<string?> TryFetchDiscoveredSpecContentAsync(HttpClient client, string specUrl, CancellationToken cancellationToken)

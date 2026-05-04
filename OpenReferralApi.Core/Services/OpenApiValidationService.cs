@@ -268,6 +268,11 @@ public class OpenApiValidationService : IOpenApiValidationService
         Action<string> logMemoryCheckpoint,
         CancellationToken cancellationToken)
     {
+        if(string.IsNullOrWhiteSpace(request.BaseUrl))
+        {
+            throw new ArgumentException("BaseUrl must be provided for OpenAPI validation");
+        }
+
         var discovery = await PrepareValidationDiscoveryAsync(request, result, cancellationToken);
         logMemoryCheckpoint("schema-url-discovery");
 
@@ -276,6 +281,19 @@ public class OpenApiValidationService : IOpenApiValidationService
 
         var feedResolution = await ResolveFeedSpecAsync(request, result, discovery, profileState, schemaResolutionIssues, cancellationToken);
         logMemoryCheckpoint("feed-openapi-resolution");
+
+        // If the feed spec fetch fell back to a profile spec, apply the fallback state immutably
+        // and update the effective schema URL on the request in one place.
+        if (feedResolution.FeedSpecFellBackToHsdsProfile)
+        {
+            profileState = new ProfileResolutionState
+            {
+                ClaimedProfileVersion = profileState.ClaimedProfileVersion,
+                KnownHsdsSchemaUrl = feedResolution.FallbackKnownHsdsSchemaUrl ?? profileState.KnownHsdsSchemaUrl,
+                ResolvedHsdsProfileSpec = feedResolution.FallbackResolvedHsdsProfileSpec ?? profileState.ResolvedHsdsProfileSpec
+            };
+            request.OwnSchemaUrl = feedResolution.EffectiveOwnSchemaUrl ?? request.OwnSchemaUrl;
+        }
 
         var specificationStage = await ExecuteSpecificationStageAsync(
             request,
@@ -286,6 +304,9 @@ public class OpenApiValidationService : IOpenApiValidationService
             schemaResolutionIssues,
             cancellationToken);
         logMemoryCheckpoint("specification-validation");
+
+        // Advance to the finalized profile state produced by the specification stage.
+        profileState = specificationStage.FinalProfileState;
 
         var endpointTests = await ExecuteEndpointTestingAsync(
             request,
@@ -338,28 +359,13 @@ public class OpenApiValidationService : IOpenApiValidationService
 
         if (string.IsNullOrEmpty(request.OwnSchemaUrl))
         {
-            if (string.IsNullOrEmpty(request.BaseUrl))
-            {
-                throw new ArgumentException("OpenAPI schema URL must be provided or BaseUrl must allow discovery");
-            }
-
             usedBaseUrlDiscovery = true;
-            var bootstrap = await _profileDiscoveryService.DiscoverFromBaseUrlAsync(request.BaseUrl, dataSourceRequestAuth, cancellationToken);
+            var bootstrap = await _profileDiscoveryService.DiscoverFromBaseUrlAsync(request.BaseUrl!, dataSourceRequestAuth, cancellationToken);
             discoveredOpenApiSchemaContent = bootstrap.OpenApiSchemaContent;
-            var reason = bootstrap.DiscoveryReason ?? "unknown";
 
-            if (!string.IsNullOrWhiteSpace(bootstrap.HsdsProfileVersion))
+        if (hasConfiguredDefaultProfile && string.IsNullOrWhiteSpace(bootstrap.HsdsProfileReason))
             {
-                request.ProfileReason = $"Potential HSDS profile version {bootstrap.HsdsProfileVersion} discovered via base URL probing";
-            }
-
-            if (!string.IsNullOrEmpty(discoveredOpenApiSchemaContent))
-            {
-                _logger.DiscoveredOpenApiSchemaUrl("inline-schema-content", reason);
-            }
-            else if (hasConfiguredDefaultProfile && !string.IsNullOrWhiteSpace(defaultProfileSchemaUrl))
-            {
-                request.OwnSchemaUrl = defaultProfileSchemaUrl;
+                bootstrap.HsdsProfileVersion = defaultProfileVersion;
                 if (!string.IsNullOrWhiteSpace(defaultProfileVersion))
                 {
                     request.ProfileReason = $"Standard version [user: {defaultProfileVersion}] configured default profile fallback";
@@ -441,7 +447,8 @@ public class OpenApiValidationService : IOpenApiValidationService
                 return new FeedResolutionResult
                 {
                     OpenApiSpec = JObject.Parse(discovery.DiscoveredOpenApiSchemaContent),
-                    FeedSpecFellBackToHsdsProfile = false
+                    FeedSpecFellBackToHsdsProfile = false,
+                    EffectiveOwnSchemaUrl = request.OwnSchemaUrl
                 };
             }
             catch
@@ -463,19 +470,24 @@ public class OpenApiValidationService : IOpenApiValidationService
                     cancellationToken,
                     cacheScope: "feed",
                     collectedIssues: schemaResolutionIssues),
-                FeedSpecFellBackToHsdsProfile = false
+                FeedSpecFellBackToHsdsProfile = false,
+                EffectiveOwnSchemaUrl = request.OwnSchemaUrl
             };
         }
         catch (Exception ex)
         {
-            if (profileState.ResolvedHsdsProfileSpec == null
+            // Determine the best available fallback profile spec without mutating shared state.
+            var fallbackKnownHsdsSchemaUrl = profileState.KnownHsdsSchemaUrl;
+            var fallbackResolvedHsdsProfileSpec = profileState.ResolvedHsdsProfileSpec;
+
+            if (fallbackResolvedHsdsProfileSpec == null
                 && discovery.HasConfiguredDefaultProfile
                 && !string.IsNullOrWhiteSpace(discovery.DefaultProfileSchemaUrl))
             {
                 try
                 {
-                    profileState.KnownHsdsSchemaUrl = discovery.DefaultProfileSchemaUrl;
-                    profileState.ResolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(
+                    fallbackKnownHsdsSchemaUrl = discovery.DefaultProfileSchemaUrl;
+                    fallbackResolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(
                         discovery.DefaultProfileSchemaUrl,
                         null,
                         cancellationToken,
@@ -490,7 +502,7 @@ public class OpenApiValidationService : IOpenApiValidationService
                 }
             }
 
-            if (string.IsNullOrWhiteSpace(profileState.KnownHsdsSchemaUrl) || profileState.ResolvedHsdsProfileSpec == null)
+            if (string.IsNullOrWhiteSpace(fallbackKnownHsdsSchemaUrl) || fallbackResolvedHsdsProfileSpec == null)
             {
                 throw;
             }
@@ -498,15 +510,17 @@ public class OpenApiValidationService : IOpenApiValidationService
             _logger.FallingBackToHsdsProfileSchema(
                 ex,
                 TextSanitizer.SanitizeUrlForLogging(request.OwnSchemaUrl ?? string.Empty),
-                TextSanitizer.SanitizeUrlForLogging(profileState.KnownHsdsSchemaUrl));
+                TextSanitizer.SanitizeUrlForLogging(fallbackKnownHsdsSchemaUrl));
 
-            request.OwnSchemaUrl = profileState.KnownHsdsSchemaUrl;
             result.Notifications.Add("Unable to fetch OpenAPI specification from the feed URL. Falling back to the HSDS profile OpenAPI specification.");
 
             return new FeedResolutionResult
             {
-                OpenApiSpec = profileState.ResolvedHsdsProfileSpec,
-                FeedSpecFellBackToHsdsProfile = true
+                OpenApiSpec = fallbackResolvedHsdsProfileSpec,
+                FeedSpecFellBackToHsdsProfile = true,
+                EffectiveOwnSchemaUrl = fallbackKnownHsdsSchemaUrl,
+                FallbackKnownHsdsSchemaUrl = fallbackKnownHsdsSchemaUrl,
+                FallbackResolvedHsdsProfileSpec = fallbackResolvedHsdsProfileSpec
             };
         }
     }
@@ -545,7 +559,7 @@ public class OpenApiValidationService : IOpenApiValidationService
             result.Notifications.Add(misplacedHsdsVersionWarning);
         }
 
-        await ResolveProfileStateWithFallbackAsync(
+        var finalProfileState = await ResolveProfileStateWithFallbackAsync(
             request,
             discovery,
             profileState,
@@ -557,18 +571,19 @@ public class OpenApiValidationService : IOpenApiValidationService
             ApplySpecificationComparisonAgainstProfile(
                 request,
                 openApiSpec,
-                profileState,
+                finalProfileState,
                 specValidationErrors!);
         }
 
         return new SpecificationStageResult
         {
             SpecValidation = specValidation,
-            SpecValidationErrors = specValidationErrors
+            SpecValidationErrors = specValidationErrors,
+            FinalProfileState = finalProfileState
         };
     }
 
-    private async Task ResolveProfileStateWithFallbackAsync(
+    private async Task<ProfileResolutionState> ResolveProfileStateWithFallbackAsync(
         OpenApiValidationRequest request,
         DiscoveryPreparation discovery,
         ProfileResolutionState profileState,
@@ -582,23 +597,34 @@ public class OpenApiValidationService : IOpenApiValidationService
             discovery.DefaultProfileSchemaUrl,
             discovery.DefaultProfileVersion);
 
-        request.ProfileReason = decision.EffectiveProfileReason;
-        profileState.ClaimedProfileVersion = decision.ClaimedProfileVersion;
-        if (!string.IsNullOrWhiteSpace(decision.KnownHsdsSchemaUrl))
+        // Only update ProfileReason if no explicit version has already been identified by a prior stage.
+        if (!HasExplicitProfileVersionContext(request.ProfileReason, request.OwnSchemaUrl)
+            && !string.IsNullOrWhiteSpace(decision.EffectiveProfileReason))
         {
-            profileState.KnownHsdsSchemaUrl = decision.KnownHsdsSchemaUrl;
+            request.ProfileReason = decision.EffectiveProfileReason;
         }
 
-        if (profileState.ResolvedHsdsProfileSpec == null
-            && !string.IsNullOrWhiteSpace(profileState.KnownHsdsSchemaUrl))
+        var knownHsdsSchemaUrl = !string.IsNullOrWhiteSpace(decision.KnownHsdsSchemaUrl)
+            ? decision.KnownHsdsSchemaUrl
+            : profileState.KnownHsdsSchemaUrl;
+
+        var resolvedHsdsProfileSpec = profileState.ResolvedHsdsProfileSpec;
+        if (resolvedHsdsProfileSpec == null && !string.IsNullOrWhiteSpace(knownHsdsSchemaUrl))
         {
-            profileState.ResolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(
-                profileState.KnownHsdsSchemaUrl,
+            resolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(
+                knownHsdsSchemaUrl,
                 null,
                 cancellationToken,
                 cacheScope: "profile",
                 collectedIssues: schemaResolutionIssues);
         }
+
+        return new ProfileResolutionState
+        {
+            ClaimedProfileVersion = decision.ClaimedProfileVersion ?? profileState.ClaimedProfileVersion,
+            KnownHsdsSchemaUrl = knownHsdsSchemaUrl,
+            ResolvedHsdsProfileSpec = resolvedHsdsProfileSpec
+        };
     }
 
     private void ApplySpecificationComparisonAgainstProfile(
@@ -864,21 +890,25 @@ public class OpenApiValidationService : IOpenApiValidationService
 
     private sealed class ProfileResolutionState
     {
-        public string? ClaimedProfileVersion { get; set; }
-        public string? KnownHsdsSchemaUrl { get; set; }
-        public JObject? ResolvedHsdsProfileSpec { get; set; }
+        public string? ClaimedProfileVersion { get; init; }
+        public string? KnownHsdsSchemaUrl { get; init; }
+        public JObject? ResolvedHsdsProfileSpec { get; init; }
     }
 
     private sealed class FeedResolutionResult
     {
         public required JObject OpenApiSpec { get; init; }
         public bool FeedSpecFellBackToHsdsProfile { get; init; }
+        public string? EffectiveOwnSchemaUrl { get; init; }
+        public string? FallbackKnownHsdsSchemaUrl { get; init; }
+        public JObject? FallbackResolvedHsdsProfileSpec { get; init; }
     }
 
     private sealed class SpecificationStageResult
     {
         public OpenApiSpecificationValidation? SpecValidation { get; init; }
         public List<ValidationError>? SpecValidationErrors { get; init; }
+        public required ProfileResolutionState FinalProfileState { get; init; }
     }
 
     private void CollectSchemaResolutionIssues(ICollection<SchemaResolutionIssue>? collectedIssues)
