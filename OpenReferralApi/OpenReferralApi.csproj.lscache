@@ -435,16 +435,16 @@ Telemetry/Instrumentation.cs
  jose-jwt/4.1.0/lib/netstandard2.1/jose-jwt.dll
  json.more.net/3.0.1/lib/net10.0/Json.More.dll
  jsonpointer.net/7.0.1/lib/net10.0/JsonPointer.Net.dll
- jsonschema.net/9.1.4/lib/net9.0/JsonSchema.Net.dll
- microsoft.aspnetcore.openapi/10.0.5/lib/net10.0/Microsoft.AspNetCore.OpenApi.dll
+ jsonschema.net/9.2.0/lib/net9.0/JsonSchema.Net.dll
+ microsoft.aspnetcore.openapi/10.0.7/lib/net10.0/Microsoft.AspNetCore.OpenApi.dll
  microsoft.extensions.dependencymodel/10.0.0/lib/net10.0/Microsoft.Extensions.DependencyModel.dll
- microsoft.identitymodel.abstractions/8.17.0/lib/net10.0/Microsoft.IdentityModel.Abstractions.dll
- microsoft.identitymodel.jsonwebtokens/8.17.0/lib/net10.0/Microsoft.IdentityModel.JsonWebTokens.dll
- microsoft.identitymodel.logging/8.17.0/lib/net10.0/Microsoft.IdentityModel.Logging.dll
- microsoft.identitymodel.tokens/8.17.0/lib/net10.0/Microsoft.IdentityModel.Tokens.dll
+ microsoft.identitymodel.abstractions/8.18.0/lib/net10.0/Microsoft.IdentityModel.Abstractions.dll
+ microsoft.identitymodel.jsonwebtokens/8.18.0/lib/net10.0/Microsoft.IdentityModel.JsonWebTokens.dll
+ microsoft.identitymodel.logging/8.18.0/lib/net10.0/Microsoft.IdentityModel.Logging.dll
+ microsoft.identitymodel.tokens/8.18.0/lib/net10.0/Microsoft.IdentityModel.Tokens.dll
  microsoft.openapi/2.4.1/lib/net8.0/Microsoft.OpenApi.dll
- mongodb.bson/3.7.1/lib/net6.0/MongoDB.Bson.dll
- mongodb.driver/3.7.1/lib/net6.0/MongoDB.Driver.dll
+ mongodb.bson/3.8.0/lib/net6.0/MongoDB.Bson.dll
+ mongodb.driver/3.8.0/lib/net6.0/MongoDB.Driver.dll
  newtonsoft.json.schema/4.0.1/lib/netstandard2.1/Newtonsoft.Json.Schema.dll
  newtonsoft.json/13.0.4/lib/net6.0/Newtonsoft.Json.dll
  octokit/14.0.0/lib/netstandard2.0/Octokit.dll
@@ -471,8 +471,8 @@ Telemetry/Instrumentation.cs
  swashbuckle.aspnetcore.swagger/10.1.7/lib/net10.0/Swashbuckle.AspNetCore.Swagger.dll
  swashbuckle.aspnetcore.swaggergen/10.1.7/lib/net10.0/Swashbuckle.AspNetCore.SwaggerGen.dll
  swashbuckle.aspnetcore.swaggerui/10.1.7/lib/net10.0/Swashbuckle.AspNetCore.SwaggerUI.dll
- system.identitymodel.tokens.jwt/8.17.0/lib/net10.0/System.IdentityModel.Tokens.Jwt.dll
- yamldotnet/16.3.0/lib/net8.0/YamlDotNet.dll
+ system.identitymodel.tokens.jwt/8.18.0/lib/net10.0/System.IdentityModel.Tokens.Jwt.dll
+ yamldotnet/17.1.0/lib/net10.0/YamlDotNet.dll
  zstdsharp.port/0.7.3/lib/net7.0/ZstdSharp.dll
 
 [analyzerReferences]
@@ -508,7 +508,7 @@ Telemetry/Instrumentation.cs
  Microsoft.CodeAnalysis.CSharp.CodeStyle.Fixes.dll
 <NUGET>/
  humanizer.core/3.0.10/analyzers/dotnet/roslyn4.14/cs/Humanizer.Analyzers.dll
- microsoft.aspnetcore.openapi/10.0.5/analyzers/dotnet/cs/Microsoft.AspNetCore.OpenApi.SourceGenerators.dll
+ microsoft.aspnetcore.openapi/10.0.7/analyzers/dotnet/cs/Microsoft.AspNetCore.OpenApi.SourceGenerators.dll
 
 [analyzerConfigFiles]
 .editorconfig
