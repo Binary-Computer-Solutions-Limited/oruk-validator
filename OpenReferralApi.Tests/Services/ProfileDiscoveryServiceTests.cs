@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -14,6 +15,7 @@ public class ProfileDiscoveryServiceTests
     private Mock<ILogger<ProfileDiscoveryService>> _loggerMock = null!;
     private Mock<HttpMessageHandler> _httpMessageHandlerMock = null!;
     private HttpClient _httpClient = null!;
+    private MemoryCache _memoryCache = null!;
 
     [SetUp]
     public void Setup()
@@ -22,6 +24,7 @@ public class ProfileDiscoveryServiceTests
         _loggerMock = new Mock<ILogger<ProfileDiscoveryService>>();
         _httpMessageHandlerMock = new Mock<HttpMessageHandler>();
         _httpClient = TestHttpClientFactory.CreateClient(_httpMessageHandlerMock.Object);
+        _memoryCache = new MemoryCache(new MemoryCacheOptions());
 
         _httpClientFactoryMock
             .Setup(f => f.CreateClient("OpenApiValidationService"))
@@ -32,6 +35,7 @@ public class ProfileDiscoveryServiceTests
     public void TearDown()
     {
         _httpClient?.Dispose();
+        _memoryCache.Dispose();
     }
 
     [Test]
@@ -85,6 +89,24 @@ public class ProfileDiscoveryServiceTests
 
         Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
         Assert.That(result.OpenApiSchemaContent, Is.Null);
+    }
+
+    [Test]
+    public async Task DiscoverFromBaseUrlAsync_WhenProfileSchemaIsCached_ReturnsHsdsProfileSchemaContent()
+    {
+        SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode, string)>
+        {
+            ["/"] = (HttpStatusCode.OK, "{\"version\":\"HSDS-UK-3.0\"}")
+        });
+
+        const string expectedProfileSchema = "{\"openapi\":\"3.0.0\",\"info\":{\"title\":\"HSDS\"}}";
+        _memoryCache.Set("schema:https://hsds.example.org/3.0/openapi.json", expectedProfileSchema);
+
+        var service = CreateService();
+        var result = await service.DiscoverFromBaseUrlAsync("https://api.example.com");
+
+        Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
+        Assert.That(result.HsdsProfileSchemaContent, Is.EqualTo(expectedProfileSchema));
     }
 
     [Test]
@@ -164,7 +186,8 @@ public class ProfileDiscoveryServiceTests
                     ["HSDS-UK-3.0"] = "https://hsds.example.org/3.0/openapi.json"
                 }
             }),
-            Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = ownSchemaValidation }));
+            Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = ownSchemaValidation }),
+            _memoryCache);
     }
 
     private void SetupHttpResponseMap(IDictionary<string, (HttpStatusCode statusCode, string content)> responses)

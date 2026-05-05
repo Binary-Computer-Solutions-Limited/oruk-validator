@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using OpenReferralApi.Core.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Caching.Memory;
 using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Extensions;
 using System.Text.RegularExpressions;
@@ -21,6 +22,7 @@ public sealed class ProfileDiscoveryResult
 {
     public string? HsdsProfileReason { get; init; }
     public string? OpenApiSchemaContent { get; init; }
+    public string? HsdsProfileSchemaContent { get; init; }
     public string? HsdsProfileVersion { get; set; }
 }
 
@@ -31,6 +33,9 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
     private readonly OpenApiValidationServerOptions _openApiValidationOptions;
 
     private readonly IHttpClientFactory _httpClientFactory;
+
+    private readonly SpecificationOptions _specificationOptions;
+    private readonly IMemoryCache? _memoryCache;
 
     private static readonly string[] HSDS_VERSION_candidateTokens = new[]
     {
@@ -45,12 +50,14 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         ILogger<ProfileDiscoveryService> logger,
         IHttpClientFactory httpClientFactory,
         IOptions<SpecificationOptions> specificationOptions,
-        IOptions<OpenApiValidationServerOptions>? openApiValidationOptions = null)
+        IOptions<OpenApiValidationServerOptions>? openApiValidationOptions = null,
+        IMemoryCache? memoryCache = null)
     {
         _logger = logger;
         _openApiValidationOptions = openApiValidationOptions?.Value ?? new OpenApiValidationServerOptions();
         _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
-        _ = specificationOptions?.Value ?? throw new ArgumentNullException(nameof(specificationOptions));
+        _specificationOptions = specificationOptions?.Value ?? throw new ArgumentNullException(nameof(specificationOptions));
+        _memoryCache = memoryCache;
     }
 
     private static string? TryExtractProfileVersionFromJson(string? json)
@@ -127,6 +134,11 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         DataSourceAuthentication? authentication = null,
         CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            throw new ArgumentException("Base URL must be provided", nameof(baseUrl));
+        }
+
         var normalizedBaseUrl = baseUrl.TrimEnd('/');
         var needsSchema = _openApiValidationOptions.OwnSchemaValidation != OwnSchemaValidationMode.None;
 
@@ -187,15 +199,99 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             }
         }
 
-        // if we get to here with no profile version, use the defaukt.
-        if (String.IsNullOrEmpty(discoveredVersion)) throw new InvalidOperationException($"Failed to discover any profile version information from base URL: {baseUrl}");
+        // if we get to here with no profile version, use the default if one is configured.
+        if (String.IsNullOrEmpty(discoveredVersion))
+        {
+            var hasConfiguredDefaultProfile = TryGetDefaultProfileSchemaFallback(
+                out _,
+                out var defaultProfileVersion);
+
+            if (hasConfiguredDefaultProfile)
+            {
+                discoveredVersion = defaultProfileVersion;
+                discoveryReason = "Using configured default HSDS profile version";
+                
+            }
+        }
+
+        var hsdsProfileSchemaContent = TryGetHsdsProfileSchemaContentFromCache(discoveredVersion);
 
         return new ProfileDiscoveryResult
         {
             HsdsProfileVersion = discoveredVersion,
             OpenApiSchemaContent = discoveredSchema,
+            HsdsProfileSchemaContent = hsdsProfileSchemaContent,
             HsdsProfileReason = discoveryReason ?? "Discovery completed with available information."
         };
+    }
+
+    private string? TryGetHsdsProfileSchemaContentFromCache(string? hsdsProfileVersion)
+    {
+        if (_memoryCache == null)
+        {
+            return null;
+        }
+
+        var profileVersion = hsdsProfileVersion?.Trim();
+        if (string.IsNullOrWhiteSpace(profileVersion))
+        {
+            return null;
+        }
+
+        if (!TryGetSchemaUrlForProfileVersion(profileVersion, out var schemaUrl)
+            || string.IsNullOrWhiteSpace(schemaUrl))
+        {
+            return null;
+        }
+
+        foreach (var cacheKey in GetSchemaCacheKeyCandidates(schemaUrl))
+        {
+            if (_memoryCache.TryGetValue<string>(cacheKey, out var schemaContent)
+                && !string.IsNullOrWhiteSpace(schemaContent))
+            {
+                return schemaContent;
+            }
+        }
+
+        return null;
+    }
+
+    private bool TryGetSchemaUrlForProfileVersion(string hsdsProfileVersion, out string schemaUrl)
+    {
+        schemaUrl = string.Empty;
+
+        if (_specificationOptions.Urls.TryGetValue(hsdsProfileVersion, out var directUrl)
+            && !string.IsNullOrWhiteSpace(directUrl))
+        {
+            schemaUrl = directUrl;
+            return true;
+        }
+
+        foreach (var mapping in _specificationOptions.Urls)
+        {
+            if (string.Equals(mapping.Key, hsdsProfileVersion, StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(mapping.Value))
+            {
+                schemaUrl = mapping.Value;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static IEnumerable<string> GetSchemaCacheKeyCandidates(string schemaUrl)
+    {
+        yield return $"schema:{schemaUrl}";
+
+        if (Uri.TryCreate(schemaUrl, UriKind.Absolute, out var schemaUri))
+        {
+            var normalizedUrl = schemaUri.GetLeftPart(UriPartial.Path).TrimEnd('/');
+            if (!string.Equals(normalizedUrl, schemaUrl, StringComparison.Ordinal))
+            {
+                yield return $"schema:{normalizedUrl}";
+            }
+        }
     }
 
     private static IReadOnlyList<string> BuildDiscoveryProbePaths()
@@ -550,5 +646,31 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             _ => null
         };
     }
+
+    private bool TryGetDefaultProfileSchemaFallback(out string schemaUrl, out string? profileVersion)
+    {
+        schemaUrl = string.Empty;
+        profileVersion = null;
+
+        if (string.IsNullOrWhiteSpace(_specificationOptions.DefaultProfileVersion) || _specificationOptions.Urls.Count == 0)
+        {
+            return false;
+        }
+
+        var configuredDefaultKey = _specificationOptions.DefaultProfileVersion.Trim();
+        if (!_specificationOptions.Urls.TryGetValue(configuredDefaultKey, out var configuredDefaultSchemaUrl)
+            || string.IsNullOrWhiteSpace(configuredDefaultSchemaUrl)
+            || !Uri.IsWellFormedUriString(configuredDefaultSchemaUrl, UriKind.Absolute))
+        {
+            _logger.InvalidDefaultProfileVersion(TextSanitizer.SanitizeStringForLogging(configuredDefaultKey));
+            return false;
+        }
+
+        schemaUrl = configuredDefaultSchemaUrl;
+        profileVersion = configuredDefaultKey;
+
+        return true;
+    }
+
 
 }

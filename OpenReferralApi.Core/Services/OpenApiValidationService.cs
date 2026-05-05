@@ -268,15 +268,10 @@ public class OpenApiValidationService : IOpenApiValidationService
         Action<string> logMemoryCheckpoint,
         CancellationToken cancellationToken)
     {
-        if(string.IsNullOrWhiteSpace(request.BaseUrl))
-        {
-            throw new ArgumentException("BaseUrl must be provided for OpenAPI validation");
-        }
-
         var discovery = await PrepareValidationDiscoveryAsync(request, result, cancellationToken);
         logMemoryCheckpoint("schema-url-discovery");
 
-        var profileState = await ResolveInitialProfileStateAsync(request, schemaResolutionIssues, cancellationToken);
+        var profileState = await ResolveInitialProfileStateAsync(request, discovery, schemaResolutionIssues, cancellationToken);
         logMemoryCheckpoint("hsds-profile-resolution");
 
         var feedResolution = await ResolveFeedSpecAsync(request, result, discovery, profileState, schemaResolutionIssues, cancellationToken);
@@ -356,17 +351,29 @@ public class OpenApiValidationService : IOpenApiValidationService
 
         var usedBaseUrlDiscovery = false;
         string? discoveredOpenApiSchemaContent = null;
+        string? discoveredHsdsProfileSchemaContent = null;
 
         if (string.IsNullOrEmpty(request.OwnSchemaUrl))
         {
             usedBaseUrlDiscovery = true;
             var bootstrap = await _profileDiscoveryService.DiscoverFromBaseUrlAsync(request.BaseUrl!, dataSourceRequestAuth, cancellationToken);
             discoveredOpenApiSchemaContent = bootstrap.OpenApiSchemaContent;
+            discoveredHsdsProfileSchemaContent = bootstrap.HsdsProfileSchemaContent;
 
-        if (hasConfiguredDefaultProfile && string.IsNullOrWhiteSpace(bootstrap.HsdsProfileReason))
+            if (string.IsNullOrWhiteSpace(request.ProfileReason)
+                && !string.IsNullOrWhiteSpace(bootstrap.HsdsProfileVersion))
             {
-                bootstrap.HsdsProfileVersion = defaultProfileVersion;
-                if (!string.IsNullOrWhiteSpace(defaultProfileVersion))
+                request.ProfileReason = $"Standard version [user: {bootstrap.HsdsProfileVersion}] discovered from base URL";
+            }
+        }
+
+        if (string.IsNullOrEmpty(request.OwnSchemaUrl) && string.IsNullOrWhiteSpace(discoveredOpenApiSchemaContent))
+        {
+            if (hasConfiguredDefaultProfile)
+            {
+                request.OwnSchemaUrl = defaultProfileSchemaUrl;
+                if (string.IsNullOrWhiteSpace(request.ProfileReason)
+                    && !string.IsNullOrWhiteSpace(defaultProfileVersion))
                 {
                     request.ProfileReason = $"Standard version [user: {defaultProfileVersion}] configured default profile fallback";
                 }
@@ -382,15 +389,11 @@ public class OpenApiValidationService : IOpenApiValidationService
             }
         }
 
-        if (string.IsNullOrEmpty(request.OwnSchemaUrl) && string.IsNullOrWhiteSpace(discoveredOpenApiSchemaContent))
-        {
-            throw new ArgumentException("OpenAPI schema URL must be provided or BaseUrl must allow discovery");
-        }
-
         return new DiscoveryPreparation
         {
             UsedBaseUrlDiscovery = usedBaseUrlDiscovery,
             DiscoveredOpenApiSchemaContent = discoveredOpenApiSchemaContent,
+            DiscoveredHsdsProfileSchemaContent = discoveredHsdsProfileSchemaContent,
             HasConfiguredDefaultProfile = hasConfiguredDefaultProfile,
             DefaultProfileSchemaUrl = defaultProfileSchemaUrl,
             DefaultProfileVersion = defaultProfileVersion,
@@ -401,6 +404,7 @@ public class OpenApiValidationService : IOpenApiValidationService
 
     private async Task<ProfileResolutionState> ResolveInitialProfileStateAsync(
         OpenApiValidationRequest request,
+        DiscoveryPreparation discovery,
         List<SchemaResolutionIssue> schemaResolutionIssues,
         CancellationToken cancellationToken)
     {
@@ -412,12 +416,13 @@ public class OpenApiValidationService : IOpenApiValidationService
             defaultProfileVersion: null);
 
         string? knownHsdsSchemaUrl = decision.KnownHsdsSchemaUrl;
-        JObject? resolvedHsdsProfileSpec = null;
+        JObject? resolvedHsdsProfileSpec = TryParseJObject(discovery.DiscoveredHsdsProfileSchemaContent);
 
-        if (!string.IsNullOrWhiteSpace(knownHsdsSchemaUrl))
+        if (resolvedHsdsProfileSpec == null && !string.IsNullOrWhiteSpace(knownHsdsSchemaUrl))
         {
+            var knownHsdsSchemaUrlValue = knownHsdsSchemaUrl!;
             resolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(
-                knownHsdsSchemaUrl,
+                knownHsdsSchemaUrlValue,
                 null,
                 cancellationToken,
                 cacheScope: "profile",
@@ -881,6 +886,7 @@ public class OpenApiValidationService : IOpenApiValidationService
     {
         public bool UsedBaseUrlDiscovery { get; init; }
         public string? DiscoveredOpenApiSchemaContent { get; init; }
+        public string? DiscoveredHsdsProfileSchemaContent { get; init; }
         public bool HasConfiguredDefaultProfile { get; init; }
         public string? DefaultProfileSchemaUrl { get; init; }
         public string? DefaultProfileVersion { get; init; }
@@ -968,6 +974,48 @@ public class OpenApiValidationService : IOpenApiValidationService
     private static bool ShouldIncludeProfileComplianceFinding(ValidationError error)
     {
         return !error.ErrorCode.StartsWith("HSDS_ADDITIONAL_", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool TryGetDefaultProfileSchemaFallback(out string schemaUrl, out string? profileVersion)
+    {
+        schemaUrl = string.Empty;
+        profileVersion = null;
+
+        if (string.IsNullOrWhiteSpace(_specificationOptions.DefaultProfileVersion) || _specificationOptions.Urls.Count == 0)
+        {
+            return false;
+        }
+
+        var configuredDefaultKey = _specificationOptions.DefaultProfileVersion.Trim();
+        if (!_specificationOptions.Urls.TryGetValue(configuredDefaultKey, out var configuredDefaultSchemaUrl)
+            || string.IsNullOrWhiteSpace(configuredDefaultSchemaUrl)
+            || !Uri.IsWellFormedUriString(configuredDefaultSchemaUrl, UriKind.Absolute))
+        {
+            _logger.InvalidDefaultProfileVersion(TextSanitizer.SanitizeStringForLogging(configuredDefaultKey));
+            return false;
+        }
+
+        schemaUrl = configuredDefaultSchemaUrl;
+        profileVersion = configuredDefaultKey;
+
+        return true;
+    }
+
+    private static JObject? TryParseJObject(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JObject.Parse(json);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static string? RemoveDuplicatedBasePathFromOpenApiPaths(JObject openApiSpec, string? baseUrl)
@@ -1190,31 +1238,6 @@ public class OpenApiValidationService : IOpenApiValidationService
         }
     }
 
-    private bool TryGetDefaultProfileSchemaFallback(out string schemaUrl, out string? profileVersion)
-    {
-        schemaUrl = string.Empty;
-        profileVersion = null;
-
-        if (string.IsNullOrWhiteSpace(_specificationOptions.DefaultProfileVersion) || _specificationOptions.Urls.Count == 0)
-        {
-            return false;
-        }
-
-        var configuredDefaultKey = _specificationOptions.DefaultProfileVersion.Trim();
-        if (!_specificationOptions.Urls.TryGetValue(configuredDefaultKey, out var configuredDefaultSchemaUrl)
-            || string.IsNullOrWhiteSpace(configuredDefaultSchemaUrl)
-            || !Uri.IsWellFormedUriString(configuredDefaultSchemaUrl, UriKind.Absolute))
-        {
-            _logger.InvalidDefaultProfileVersion(TextSanitizer.SanitizeStringForLogging(configuredDefaultKey));
-            return false;
-        }
-
-        schemaUrl = configuredDefaultSchemaUrl;
-        profileVersion = configuredDefaultKey;
-
-        return true;
-    }
-
     private async Task<JObject> GetCachedResolvedOpenApiSpecAsync(
         string specUrl,
         DataSourceAuthentication? auth,
@@ -1246,18 +1269,21 @@ public class OpenApiValidationService : IOpenApiValidationService
         var cache = ResolveCacheByScope(cacheScope);
         var cacheKey = $"resolved-openapi:{specUrl}";
 
-        if (cache.TryGetValue(cacheKey, out var cachedEntry)
-            && cachedEntry.ExpiresAtUtc > DateTime.UtcNow
-            && !string.IsNullOrWhiteSpace(cachedEntry.ResolvedSpecJson))
+        if (_cacheOptions.Enabled)
         {
-            ResolvedOpenApiCacheHitsCounter.Add(1, new KeyValuePair<string, object?>("scope", cacheScope));
-            _logger.ResolvedOpenApiCacheHit(cacheScope, sanitizedSpecUrl);
-            LogLookupCheckpoint("cache-hit");
-            return cachedEntry.ResolvedSpecDocument;
-        }
+            if (cache.TryGetValue(cacheKey, out var cachedEntry)
+                && cachedEntry.ExpiresAtUtc > DateTime.UtcNow
+                && !string.IsNullOrWhiteSpace(cachedEntry.ResolvedSpecJson))
+            {
+                ResolvedOpenApiCacheHitsCounter.Add(1, new KeyValuePair<string, object?>("scope", cacheScope));
+                _logger.ResolvedOpenApiCacheHit(cacheScope, sanitizedSpecUrl);
+                LogLookupCheckpoint("cache-hit");
+                return cachedEntry.ResolvedSpecDocument;
+            }
 
-        ResolvedOpenApiCacheMissesCounter.Add(1, new KeyValuePair<string, object?>("scope", cacheScope));
-        _logger.ResolvedOpenApiCacheMiss(cacheScope, sanitizedSpecUrl);
+            ResolvedOpenApiCacheMissesCounter.Add(1, new KeyValuePair<string, object?>("scope", cacheScope));
+            _logger.ResolvedOpenApiCacheMiss(cacheScope, sanitizedSpecUrl);
+        }
 
         if (string.Equals(cacheScope, "profile", StringComparison.Ordinal))
         {
@@ -1304,7 +1330,13 @@ public class OpenApiValidationService : IOpenApiValidationService
             cancellationToken,
             resolveReferences: false);
 
-        var resolvedSpecContent = await _schemaResolverService.ResolveAsync(unresolvedSpec.ToString(), specUrl, auth);
+        var unresolvedSpecContent = unresolvedSpec.ToString();
+        var resolvedSpecContent = await _schemaResolverService.ResolveAsync(unresolvedSpecContent, specUrl, auth);
+        if (string.IsNullOrWhiteSpace(resolvedSpecContent))
+        {
+            // Defensive fallback for misconfigured/mocked resolvers that return empty output.
+            resolvedSpecContent = unresolvedSpecContent;
+        }
         CollectSchemaResolutionIssues(collectedIssues);
 
         if (_cacheOptions.Enabled)

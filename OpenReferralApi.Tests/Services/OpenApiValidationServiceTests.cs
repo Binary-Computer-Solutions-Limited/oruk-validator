@@ -62,8 +62,8 @@ public class OpenApiValidationServiceTests
 
         // Mock ResolveAsync method for OpenAPI document resolution
         _schemaResolverServiceMock
-            .Setup(service => service.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication>()))
-            .ReturnsAsync((string schema, string baseUri, DataSourceAuthentication auth) => schema);
+            .Setup(service => service.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>()))
+            .ReturnsAsync((string schema, string baseUri, DataSourceAuthentication? auth) => schema);
 
         _schemaResolverServiceMock
             .Setup(service => service.GetResolutionIssues())
@@ -127,6 +127,70 @@ public class OpenApiValidationServiceTests
 
         // Assert
         Assert.That(result, Is.Not.Null);
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_UsesDiscoveredCachedHsdsSchemaContent_WithoutResolvingProfileUrl()
+    {
+        // Arrange
+        var strictSchemaResolver = new Mock<ISchemaResolverService>(MockBehavior.Strict);
+        strictSchemaResolver
+            .Setup(service => service.GetResolutionIssues())
+            .Returns(Array.Empty<SchemaResolutionIssue>());
+
+        var discoveryMock = new Mock<IProfileDiscoveryService>();
+        discoveryMock
+            .Setup(s => s.DiscoverFromBaseUrlAsync(
+                It.IsAny<string>(),
+                It.IsAny<DataSourceAuthentication?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProfileDiscoveryResult
+            {
+                HsdsProfileVersion = "HSDS-UK-3.0",
+                HsdsProfileReason = "Standard version [user: HSDS-UK-3.0] discovered from base URL",
+                OpenApiSchemaContent = CreateOpenApi30Spec(),
+                HsdsProfileSchemaContent = CreateOpenApi30Spec()
+            });
+
+        var service = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(_httpClient),
+            _jsonValidatorServiceMock.Object,
+            strictSchemaResolver.Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
+            discoveryMock.Object,
+            specificationOptions: Options.Create(new SpecificationOptions
+            {
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json"
+                }
+            }),
+            openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
+            {
+                ValidateSpecification = false,
+                TestEndpoints = false,
+                OwnSchemaValidation = OwnSchemaValidationMode.StrictOwnSchemaValidation
+            }));
+
+        var request = new OpenApiValidationRequest
+        {
+            BaseUrl = "https://api.example.com",
+            Options = new OpenApiValidationOptions()
+        };
+
+        // Act
+        var result = await service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.True);
+        strictSchemaResolver.Verify(
+            service => service.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication>()),
+            Times.Never,
+            "HSDS profile schema should be consumed from discovery result content rather than resolved again by URL.");
     }
 
     [Test]
@@ -1324,7 +1388,7 @@ _openApiSpecificationService,
         };
 
         _schemaResolverServiceMock
-            .Setup(service => service.ResolveAsync(It.Is<string>(s => s.Contains("\"$ref\"", StringComparison.Ordinal) && s.Contains(hsdsSpecUrl, StringComparison.OrdinalIgnoreCase)), hsdsSpecUrl, It.IsAny<DataSourceAuthentication>()))
+            .Setup(service => service.ResolveAsync(It.Is<string>(s => s.Contains("\"$ref\"", StringComparison.Ordinal) && s.Contains(hsdsSpecUrl, StringComparison.OrdinalIgnoreCase)), hsdsSpecUrl, It.IsAny<DataSourceAuthentication?>()))
             .ReturnsAsync(CreateHsdsProfileSpec());
 
         var requestCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
