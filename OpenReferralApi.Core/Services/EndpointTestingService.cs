@@ -78,36 +78,37 @@ public class EndpointTestingService : IEndpointTestingService
         var parsedResponseJsonByResult = new ConcurrentDictionary<HttpTestResult, JsonDocument>();
         var extractedIds = new ConcurrentDictionary<string, List<string>>();
         var stopwatch = Stopwatch.StartNew();
-        var lastManagedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
-        var lastWorkingSetBytes = Environment.WorkingSet;
+        var memoryCheckpointTracker = new MemoryCheckpointTracker(stopwatch);
 
         void LogMemoryCheckpoint(string stage, string groupName)
         {
-            var managedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
-            var managedHeapDeltaBytes = managedHeapBytes - lastManagedHeapBytes;
-            var processWorkingSetBytes = Environment.WorkingSet;
-            var processWorkingSetDeltaBytes = processWorkingSetBytes - lastWorkingSetBytes;
+            if (!(_openApiValidationOptions?.EnableMemoryCheckpointLogging ?? true))
+            {
+                return;
+            }
+
+            var snapshot = memoryCheckpointTracker.Capture();
 
             _logger.EndpointTestingMemoryCheckpoint(
                 stage,
                 TextSanitizer.SanitizeForLogging(groupName),
                 Activity.Current?.TraceId.ToString() ?? Activity.Current?.Id ?? "n/a",
                 TextSanitizer.SanitizeUrlForLogging(baseUrl),
-                managedHeapBytes,
-                managedHeapDeltaBytes,
-                processWorkingSetBytes,
-                processWorkingSetDeltaBytes,
-                stopwatch.Elapsed.TotalMilliseconds,
+                snapshot.ManagedHeapBytes,
+                snapshot.ManagedHeapDeltaBytes,
+                snapshot.ProcessWorkingSetBytes,
+                snapshot.ProcessWorkingSetDeltaBytes,
+                snapshot.ElapsedMilliseconds,
                 results.Count);
 
             var tags = new TagList
             {
                 { "stage", stage }
             };
-            EndpointTestingManagedHeapBytesHistogram.Record(managedHeapBytes, tags);
-            EndpointTestingManagedHeapDeltaBytesHistogram.Record(managedHeapDeltaBytes, tags);
-            EndpointTestingWorkingSetBytesHistogram.Record(processWorkingSetBytes, tags);
-            EndpointTestingWorkingSetDeltaBytesHistogram.Record(processWorkingSetDeltaBytes, tags);
+            EndpointTestingManagedHeapBytesHistogram.Record(snapshot.ManagedHeapBytes, tags);
+            EndpointTestingManagedHeapDeltaBytesHistogram.Record(snapshot.ManagedHeapDeltaBytes, tags);
+            EndpointTestingWorkingSetBytesHistogram.Record(snapshot.ProcessWorkingSetBytes, tags);
+            EndpointTestingWorkingSetDeltaBytesHistogram.Record(snapshot.ProcessWorkingSetDeltaBytes, tags);
 
             var compiledSchemaCacheState = GetCompiledSchemaCacheState(compiledValidationSchemaCache);
             _logger.CompiledEndpointSchemaCacheState(
@@ -129,8 +130,6 @@ public class EndpointTestingService : IEndpointTestingService
                 retentionSnapshot.ExtractedIdValues,
                 retentionSnapshot.ValidationSchemaCacheEntries);
 
-            lastManagedHeapBytes = managedHeapBytes;
-            lastWorkingSetBytes = processWorkingSetBytes;
         }
 
         try

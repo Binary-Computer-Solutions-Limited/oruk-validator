@@ -37,9 +37,10 @@ public class OpenReferralUKValidationResponseMapper : IOpenReferralUKValidationR
             }
         }
 
-        // Determine overall validity based solely on endpoint test status
-        // Feed is invalid only if any endpoint has FailedValidation status
-        bool isValid = !(openApiResult?.EndpointTests?.Any(e => e.Status == EndpointTestStatus.FailedValidation) ?? false);
+        // Determine overall validity from the fully computed result on the validation result object,
+        // which accounts for endpoint failures (FailedValidation and Error), specification validation errors,
+        // and optional-endpoint treatment rules.
+        bool isValid = openApiResult?.IsValid ?? false;
 
         var specificationValidation = openApiResult?.SpecificationValidation == null
             ? null

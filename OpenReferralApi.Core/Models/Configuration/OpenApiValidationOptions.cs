@@ -91,6 +91,13 @@ public class OpenApiValidationServerOptions
     public bool TestEndpoints { get; set; } = true;
 
     /// <summary>
+    /// Whether memory checkpoint logging/metrics are emitted during validation and endpoint testing.
+    /// Disable to reduce memory instrumentation overhead and log volume.
+    /// </summary>
+    [DefaultValue(true)]
+    public bool EnableMemoryCheckpointLogging { get; set; } = true;
+
+    /// <summary>
     /// Whether to test optional endpoints that are marked as optional in the OpenAPI specification.
     /// When true, tests optional endpoints and accepts 404/501 responses as valid for unimplemented features.
     /// When false, skips endpoints tagged with "Optional".

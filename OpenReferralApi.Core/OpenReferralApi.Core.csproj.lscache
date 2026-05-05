@@ -58,6 +58,7 @@ Extensions/JsonElementExtensions.cs
 GlobalUsings.cs
 Helpers/
  Constants.cs
+ MemoryCheckpointTracker.cs
  TextSanitizer.cs
 Logging/
  AuthenticationValidationLog.cs
