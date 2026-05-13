@@ -24,7 +24,6 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
     private readonly IProfileDiscoveryService _profileDiscoveryService;
     private readonly IOpenApiSpecificationService _openApiSpecificationService;
     private readonly IHsdsComplianceService _hsdsComplianceService;
-    private readonly IProfileResolverService _profileResolverService;
     private readonly IEndpointTestingService _endpointTestingService;
     private readonly IAuthenticationValidationService _authenticationValidationService;
     private readonly OpenApiSpecFetcher _specFetcher;
@@ -42,7 +41,6 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         IEndpointTestingService endpointTestingService,
         IAuthenticationValidationService authenticationValidationService,
         IProfileDiscoveryService profileDiscoveryService,
-        IProfileResolverService? profileResolverService = null,
         IOptions<CacheOptions>? cacheOptions = null,
         IOptions<SpecificationOptions>? specificationOptions = null,
         IOptions<OpenApiValidationServerOptions>? openApiValidationServerOptions = null)
@@ -51,7 +49,6 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         _schemaResolverService = schemaResolverService;
         _openApiSpecificationService = openApiSpecificationService;
         _hsdsComplianceService = hsdsComplianceService ?? new HsdsComplianceService(jsonValidatorService, specificationOptions, openApiValidationServerOptions);
-        _profileResolverService = profileResolverService ?? new ProfileResolverService(_hsdsComplianceService);
         _endpointTestingService = endpointTestingService ?? new EndpointTestingService(NullLogger<EndpointTestingService>.Instance, httpClientFactory, jsonValidatorService, _hsdsComplianceService, openApiValidationServerOptions);
         _authenticationValidationService = authenticationValidationService ?? new AuthenticationValidationService(NullLogger<AuthenticationValidationService>.Instance, openApiValidationServerOptions ?? Options.Create(new OpenApiValidationServerOptions()));
         _openApiValidationOptions = openApiValidationServerOptions?.Value ?? new OpenApiValidationServerOptions();
@@ -266,25 +263,9 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         bool usedBaseUrlDiscovery = true;
         var bootstrap = await _profileDiscoveryService.DiscoverFromBaseUrlAsync(request.OwnSchemaUrl, request.BaseUrl!, dataSourceRequestAuth, cancellationToken);
 
-        var decision = _profileResolverService.Resolve(
-            request.ProfileReason,
-            request.OwnSchemaUrl,
-            hasConfiguredDefaultProfile,
-            defaultProfileSchemaUrl,
-            defaultProfileVersion);
-
-        string? knownHsdsSchemaUrl = decision.KnownHsdsSchemaUrl;
+        // DiscoverFromBaseUrlAsync already returns fully resolved schemas; no need to resolve further
+        string? knownHsdsSchemaUrl = null;
         JObject? resolvedHsdsProfileSpec = TryParseJObject(bootstrap.HsdsProfileSchemaContent);
-
-        if (resolvedHsdsProfileSpec == null && !string.IsNullOrWhiteSpace(knownHsdsSchemaUrl))
-        {
-            resolvedHsdsProfileSpec = await GetCachedResolvedOpenApiSpecAsync(
-                knownHsdsSchemaUrl,
-                null,
-                cancellationToken,
-                cacheScope: "profile",
-                collectedIssues: schemaResolutionIssues);
-        }
 
         var rawOpenApiContent = bootstrap.OpenApiSchemaContent;
         var openApiSpec = TryParseJObject(rawOpenApiContent);
@@ -298,7 +279,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             throw new ArgumentException("Discovered OpenAPI schema content is not valid JSON and no schema URL is available for resolver fallback");
         }
 
-        if (openApiSpec == null)
+        if (openApiSpec == null && !string.IsNullOrWhiteSpace(request.OwnSchemaUrl))
         {
             try
             {
@@ -373,7 +354,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             UsedBaseUrlDiscovery = usedBaseUrlDiscovery,
             ProfileState = new ProfileResolutionState
             {
-                ClaimedProfileVersion = decision.ClaimedProfileVersion,
+                ClaimedProfileVersion = bootstrap.HsdsProfileVersion,
                 KnownHsdsSchemaUrl = knownHsdsSchemaUrl,
                 ResolvedHsdsProfileSpec = resolvedHsdsProfileSpec
             },
@@ -457,23 +438,9 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         List<SchemaResolutionIssue> schemaResolutionIssues,
         CancellationToken cancellationToken)
     {
-        var decision = _profileResolverService.Resolve(
-            request.ProfileReason,
-            request.OwnSchemaUrl,
-            discovery.HasConfiguredDefaultProfile,
-            discovery.DefaultProfileSchemaUrl,
-            discovery.DefaultProfileVersion);
-
-        // Only update ProfileReason if no explicit version has already been identified by a prior stage.
-        if (!HasExplicitProfileVersionContext(request.ProfileReason, request.OwnSchemaUrl)
-            && !string.IsNullOrWhiteSpace(decision.EffectiveProfileReason))
-        {
-            request.ProfileReason = decision.EffectiveProfileReason;
-        }
-
-        var knownHsdsSchemaUrl = !string.IsNullOrWhiteSpace(decision.KnownHsdsSchemaUrl)
-            ? decision.KnownHsdsSchemaUrl
-            : profileState.KnownHsdsSchemaUrl;
+        // Resolve already performed in PrepareValidationDiscoveryAsync; 
+        // profileState contains the fully resolved profile spec from discovery.
+        var knownHsdsSchemaUrl = profileState.KnownHsdsSchemaUrl;
 
         var resolvedHsdsProfileSpec = profileState.ResolvedHsdsProfileSpec;
         if (resolvedHsdsProfileSpec == null && !string.IsNullOrWhiteSpace(knownHsdsSchemaUrl))
@@ -488,7 +455,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
 
         return new ProfileResolutionState
         {
-            ClaimedProfileVersion = decision.ClaimedProfileVersion ?? profileState.ClaimedProfileVersion,
+            ClaimedProfileVersion = profileState.ClaimedProfileVersion,
             KnownHsdsSchemaUrl = knownHsdsSchemaUrl,
             ResolvedHsdsProfileSpec = resolvedHsdsProfileSpec
         };
