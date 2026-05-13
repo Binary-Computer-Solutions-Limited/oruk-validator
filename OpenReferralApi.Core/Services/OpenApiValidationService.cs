@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Text.RegularExpressions;
@@ -17,46 +16,8 @@ public interface IOpenApiValidationService
     Task<OpenApiValidationResult> ValidateOpenApiSpecificationAsync(OpenApiValidationRequest request, CancellationToken cancellationToken = default);
 }
 
-public class OpenApiValidationService : IOpenApiValidationService
+public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiValidationService
 {
-    private const string ValidationMetricsMeterName = "OpenReferralApi.Core.OpenApiValidationService";
-    private static readonly ConcurrentDictionary<string, CachedResolvedSpec> FeedResolvedSpecCache = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly ConcurrentDictionary<string, CachedResolvedSpec> ProfileResolvedSpecCache = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly Meter CacheMetricsMeter = new(ValidationMetricsMeterName, "1.0.0");
-    private static readonly Counter<long> ResolvedOpenApiCacheHitsCounter = CacheMetricsMeter.CreateCounter<long>(
-        "openreferral.openapi.cache.hits",
-        description: "Number of resolved OpenAPI cache hits by scope (feed/profile)");
-    private static readonly Counter<long> ResolvedOpenApiCacheMissesCounter = CacheMetricsMeter.CreateCounter<long>(
-        "openreferral.openapi.cache.misses",
-        description: "Number of resolved OpenAPI cache misses by scope (feed/profile)");
-    private static readonly ObservableGauge<int> FeedResolvedOpenApiCacheEntriesGauge = CacheMetricsMeter.CreateObservableGauge(
-        "openreferral.openapi.cache.entries.feed",
-        () => FeedResolvedSpecCache.Count,
-        description: "Number of cached resolved feed OpenAPI specifications");
-    private static readonly ObservableGauge<int> ProfileResolvedOpenApiCacheEntriesGauge = CacheMetricsMeter.CreateObservableGauge(
-        "openreferral.openapi.cache.entries.profile",
-        () => ProfileResolvedSpecCache.Count,
-        description: "Number of cached resolved profile OpenAPI specifications");
-    private static readonly ObservableGauge<int> ResolvedOpenApiExpiredEntriesGauge = CacheMetricsMeter.CreateObservableGauge(
-        "openreferral.openapi.cache.entries.expired",
-        CountExpiredCacheEntries,
-        description: "Number of expired cached resolved OpenAPI specifications (feed + profile)");
-    private static readonly Histogram<long> ValidationManagedHeapBytesHistogram = CacheMetricsMeter.CreateHistogram<long>(
-        "openreferral.openapi.validation.memory.managed_heap_bytes",
-        unit: "By",
-        description: "Managed heap size observed at validation memory checkpoints");
-    private static readonly Histogram<long> ValidationManagedHeapDeltaBytesHistogram = CacheMetricsMeter.CreateHistogram<long>(
-        "openreferral.openapi.validation.memory.managed_heap_delta_bytes",
-        unit: "By",
-        description: "Managed heap delta between validation memory checkpoints");
-    private static readonly Histogram<long> ValidationWorkingSetBytesHistogram = CacheMetricsMeter.CreateHistogram<long>(
-        "openreferral.openapi.validation.memory.working_set_bytes",
-        unit: "By",
-        description: "Process working set observed at validation memory checkpoints");
-    private static readonly Histogram<long> ValidationWorkingSetDeltaBytesHistogram = CacheMetricsMeter.CreateHistogram<long>(
-        "openreferral.openapi.validation.memory.working_set_delta_bytes",
-        unit: "By",
-        description: "Process working set delta between validation memory checkpoints");
 
     private readonly ILogger<OpenApiValidationService> _logger;
     private readonly ISchemaResolverService _schemaResolverService;
@@ -1329,67 +1290,6 @@ public class OpenApiValidationService : IOpenApiValidationService
         return _cacheOptions.ExpirationMinutes > 0
             ? TimeSpan.FromMinutes(_cacheOptions.ExpirationMinutes)
             : TimeSpan.FromHours(2);
-    }
-
-    private static ConcurrentDictionary<string, CachedResolvedSpec> ResolveCacheByScope(string cacheScope)
-    {
-        return cacheScope switch
-        {
-            "feed" => FeedResolvedSpecCache,
-            "profile" => ProfileResolvedSpecCache,
-            _ => throw new ArgumentOutOfRangeException(nameof(cacheScope), cacheScope, "Cache scope must be either 'feed' or 'profile'.")
-        };
-    }
-
-    private sealed record CachedResolvedSpec(string ResolvedSpecJson, JObject ResolvedSpecDocument, DateTime ExpiresAtUtc);
-
-    private static bool IsLikelyOpenApiDocument(JObject candidate)
-    {
-        return candidate.ContainsKey("openapi")
-            || candidate.ContainsKey("swagger")
-            || candidate.ContainsKey("paths");
-    }
-
-    private static int CountExpiredCacheEntries()
-    {
-        var now = DateTime.UtcNow;
-        var expiredFeedEntries = FeedResolvedSpecCache.Values.Count(entry => entry.ExpiresAtUtc <= now);
-        var expiredProfileEntries = ProfileResolvedSpecCache.Values.Count(entry => entry.ExpiresAtUtc <= now);
-        return expiredFeedEntries + expiredProfileEntries;
-    }
-
-    private static (int FeedEntries, int ProfileEntries, int ExpiredEntries, long FeedJsonChars, long ProfileJsonChars) GetResolvedOpenApiCacheState()
-    {
-        var now = DateTime.UtcNow;
-        var expiredEntries = FeedResolvedSpecCache.Values.Count(entry => entry.ExpiresAtUtc <= now)
-            + ProfileResolvedSpecCache.Values.Count(entry => entry.ExpiresAtUtc <= now);
-
-        return (
-            FeedResolvedSpecCache.Count,
-            ProfileResolvedSpecCache.Count,
-            expiredEntries,
-            FeedResolvedSpecCache.Values.Sum(entry => (long)entry.ResolvedSpecJson.Length),
-            ProfileResolvedSpecCache.Values.Sum(entry => (long)entry.ResolvedSpecJson.Length));
-    }
-
-    private static void PurgeExpiredCacheEntries()
-    {
-        var now = DateTime.UtcNow;
-        foreach (var key in FeedResolvedSpecCache.Keys.ToList())
-        {
-            if (FeedResolvedSpecCache.TryGetValue(key, out var entry) && entry.ExpiresAtUtc <= now)
-            {
-                _ = FeedResolvedSpecCache.TryRemove(key, out _);
-            }
-        }
-
-        foreach (var key in ProfileResolvedSpecCache.Keys.ToList())
-        {
-            if (ProfileResolvedSpecCache.TryGetValue(key, out var entry) && entry.ExpiresAtUtc <= now)
-            {
-                _ = ProfileResolvedSpecCache.TryRemove(key, out _);
-            }
-        }
     }
 
     private bool HasExplicitProfileVersionContext(string? profileReason, string? schemaUrl)

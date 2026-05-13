@@ -60,75 +60,6 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         _memoryCache = memoryCache;
     }
 
-    private static string? TryExtractProfileVersionFromJson(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            var root = document.RootElement;
-
-            // Only extract from legitimate HSDS version fields.
-            // Deliberately do NOT fall back to the "openapi" field — that field specifies the
-            // OpenAPI specification version, not the HSDS schema version. If a version can only
-            // be inferred from "openapi", leave it unset here so that OpenApiValidationService
-            // can detect and report the misplacement with a proper warning.
-            foreach (var tokenPath in HSDS_VERSION_candidateTokens)
-            {
-                var tokenValue = root.TryGetPathString(tokenPath)?.Trim();
-                if (!string.IsNullOrWhiteSpace(tokenValue))
-                {
-                    return tokenValue;
-                }
-            }
-
-            return null;
-        }
-        catch
-        {
-            return null;
-        }
-
-    }
-
-    private static string? TryExtractProfileVersionFromOpenApiSpec(string specContent)
-    {
-        if (string.IsNullOrWhiteSpace(specContent))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(specContent);
-            var root = document.RootElement;
-
-            // Only extract from legitimate HSDS version fields.
-            // Deliberately do NOT fall back to the "openapi" field — that field specifies the
-            // OpenAPI specification version, not the HSDS schema version. If a version can only
-            // be inferred from "openapi", leave it unset here so that OpenApiValidationService
-            // can detect and report the misplacement with a proper warning.
-            foreach (var tokenPath in HSDS_VERSION_candidateTokens)
-            {
-                var tokenValue = root.TryGetPathString(tokenPath)?.Trim();
-                if (!string.IsNullOrWhiteSpace(tokenValue))
-                {
-                    return tokenValue;
-                }
-            }
-
-            return null;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
     public async Task<ProfileDiscoveryResult> DiscoverFromBaseUrlAsync(
         string baseUrl,
         DataSourceAuthentication? authentication = null,
@@ -210,11 +141,16 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             {
                 discoveredVersion = defaultProfileVersion;
                 discoveryReason = "Using configured default HSDS profile version";
-                
+
             }
         }
 
         var hsdsProfileSchemaContent = TryGetHsdsProfileSchemaContentFromCache(discoveredVersion);
+
+        if (string.IsNullOrWhiteSpace(hsdsProfileSchemaContent))
+        {
+            throw new ArgumentException("Failed to discover OpenAPI schema URL or schema content from base URL");
+        }
 
         return new ProfileDiscoveryResult
         {

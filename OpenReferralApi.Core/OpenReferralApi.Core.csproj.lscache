@@ -136,6 +136,7 @@ Services/
  OpenApiSpecFetcher.cs
  OpenApiSpecificationService.cs
  OpenApiValidationService.cs
+ OpenApiValidationServiceBase.cs
  OpenReferralUKValidationResponseMapper.cs
  OptionalEndpointExtensions.cs
  PathParsingService.cs
