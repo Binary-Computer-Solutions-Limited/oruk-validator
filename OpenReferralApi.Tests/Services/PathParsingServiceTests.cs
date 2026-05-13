@@ -343,7 +343,7 @@ public class PathParsingServiceTests
         var relativeUri = "schemas/schema.json";
 
         // Act & Assert
-        TestDelegate act = () => _service.ResolveRelativeUri(null!, relativeUri);
+        Action act = () => _service.ResolveRelativeUri(null!, relativeUri);
         Assert.Throws<ArgumentException>(act);
     }
 
@@ -354,7 +354,7 @@ public class PathParsingServiceTests
         var baseUri = new Uri("https://example.com/api/");
 
         // Act & Assert
-        TestDelegate act = () => _service.ResolveRelativeUri(baseUri, "");
+        Action act = () => _service.ResolveRelativeUri(baseUri, "");
         var ex = Assert.Throws<ArgumentException>(act);
         Assert.That(ex!.Message, Does.Contain("cannot be null or empty"));
     }

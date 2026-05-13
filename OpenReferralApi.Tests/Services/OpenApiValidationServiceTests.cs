@@ -31,6 +31,7 @@ public class OpenApiValidationServiceTests
         _openApiBootstrapServiceMock
             .Setup(s => s.DiscoverFromBaseUrlAsync(
                 It.IsAny<string>(),
+                It.IsAny<string>(),
                 It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProfileDiscoveryResult
@@ -141,6 +142,7 @@ public class OpenApiValidationServiceTests
         var discoveryMock = new Mock<IProfileDiscoveryService>();
         discoveryMock
             .Setup(s => s.DiscoverFromBaseUrlAsync(
+                It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
@@ -1085,7 +1087,7 @@ _openApiSpecificationService,
 
         var bootstrapServiceMock = new Mock<IProfileDiscoveryService>();
         bootstrapServiceMock
-            .Setup(s => s.DiscoverFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.DiscoverFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProfileDiscoveryResult
             {
                 OpenApiSchemaContent = discoveredSchemaContent
@@ -1193,7 +1195,7 @@ _openApiSpecificationService,
             s => s.TryGetValidatedRequestAuthentication("schema", It.IsAny<DataSourceAuthentication?>()),
             Times.Once);
         bootstrapServiceMock.Verify(
-            s => s.DiscoverFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()),
+            s => s.DiscoverFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 

@@ -43,7 +43,7 @@ public class ProfileDiscoveryServiceTests
     {
         var service = CreateService();
 
-        Assert.ThrowsAsync<ArgumentException>(() => service.DiscoverFromBaseUrlAsync(string.Empty));
+        Assert.ThrowsAsync<ArgumentException>(() => service.DiscoverFromBaseUrlAsync(string.Empty, string.Empty));
     }
 
     [Test]
@@ -55,7 +55,7 @@ public class ProfileDiscoveryServiceTests
         });
 
         var service = CreateService();
-        var result = await service.DiscoverFromBaseUrlAsync("https://api.example.com");
+        var result = await service.DiscoverFromBaseUrlAsync(null, "https://api.example.com");
 
         Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
         Assert.That(result.OpenApiSchemaContent, Is.Null);
@@ -70,7 +70,7 @@ public class ProfileDiscoveryServiceTests
         });
 
         var service = CreateService();
-        var result = await service.DiscoverFromBaseUrlAsync("https://api.example.com");
+        var result = await service.DiscoverFromBaseUrlAsync(null, "https://api.example.com");
 
         Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
         Assert.That(result.OpenApiSchemaContent, Does.Contain("openapi"));
@@ -85,7 +85,7 @@ public class ProfileDiscoveryServiceTests
         });
 
         var service = CreateService(OwnSchemaValidationMode.None);
-        var result = await service.DiscoverFromBaseUrlAsync("https://api.example.com");
+        var result = await service.DiscoverFromBaseUrlAsync(null, "https://api.example.com");
 
         Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
         Assert.That(result.OpenApiSchemaContent, Is.Null);
@@ -103,7 +103,7 @@ public class ProfileDiscoveryServiceTests
         _memoryCache.Set("schema:https://hsds.example.org/3.0/openapi.json", expectedProfileSchema);
 
         var service = CreateService();
-        var result = await service.DiscoverFromBaseUrlAsync("https://api.example.com");
+        var result = await service.DiscoverFromBaseUrlAsync(null, "https://api.example.com");
 
         Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
         Assert.That(result.HsdsProfileSchemaContent, Is.EqualTo(expectedProfileSchema));
@@ -113,7 +113,7 @@ public class ProfileDiscoveryServiceTests
     public async Task DiscoverFromBaseUrlAsync_WhenNoSpecFound_ReturnsResultWithNoDiscoveredVersion()
     {
         var service = CreateService();
-        var result = await service.DiscoverFromBaseUrlAsync("https://api.example.com");
+        var result = await service.DiscoverFromBaseUrlAsync(null, "https://api.example.com");
 
         Assert.That(result.HsdsProfileVersion, Is.Null);
         Assert.That(result.OpenApiSchemaContent, Is.Null);
@@ -130,7 +130,7 @@ public class ProfileDiscoveryServiceTests
         });
 
         var service = CreateService();
-        var result = await service.DiscoverFromBaseUrlAsync("https://api.example.com");
+        var result = await service.DiscoverFromBaseUrlAsync(null, "https://api.example.com");
 
         Assert.That(result.OpenApiSchemaContent, Does.Contain("openapi"));
     }
@@ -145,7 +145,7 @@ public class ProfileDiscoveryServiceTests
 
         var auth = new DataSourceAuthentication { BearerToken = "token-123" };
         var service = CreateService();
-        var result = await service.DiscoverFromBaseUrlAsync("https://api.example.com", auth);
+        var result = await service.DiscoverFromBaseUrlAsync(null, "https://api.example.com", auth);
 
         Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
     }
@@ -169,7 +169,7 @@ public class ProfileDiscoveryServiceTests
         });
 
         var service = CreateService();
-        var result = await service.DiscoverFromBaseUrlAsync("https://api.example.com");
+        var result = await service.DiscoverFromBaseUrlAsync(null, "https://api.example.com");
 
         Assert.That(result.OpenApiSchemaContent, Does.Contain("openapi"));
     }
