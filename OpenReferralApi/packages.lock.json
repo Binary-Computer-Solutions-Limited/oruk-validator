@@ -4,14 +4,14 @@
     "net10.0": {
       "Amazon.Lambda.AspNetCoreServer.Hosting": {
         "type": "Direct",
-        "requested": "[1.10.0, )",
-        "resolved": "1.10.0",
-        "contentHash": "IECXhGylZbFelTamqtZgIRfkHhkTF5jP9Kr9toRovIkyaR5SdZ9rc0D4SDTd7JMArL8G3ofEjurS0X+Cj8PoRQ==",
+        "requested": "[2.0.0, )",
+        "resolved": "2.0.0",
+        "contentHash": "ox0yRC3RA9UILiy33ZmEAOub4Ysxlhwp3YRBElr0/VqUhjV84/T34NiH02el5KZoW7qarnvpvYkVGMTkJLX2PQ==",
         "dependencies": {
-          "Amazon.Lambda.APIGatewayEvents": "2.7.3",
-          "Amazon.Lambda.AspNetCoreServer": "9.2.1",
-          "Amazon.Lambda.Core": "2.8.1",
-          "Amazon.Lambda.RuntimeSupport": "1.14.2"
+          "Amazon.Lambda.APIGatewayEvents": "3.0.0",
+          "Amazon.Lambda.AspNetCoreServer": "10.0.0",
+          "Amazon.Lambda.Core": "3.0.0",
+          "Amazon.Lambda.RuntimeSupport": "2.0.0"
         }
       },
       "AspNetCore.HealthChecks.MongoDb": {
@@ -65,23 +65,23 @@
       },
       "Microsoft.AspNetCore.OpenApi": {
         "type": "Direct",
-        "requested": "[10.0.7, )",
-        "resolved": "10.0.7",
-        "contentHash": "vKiAcGXG0BwNVw3bOjjWRLnp9tR18dR7MiwpvC94h0yFS+zfnzGHzS/JmmgwUdRixrGxrlIMRAWrVc+2DfAGlg==",
+        "requested": "[10.0.8, )",
+        "resolved": "10.0.8",
+        "contentHash": "cw24xHE2QaWwyEG9GQwFbjboyabub6Vd80DIItUGENzcQOa/BEnTrXsg2GADqWTmY/3ycqk9ToLGjgvF/VRlGA==",
         "dependencies": {
           "Microsoft.OpenApi": "2.0.0"
         }
       },
       "MongoDB.Driver": {
         "type": "Direct",
-        "requested": "[3.8.0, )",
-        "resolved": "3.8.0",
-        "contentHash": "BQ6bTaZCuSThmxS4vXu71a1jFGNMht2/+rjx2Uaw3AweIqRKFbPuyFoVsDnoLN935tvdC5OxwwAqrMY9eWBUng==",
+        "requested": "[3.8.1, )",
+        "resolved": "3.8.1",
+        "contentHash": "UgmjqgJdxiiiDedoYZBBcYKjblS4I8RvxIF5rZmDQN97xAhRVolN5q70LzkamKwbrDLt944+24eD3uL96A6Ozg==",
         "dependencies": {
           "DnsClient": "1.6.1",
-          "MongoDB.Bson": "3.8.0",
+          "MongoDB.Bson": "3.8.1",
           "SharpCompress": "0.30.1",
-          "Snappier": "1.0.0",
+          "Snappier": "1.3.1",
           "ZstdSharp.Port": "0.7.3"
         }
       },
@@ -169,6 +169,12 @@
           "Serilog": "4.2.0"
         }
       },
+      "SharpCompress": {
+        "type": "Direct",
+        "requested": "[1.0.0, )",
+        "resolved": "1.0.0",
+        "contentHash": "bdBq9V2epw7KBX3TeA+lxnKU8dD61tsqVuyuo5cAXj4d+9+fcIQObTr0705oTWnPDRhjRx3TpgOFbYYAMObpaw=="
+      },
       "Swashbuckle.AspNetCore": {
         "type": "Direct",
         "requested": "[10.1.7, )",
@@ -193,54 +199,54 @@
       },
       "Amazon.Lambda.APIGatewayEvents": {
         "type": "Transitive",
-        "resolved": "2.7.3",
-        "contentHash": "CXmiXdwuSXSJA0YH+7OJqG2uGDnhDcKkN2ei2u2/kdRFK+RH8JC5GbdechdJoldpogxHdHy12TuAfqqKSC67Nw=="
+        "resolved": "3.0.0",
+        "contentHash": "1JxlUCqIps7p9FLRfFrgaLCVqgg2J39ZOmZDmV/R1LMwb2eT4/glaKwhxC3r01HeDsozk1jUe1KYRGgzxJaVXg=="
       },
       "Amazon.Lambda.ApplicationLoadBalancerEvents": {
         "type": "Transitive",
-        "resolved": "2.2.0",
-        "contentHash": "UtCd9tFuVyED8+DmDKEkdXJbAb/TdHIz51R/CsJCexKerO6HGOG87FGId4Ce9IXE+qjlBGyNQsKCw9oLLNe0hw=="
+        "resolved": "3.0.0",
+        "contentHash": "lUiZhNxherASNgbZysdFEj37VlyO7BH2z4iOwFpRtfLGq/v/dkVqt3rBAVvrxfPBRGi6SbSb/bHTV4bhPo5tSg=="
       },
       "Amazon.Lambda.AspNetCoreServer": {
         "type": "Transitive",
-        "resolved": "9.2.1",
-        "contentHash": "2K1x1AIMA7iK2G+oDi+rwHW9gYkaRe9+m1oZGHGduNCug/8Nq4ibiV8CMMO/jJ3NOaZa/l4tkA6xiWKV3aSjlw==",
+        "resolved": "10.0.0",
+        "contentHash": "rcizJDknblfMEmPML7U0vYlWQ0mC+rxJUqjNKMkfEdzhY6eTMXW0Ao643WFTkT0wWQ3hk7ar894jqJ390AeFfw==",
         "dependencies": {
-          "Amazon.Lambda.APIGatewayEvents": "2.7.3",
-          "Amazon.Lambda.ApplicationLoadBalancerEvents": "2.2.0",
-          "Amazon.Lambda.Core": "2.8.0",
-          "Amazon.Lambda.Logging.AspNetCore": "4.1.1",
-          "Amazon.Lambda.Serialization.SystemTextJson": "2.4.4"
+          "Amazon.Lambda.APIGatewayEvents": "3.0.0",
+          "Amazon.Lambda.ApplicationLoadBalancerEvents": "3.0.0",
+          "Amazon.Lambda.Core": "3.0.0",
+          "Amazon.Lambda.Logging.AspNetCore": "5.0.0",
+          "Amazon.Lambda.Serialization.SystemTextJson": "3.0.0"
         }
       },
       "Amazon.Lambda.Core": {
         "type": "Transitive",
-        "resolved": "2.8.1",
-        "contentHash": "wLrBdUXY1jn12o3+sar5c5ApMJPGEMye+1rnyDjwCKA2rcPNMZbNsKLQ76bV+DGnx5CN8bArB26SKB/rEuxIxQ=="
+        "resolved": "3.0.0",
+        "contentHash": "2WxArNAPJBhs3ncxJh3K2UC1yrGqIiAtb+9qmS1XlyNC4sZeMZntB4/wgT1WOi2gN5jzasZwXSH9UK+Ft6o8SA=="
       },
       "Amazon.Lambda.Logging.AspNetCore": {
         "type": "Transitive",
-        "resolved": "4.1.1",
-        "contentHash": "4wtlguk2jI0FFR0dHvJfmfW99mDZWXJ56MELPfk2nxtgRlpUyo0RW5GcO3Teyc0nefFmxCiKdE7Iz2xSwiOnfg==",
+        "resolved": "5.0.0",
+        "contentHash": "vfqHBHPvsIvaAGeBnFSRSCThHoqXWqy7S/R6/Aldn4/FmHEp872D0WcJgFac/D0h0GnbHqyfFkjmBEpi85vOog==",
         "dependencies": {
-          "Amazon.Lambda.Core": "2.7.0"
+          "Amazon.Lambda.Core": "3.0.0"
         }
       },
       "Amazon.Lambda.RuntimeSupport": {
         "type": "Transitive",
-        "resolved": "1.14.2",
-        "contentHash": "KR3iCwJbrHctB+po6F5cTNefS9bOKqqWl9G2Ai+PsqdHByDSv6aeVn8noEhKrnOCTqAlWQjBeStay/yM5JE7TA==",
+        "resolved": "2.0.0",
+        "contentHash": "ShLD+MloTXgDi3OOnq5gScP4BdirWnA8gV6x8hVr9eGv4lTbRD3a8j4jYJeK7KOYZrB2+XQPBnAKuPMlQa0EwA==",
         "dependencies": {
-          "Amazon.Lambda.Core": "2.8.1",
-          "SnapshotRestore.Registry": "1.0.1"
+          "Amazon.Lambda.Core": "3.0.0",
+          "SnapshotRestore.Registry": "1.0.2"
         }
       },
       "Amazon.Lambda.Serialization.SystemTextJson": {
         "type": "Transitive",
-        "resolved": "2.4.4",
-        "contentHash": "iv/cvqFuZ3v3+NFDyof0IJZvU+4kdpzOe3pWSBwp9HB885I+D32WQxuid9V4GnvRynER9XnWMPaDmImX8qH5cA==",
+        "resolved": "3.0.0",
+        "contentHash": "8lKS2w8Ww+Kq41mRmedL3lYLVr+UE0tzN2FwOigxKe+hzDbWJIMXZwVHwf53RsdFsYZlaTmW4WHE56W/1Fk3Hg==",
         "dependencies": {
-          "Amazon.Lambda.Core": "2.3.0"
+          "Amazon.Lambda.Core": "3.0.0"
         }
       },
       "AspNetCore.HealthChecks.UI.Core": {
@@ -333,8 +339,8 @@
       },
       "MongoDB.Bson": {
         "type": "Transitive",
-        "resolved": "3.8.0",
-        "contentHash": "HeiOJUylam5nIB7b1EfzlnJbf6A9te79WO6CtsKfp8M/2EeL4SoSQFjmUpJ6/vvuaNKGENXMaX9oUJp9KpHlqw=="
+        "resolved": "3.8.1",
+        "contentHash": "b4jm2QxBQcB3zBBM+l0Jdjmn8TYBB+J0QDNaJypkmR1qDC6v5w8IMeYaFPvn/kqo0PvCUGVSQkXm0nVCBjjNYg=="
       },
       "Newtonsoft.Json": {
         "type": "Transitive",
@@ -417,20 +423,15 @@
           "Serilog": "4.0.0"
         }
       },
-      "SharpCompress": {
-        "type": "Transitive",
-        "resolved": "0.30.1",
-        "contentHash": "XqD4TpfyYGa7QTPzaGlMVbcecKnXy4YmYLDWrU+JIj7IuRNl7DH2END+Ll7ekWIY8o3dAMWLFDE1xdhfIWD1nw=="
-      },
       "Snappier": {
         "type": "Transitive",
-        "resolved": "1.0.0",
-        "contentHash": "rFtK2KEI9hIe8gtx3a0YDXdHOpedIf9wYCEYtBEmtlyiWVX3XlCNV03JrmmAi/Cdfn7dxK+k0sjjcLv4fpHnqA=="
+        "resolved": "1.3.1",
+        "contentHash": "DOdDQiO8YZ5rBtVLY+6CmR1yp9WYoJRgEEktPBrR0tEj9QO2djA/zv0O3DX0OZpEAfosbY8pytQ9tQUogwQsEA=="
       },
       "SnapshotRestore.Registry": {
         "type": "Transitive",
-        "resolved": "1.0.1",
-        "contentHash": "UdA5y8wpa6dHiV4+J9MveLr6GRDB1llTmb4c+MeRYRoWKVNC5Y+nTDcC16/QAyw1dRry+aPS1yAy6f57mS+Xfw=="
+        "resolved": "1.0.2",
+        "contentHash": "clcAZGAb8sbtIuynOPiZkpHLdSb3RGxHJjSPyecgRh55fFY0KynqA7GEtrVL/sAUgO9jvC0IMhPXBRcJuFWrAA=="
       },
       "Swashbuckle.AspNetCore.Swagger": {
         "type": "Transitive",
@@ -468,9 +469,10 @@
         "dependencies": {
           "HtmlAgilityPack": "[1.12.4, )",
           "JsonSchema.Net": "[9.2.0, )",
-          "MongoDB.Driver": "[3.8.0, )",
+          "MongoDB.Driver": "[3.8.1, )",
           "Newtonsoft.Json": "[13.0.4, )",
           "Newtonsoft.Json.Schema": "[4.0.1, )",
+          "SharpCompress": "[1.0.0, )",
           "YamlDotNet": "[17.1.0, )"
         }
       }
