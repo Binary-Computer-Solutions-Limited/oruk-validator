@@ -278,52 +278,17 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             ? _authenticationValidationService.TryGetValidatedRequestAuthentication("schema", request.DataSourceAuth)
             : null;
         var dataSourceRequestAuth = _authenticationValidationService.TryGetValidatedRequestAuthentication("datasource", request.DataSourceAuth);
-
-        var usedBaseUrlDiscovery = false;
-        string? discoveredOpenApiSchemaContent = null;
-        string? discoveredHsdsProfileSchemaContent = null;
-
-        if (string.IsNullOrEmpty(request.OwnSchemaUrl))
-        {
-            usedBaseUrlDiscovery = true;
-            var bootstrap = await _profileDiscoveryService.DiscoverFromBaseUrlAsync(request.BaseUrl!, dataSourceRequestAuth, cancellationToken);
-            discoveredOpenApiSchemaContent = bootstrap.OpenApiSchemaContent;
-            discoveredHsdsProfileSchemaContent = bootstrap.HsdsProfileSchemaContent;
-
-            if (string.IsNullOrWhiteSpace(request.ProfileReason)
-                && !string.IsNullOrWhiteSpace(bootstrap.HsdsProfileVersion))
-            {
-                request.ProfileReason = $"Standard version [user: {bootstrap.HsdsProfileVersion}] discovered from base URL";
-            }
-        }
-
-        if (string.IsNullOrEmpty(request.OwnSchemaUrl) && string.IsNullOrWhiteSpace(discoveredOpenApiSchemaContent))
-        {
-            if (hasConfiguredDefaultProfile)
-            {
-                request.OwnSchemaUrl = defaultProfileSchemaUrl;
-                if (string.IsNullOrWhiteSpace(request.ProfileReason)
-                    && !string.IsNullOrWhiteSpace(defaultProfileVersion))
-                {
-                    request.ProfileReason = $"Standard version [user: {defaultProfileVersion}] configured default profile fallback";
-                }
-
-                result.Notifications.Add("OpenAPI schema URL could not be discovered from the base URL. Falling back to the configured default HSDS profile OpenAPI specification.");
-                _logger.UsingDefaultProfileSchemaUrl(
-                    TextSanitizer.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty),
-                    TextSanitizer.SanitizeUrlForLogging(defaultProfileSchemaUrl));
-            }
-            else
-            {
-                throw new ArgumentException("Failed to discover OpenAPI schema URL or schema content from base URL");
-            }
-        }
+        
+        bool usedBaseUrlDiscovery = true;
+        var bootstrap = await _profileDiscoveryService.DiscoverFromBaseUrlAsync(request.OwnSchemaUrl, request.BaseUrl!, dataSourceRequestAuth, cancellationToken);
 
         return new DiscoveryPreparation
         {
             UsedBaseUrlDiscovery = usedBaseUrlDiscovery,
-            DiscoveredOpenApiSchemaContent = discoveredOpenApiSchemaContent,
-            DiscoveredHsdsProfileSchemaContent = discoveredHsdsProfileSchemaContent,
+            DiscoveredOpenApiSchemaContent = bootstrap.OpenApiSchemaContent,
+            DiscoveredHsdsProfileVersion = bootstrap.HsdsProfileVersion,
+            DiscoveredHsdsProfileReason = bootstrap.HsdsProfileReason,
+            DiscoveredHsdsProfileSchemaContent = bootstrap.HsdsProfileSchemaContent,
             HasConfiguredDefaultProfile = hasConfiguredDefaultProfile,
             DefaultProfileSchemaUrl = defaultProfileSchemaUrl,
             DefaultProfileVersion = defaultProfileVersion,
@@ -822,6 +787,8 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         public string? DefaultProfileVersion { get; init; }
         public DataSourceAuthentication? SchemaRequestAuth { get; init; }
         public DataSourceAuthentication? DataSourceRequestAuth { get; init; }
+        public string? DiscoveredHsdsProfileVersion { get; init; }
+        public string? DiscoveredHsdsProfileReason { get; init; }
     }
 
     private sealed class ProfileResolutionState

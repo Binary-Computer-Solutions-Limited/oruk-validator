@@ -13,6 +13,7 @@ namespace OpenReferralApi.Core.Services;
 public interface IProfileDiscoveryService
 {
     Task<ProfileDiscoveryResult> DiscoverFromBaseUrlAsync(
+        string ownSchemaUrl,
         string baseUrl,
         DataSourceAuthentication? authentication = null,
         CancellationToken cancellationToken = default);
@@ -23,7 +24,8 @@ public sealed class ProfileDiscoveryResult
     public string? HsdsProfileReason { get; init; }
     public string? OpenApiSchemaContent { get; init; }
     public string? HsdsProfileSchemaContent { get; init; }
-    public string? HsdsProfileVersion { get; set; }
+    public string? HsdsProfileVersion { get; init; }
+    public bool UsedDefaultProfile { get; init; }
 }
 
 public class ProfileDiscoveryService : IProfileDiscoveryService
@@ -61,6 +63,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
     }
 
     public async Task<ProfileDiscoveryResult> DiscoverFromBaseUrlAsync(
+        string ownSchemaUrl,
         string baseUrl,
         DataSourceAuthentication? authentication = null,
         CancellationToken cancellationToken = default)
@@ -76,7 +79,8 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         string? discoveredVersion = null;
         string? discoveredSchema = null;
         string? discoveryReason = null;
-
+        bool usedDefaultProfile = false;
+        
         using var client = _httpClientFactory.CreateClient("OpenApiValidationService");
         var probePaths = BuildDiscoveryProbePaths();
 
@@ -106,7 +110,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                     discoveredVersion = TryExtractPotentialHsdsProfileVersion(content);
                     if (discoveredVersion != null)
                     {
-                        discoveryReason = $"HSDS version {discoveredVersion} found at {path}";
+                        discoveryReason = $"HSDS version {discoveredVersion} discovered from base URL at {path}";
                     }
                 }
 
@@ -139,9 +143,9 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
 
             if (hasConfiguredDefaultProfile)
             {
+                usedDefaultProfile = true;
                 discoveredVersion = defaultProfileVersion;
-                discoveryReason = "Using configured default HSDS profile version";
-
+                discoveryReason = $"Using configured default HSDS profile version: {defaultProfileVersion}";
             }
         }
 
@@ -149,7 +153,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
 
         if (string.IsNullOrWhiteSpace(hsdsProfileSchemaContent))
         {
-            throw new ArgumentException("Failed to discover OpenAPI schema URL or schema content from base URL");
+            throw new ArgumentException("Failed to discover HSDS Profile version from base URL");
         }
 
         return new ProfileDiscoveryResult
@@ -157,7 +161,8 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             HsdsProfileVersion = discoveredVersion,
             OpenApiSchemaContent = discoveredSchema,
             HsdsProfileSchemaContent = hsdsProfileSchemaContent,
-            HsdsProfileReason = discoveryReason ?? "Discovery completed with available information."
+            HsdsProfileReason = discoveryReason ?? "Discovery completed with available information.",
+            UsedDefaultProfile = usedDefaultProfile
         };
     }
 
