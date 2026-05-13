@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using Newtonsoft.Json.Linq;
+using OpenReferralApi.Core.Helpers;
 
 namespace OpenReferralApi.Core.Services;
 
@@ -115,5 +117,49 @@ public abstract class OpenApiValidationServiceBase
         return candidate.ContainsKey("openapi")
             || candidate.ContainsKey("swagger")
             || candidate.ContainsKey("paths");
+    }
+
+    protected static string ResolveMemoryCheckpointCorrelationId()
+    {
+        return Activity.Current?.TraceId.ToString()
+            ?? Activity.Current?.Id
+            ?? "n/a";
+    }
+
+    private protected static MemoryCheckpointLogPayload CreateMemoryCheckpointPayload(
+        string service,
+        string stage,
+        string sanitizedBaseUrl,
+        MemoryCheckpointSnapshot snapshot,
+        string? profile = null,
+        string? groupName = null,
+        int? accumulatedEndpointResults = null)
+    {
+        return new MemoryCheckpointLogPayload
+        {
+            Service = service,
+            Stage = stage,
+            CorrelationId = ResolveMemoryCheckpointCorrelationId(),
+            BaseUrl = sanitizedBaseUrl,
+            Profile = profile,
+            GroupName = groupName,
+            ManagedHeapBytes = snapshot.ManagedHeapBytes,
+            ManagedHeapDeltaBytes = snapshot.ManagedHeapDeltaBytes,
+            ProcessWorkingSetBytes = snapshot.ProcessWorkingSetBytes,
+            ProcessWorkingSetDeltaBytes = snapshot.ProcessWorkingSetDeltaBytes,
+            GcHeapSizeBytes = snapshot.GcHeapSizeBytes,
+            GcHeapSizeDeltaBytes = snapshot.GcHeapSizeDeltaBytes,
+            GcFragmentedBytes = snapshot.GcFragmentedBytes,
+            GcFragmentedDeltaBytes = snapshot.GcFragmentedDeltaBytes,
+            GcTotalCommittedBytes = snapshot.GcTotalCommittedBytes,
+            GcTotalCommittedDeltaBytes = snapshot.GcTotalCommittedDeltaBytes,
+            GcMemoryLoadBytes = snapshot.GcMemoryLoadBytes,
+            GcMemoryLoadDeltaBytes = snapshot.GcMemoryLoadDeltaBytes,
+            Gen0CollectionsDelta = snapshot.Gen0CollectionsDelta,
+            Gen1CollectionsDelta = snapshot.Gen1CollectionsDelta,
+            Gen2CollectionsDelta = snapshot.Gen2CollectionsDelta,
+            ElapsedMilliseconds = snapshot.ElapsedMilliseconds,
+            AccumulatedEndpointResults = accumulatedEndpointResults
+        };
     }
 }

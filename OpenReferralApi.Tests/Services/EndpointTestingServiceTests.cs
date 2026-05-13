@@ -49,6 +49,23 @@ public class EndpointTestingServiceTests
   }
 
   [Test]
+  public async Task TestEndpointsAsync_LogsUnifiedMemoryCheckpointPayload()
+  {
+    var results = await _service.TestEndpointsAsync(
+      CreateRequiredEndpointSpec(),
+      "https://api.example.com",
+      new OpenApiValidationOptions(),
+      null,
+      null,
+      CancellationToken.None);
+
+    Assert.That(results, Has.Count.EqualTo(1));
+    Assert.That(HasInformationLogContaining(_loggerMock, "Memory checkpoint EndpointTestingService/start."), Is.True);
+    Assert.That(HasInformationLogContaining(_loggerMock, "ManagedHeapBytes:"), Is.True);
+    Assert.That(HasInformationLogContaining(_loggerMock, "GcHeapSizeBytes:"), Is.True);
+  }
+
+  [Test]
   public async Task TestEndpointsAsync_ParameterizedEndpointWithoutExtractedIds_ReturnsNotTestedWarning()
   {
     var spec = CreateParameterizedOnlySpec();
@@ -496,6 +513,16 @@ public class EndpointTestingServiceTests
     var mock = new Mock<IHttpClientFactory>();
     mock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
     return mock.Object;
+  }
+
+  private static bool HasInformationLogContaining<T>(Mock<ILogger<T>> loggerMock, string expectedText)
+  {
+    return loggerMock.Invocations.Any(invocation =>
+      invocation.Method.Name == "Log"
+      && invocation.Arguments.Count >= 3
+      && invocation.Arguments[0] is LogLevel logLevel
+      && logLevel == LogLevel.Information
+      && invocation.Arguments[2]?.ToString()?.Contains(expectedText, StringComparison.Ordinal) == true);
   }
 
   private static JObject CreateRequiredEndpointSpec()

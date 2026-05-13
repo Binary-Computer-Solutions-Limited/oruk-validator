@@ -30,7 +30,7 @@ public interface IEndpointTestingService
         CancellationToken cancellationToken = default);
 }
 
-public class EndpointTestingService : IEndpointTestingService
+public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTestingService
 {
     private const string EndpointTestingMetricsMeterName = "OpenReferralApi.Core.EndpointTestingService";
     private static readonly Meter EndpointTestingMetricsMeter = new(EndpointTestingMetricsMeterName, "1.0.0");
@@ -88,18 +88,32 @@ public class EndpointTestingService : IEndpointTestingService
             }
 
             var snapshot = memoryCheckpointTracker.Capture();
+            var compiledSchemaCacheState = GetCompiledSchemaCacheState(compiledValidationSchemaCache);
+            var retentionSnapshot = GetEndpointRetentionSnapshot(
+                results,
+                parsedResponseJsonByResult,
+                extractedIds,
+                _validationSchemaCache);
 
-            _logger.EndpointTestingMemoryCheckpoint(
-                stage,
-                TextSanitizer.SanitizeForLogging(groupName),
-                Activity.Current?.TraceId.ToString() ?? Activity.Current?.Id ?? "n/a",
-                TextSanitizer.SanitizeUrlForLogging(baseUrl),
-                snapshot.ManagedHeapBytes,
-                snapshot.ManagedHeapDeltaBytes,
-                snapshot.ProcessWorkingSetBytes,
-                snapshot.ProcessWorkingSetDeltaBytes,
-                snapshot.ElapsedMilliseconds,
-                results.Count);
+            var payload = CreateMemoryCheckpointPayload(
+                service: nameof(EndpointTestingService),
+                stage: stage,
+                sanitizedBaseUrl: TextSanitizer.SanitizeUrlForLogging(baseUrl),
+                snapshot: snapshot,
+                groupName: TextSanitizer.SanitizeForLogging(groupName),
+                accumulatedEndpointResults: results.Count) with
+            {
+                CompiledSchemaCacheEntryCount = compiledSchemaCacheState.EntryCount,
+                CompiledSchemaCacheTotalKeyChars = compiledSchemaCacheState.TotalKeyChars,
+                ParsedJsonDocumentsInFlight = retentionSnapshot.ParsedJsonDocumentsInFlight,
+                RetainedResponseBodies = retentionSnapshot.RetainedResponseBodies,
+                RetainedResponseBodyChars = retentionSnapshot.RetainedResponseBodyChars,
+                ExtractedIdRoots = retentionSnapshot.ExtractedIdRoots,
+                ExtractedIdValues = retentionSnapshot.ExtractedIdValues,
+                ValidationSchemaCacheEntries = retentionSnapshot.ValidationSchemaCacheEntries
+            };
+
+            _logger.UnifiedMemoryCheckpoint(payload);
 
             var tags = new TagList
             {
@@ -110,17 +124,11 @@ public class EndpointTestingService : IEndpointTestingService
             EndpointTestingWorkingSetBytesHistogram.Record(snapshot.ProcessWorkingSetBytes, tags);
             EndpointTestingWorkingSetDeltaBytesHistogram.Record(snapshot.ProcessWorkingSetDeltaBytes, tags);
 
-            var compiledSchemaCacheState = GetCompiledSchemaCacheState(compiledValidationSchemaCache);
             _logger.CompiledEndpointSchemaCacheState(
                 stage,
                 compiledSchemaCacheState.EntryCount,
                 compiledSchemaCacheState.TotalKeyChars);
 
-            var retentionSnapshot = GetEndpointRetentionSnapshot(
-                results,
-                parsedResponseJsonByResult,
-                extractedIds,
-                _validationSchemaCache);
             _logger.EndpointTestingRetentionSnapshot(
                 stage,
                 retentionSnapshot.ParsedJsonDocumentsInFlight,

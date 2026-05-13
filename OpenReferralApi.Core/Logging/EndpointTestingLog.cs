@@ -184,9 +184,6 @@ namespace OpenReferralApi.Core.Logging
         [LoggerMessage(EventId = 5059, Level = LogLevel.Warning, Message = "User-supplied data source authentication was provided for a non-HTTPS endpoint. Skipping auth headers for {Url}")]
         public static partial void SkippedAuthForNonHttpsEndpoint(this ILogger logger, string url);
 
-        [LoggerMessage(EventId = 5060, Level = LogLevel.Information, Message = "Endpoint testing memory checkpoint {Stage} for group {GroupName}. CorrelationId: {CorrelationId}, BaseUrl: {BaseUrl}, ManagedHeapBytes: {ManagedHeapBytes}, ManagedHeapDeltaBytes: {ManagedHeapDeltaBytes}, ProcessWorkingSetBytes: {ProcessWorkingSetBytes}, ProcessWorkingSetDeltaBytes: {ProcessWorkingSetDeltaBytes}, ElapsedMs: {ElapsedMs}, AccumulatedEndpointResults: {AccumulatedEndpointResults}")]
-        public static partial void EndpointTestingMemoryCheckpoint(this ILogger logger, string stage, string groupName, string correlationId, string baseUrl, long managedHeapBytes, long managedHeapDeltaBytes, long processWorkingSetBytes, long processWorkingSetDeltaBytes, double elapsedMs, int accumulatedEndpointResults);
-
         [LoggerMessage(EventId = 5061, Level = LogLevel.Information, Message = "Compiled endpoint schema cache state at stage {Stage}. EntryCount: {EntryCount}, TotalKeyChars: {TotalKeyChars}")]
         public static partial void CompiledEndpointSchemaCacheState(this ILogger logger, string stage, int entryCount, long totalKeyChars);
 

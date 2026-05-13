@@ -131,6 +131,28 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
+    public async Task ValidateOpenApiSpecificationAsync_LogsUnifiedMemoryCheckpointPayload()
+    {
+        // Arrange
+        var json = CreateOpenApi30Spec();
+        var request = new OpenApiValidationRequest
+        {
+            OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com"
+        };
+        SetupHttpMock(json);
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result, Is.Not.Null);
+        Assert.That(HasInformationLogContaining(_loggerMock, "Memory checkpoint OpenApiValidationService/start."), Is.True);
+        Assert.That(HasInformationLogContaining(_loggerMock, "ManagedHeapBytes:"), Is.True);
+        Assert.That(HasInformationLogContaining(_loggerMock, "GcHeapSizeBytes:"), Is.True);
+    }
+
+    [Test]
     public async Task ValidateOpenApiSpecificationAsync_UsesDiscoveredCachedHsdsSchemaContent_WithoutResolvingProfileUrl()
     {
         // Arrange
@@ -4132,6 +4154,16 @@ _openApiSpecificationService,
     #endregion
 
     #region Helper Methods
+
+    private static bool HasInformationLogContaining<T>(Mock<ILogger<T>> loggerMock, string expectedText)
+    {
+        return loggerMock.Invocations.Any(invocation =>
+            invocation.Method.Name == "Log"
+            && invocation.Arguments.Count >= 3
+            && invocation.Arguments[0] is LogLevel logLevel
+            && logLevel == LogLevel.Information
+            && invocation.Arguments[2]?.ToString()?.Contains(expectedText, StringComparison.Ordinal) == true);
+    }
 
     private void SetupHttpMock(string responseJson, string endpointResponseBody = "{}")
     {

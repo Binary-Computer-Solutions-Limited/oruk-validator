@@ -73,34 +73,28 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             }
 
             var snapshot = memoryCheckpointTracker.Capture();
-            var correlationId = GetCurrentCorrelationId();
             var sanitizedBaseUrl = TextSanitizer.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty);
             var profile = ResolveMetadataProfileIdentifier(
                 request.ProfileReason,
                 _hsdsComplianceService.ExtractClaimedProfileVersion(request.ProfileReason, request.OwnSchemaUrl),
                 request.OwnSchemaUrl);
+            var cacheState = GetResolvedOpenApiCacheState();
 
-            _logger.OpenApiValidationMemoryCheckpoint(
-                stage,
-                correlationId,
-                sanitizedBaseUrl,
-                TextSanitizer.SanitizeStringForLogging(profile ?? string.Empty),
-                snapshot.ManagedHeapBytes,
-                snapshot.ManagedHeapDeltaBytes,
-                snapshot.ProcessWorkingSetBytes,
-                snapshot.ProcessWorkingSetDeltaBytes,
-                snapshot.GcHeapSizeBytes,
-                snapshot.GcHeapSizeDeltaBytes,
-                snapshot.GcFragmentedBytes,
-                snapshot.GcFragmentedDeltaBytes,
-                snapshot.GcTotalCommittedBytes,
-                snapshot.GcTotalCommittedDeltaBytes,
-                snapshot.GcMemoryLoadBytes,
-                snapshot.GcMemoryLoadDeltaBytes,
-                snapshot.Gen0CollectionsDelta,
-                snapshot.Gen1CollectionsDelta,
-                snapshot.Gen2CollectionsDelta,
-                snapshot.ElapsedMilliseconds);
+            var payload = CreateMemoryCheckpointPayload(
+                service: nameof(OpenApiValidationService),
+                stage: stage,
+                sanitizedBaseUrl: sanitizedBaseUrl,
+                snapshot: snapshot,
+                profile: TextSanitizer.SanitizeStringForLogging(profile ?? string.Empty)) with
+            {
+                FeedCacheEntries = cacheState.FeedEntries,
+                ProfileCacheEntries = cacheState.ProfileEntries,
+                ExpiredCacheEntries = cacheState.ExpiredEntries,
+                FeedJsonChars = cacheState.FeedJsonChars,
+                ProfileJsonChars = cacheState.ProfileJsonChars
+            };
+
+            _logger.UnifiedMemoryCheckpoint(payload);
 
             var tags = new TagList { { "stage", stage } };
             ValidationManagedHeapBytesHistogram.Record(snapshot.ManagedHeapBytes, tags);
@@ -108,7 +102,6 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             ValidationWorkingSetBytesHistogram.Record(snapshot.ProcessWorkingSetBytes, tags);
             ValidationWorkingSetDeltaBytesHistogram.Record(snapshot.ProcessWorkingSetDeltaBytes, tags);
 
-            var cacheState = GetResolvedOpenApiCacheState();
             _logger.ResolvedOpenApiCacheState(
                 stage,
                 cacheState.FeedEntries,
@@ -623,13 +616,6 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
                 collectedIssues.Add(issue);
             }
         }
-    }
-
-    private static string GetCurrentCorrelationId()
-    {
-        return Activity.Current?.TraceId.ToString()
-            ?? Activity.Current?.Id
-            ?? "n/a";
     }
 
     private static void AddCircularReferenceValidationIssues(
