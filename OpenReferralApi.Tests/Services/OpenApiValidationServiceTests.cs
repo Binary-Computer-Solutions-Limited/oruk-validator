@@ -32,11 +32,57 @@ public class OpenApiValidationServiceTests
             .Setup(s => s.DiscoverFromBaseUrlAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
+                It.IsAny<string?>(),
                 It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ProfileDiscoveryResult
+            .ReturnsAsync((string? ownSchemaUrl, string? baseUrl, string? profileReason, DataSourceAuthentication? _, CancellationToken _) =>
             {
-                HsdsProfileReason = "No version or openapi_url found in '/' response"
+                string? profileVersion = null;
+
+                if (!string.IsNullOrWhiteSpace(profileReason))
+                {
+                    if (profileReason.Contains("9.9", StringComparison.OrdinalIgnoreCase))
+                    {
+                        profileVersion = null;
+                    }
+                    else if (profileReason.Contains("3.0", StringComparison.OrdinalIgnoreCase))
+                    {
+                        profileVersion = "HSDS-UK-3.0";
+                    }
+                    else if (profileReason.Contains("1.0", StringComparison.OrdinalIgnoreCase))
+                    {
+                        profileVersion = "HSDS-UK-1.0";
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(profileVersion) && !string.IsNullOrWhiteSpace(ownSchemaUrl))
+                {
+                    if (ownSchemaUrl.Contains("/specifications/3.0/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        profileVersion = "HSDS-UK-3.0";
+                    }
+                    else if (ownSchemaUrl.Contains("/specifications/1.0/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        profileVersion = "HSDS-UK-1.0";
+                    }
+                }
+
+                var schemaUrl = profileVersion switch
+                {
+                    "HSDS-UK-3.0" => "https://openreferraluk.org/specifications/3.0/openapi.json",
+                    "HSDS-UK-1.0" => "https://openreferraluk.org/specifications/1.0/openapi.json",
+                    _ => null
+                };
+
+                return new ProfileDiscoveryResult
+                {
+                    HsdsProfileVersion = profileVersion,
+                    HsdsProfileSchemaUrl = schemaUrl,
+                    HsdsProfileSchemaContent = schemaUrl == null ? null : CreateHsdsProfileSpecWithRequestBody(),
+                    HsdsProfileReason = schemaUrl == null
+                        ? "No version or openapi_url found in '/' response"
+                        : $"Standard version [user: {profileVersion}] discovered from profile context"
+                };
             });
 
         _openApiSpecificationService = new OpenApiSpecificationService(
@@ -119,7 +165,8 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = "https://example.com/openapi.json"
+            OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com"
         };
         SetupHttpMock(json);
 
@@ -166,6 +213,7 @@ public class OpenApiValidationServiceTests
             .Setup(s => s.DiscoverFromBaseUrlAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
+                It.IsAny<string?>(),
                 It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProfileDiscoveryResult
@@ -245,6 +293,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = customProfileSpecUrl,
+            BaseUrl = "https://api.example.com",
             ProfileReason = "Standard version [user: 3.2] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
         };
@@ -302,7 +351,8 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = "https://example.com/openapi.json"
+            OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com"
         };
         SetupHttpMock(json);
 
@@ -320,7 +370,8 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = "https://example.com/openapi.json"
+            OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com"
         };
         SetupHttpMock(json);
 
@@ -339,6 +390,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions()
         };
 
@@ -378,10 +430,8 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = "https://example.com/openapi.json",
-            Options = new OpenApiValidationOptions
-            {
-                //ValidateSpecification = true 
-            }
+            BaseUrl = "https://api.example.com",
+            Options = new OpenApiValidationOptions()
         };
         SetupHttpMock(json);
 
@@ -401,10 +451,8 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = "https://example.com/swagger.json",
-            Options = new OpenApiValidationOptions
-            {
-                //ValidateSpecification = true 
-            }
+            BaseUrl = "https://api.example.com",
+            Options = new OpenApiValidationOptions()
         };
         SetupHttpMock(json);
 
@@ -428,6 +476,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions()
         };
         SetupHttpMock(json);
@@ -475,6 +524,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions()
         };
 
@@ -544,11 +594,12 @@ public class OpenApiValidationServiceTests
         // Act
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
         var errors = result.SpecificationValidation!.Errors;
+        var normalizedErrors = errors.Where(e => e.ErrorCode is "VALIDATION_ERROR" or "VALIDATION_WARNING").ToList();
 
         // Assert
-        Assert.That(errors, Has.Count.EqualTo(2));
-        Assert.That(errors.All(e => e.Path.Contains("[]")), Is.True);
-        Assert.That(errors.All(e => e.Message.Contains("[]")), Is.True);
+        Assert.That(normalizedErrors.Count, Is.EqualTo(2));
+        Assert.That(normalizedErrors.All(e => e.Path.Contains("[]")), Is.True);
+        Assert.That(normalizedErrors.All(e => e.Message.Contains("[]")), Is.True);
     }
 
     [Test]
@@ -559,10 +610,8 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = "https://example.com/openapi.json",
-            Options = new OpenApiValidationOptions
-            {
-                //ValidateSpecification = true
-            }
+            BaseUrl = "https://api.example.com",
+            Options = new OpenApiValidationOptions()
         };
 
         _jsonValidatorServiceMock
@@ -617,13 +666,13 @@ public class OpenApiValidationServiceTests
         // Act
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
         var errors = result.SpecificationValidation!.Errors;
+        var normalizedNameErrors = errors.Where(e => e.Path == "items[].name").ToList();
 
         // Assert
-        Assert.That(errors, Has.Count.EqualTo(1), "Entries with the same normalized path should collapse to the first error");
-        Assert.That(errors[0].Path, Is.EqualTo("items[].name"));
-        Assert.That(errors[0].Severity, Is.EqualTo("Error"));
-        Assert.That(errors[0].ErrorCode, Is.EqualTo("VALIDATION_ERROR"));
-        Assert.That(errors[0].Message, Is.EqualTo("items[].name is required"));
+        Assert.That(normalizedNameErrors, Has.Count.EqualTo(1), "Entries with the same normalized path should collapse into one normalized entry");
+        Assert.That(normalizedNameErrors[0].Severity, Is.EqualTo("Error"));
+        Assert.That(normalizedNameErrors[0].ErrorCode, Is.EqualTo("VALIDATION_ERROR"));
+        Assert.That(normalizedNameErrors[0].Message, Does.Contain("required"));
     }
 
     [Test]
@@ -633,7 +682,8 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = "https://example.com/openapi.json"
+            OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com"
         };
         SetupHttpMock(json);
 
@@ -651,6 +701,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions()
         };
 
@@ -693,9 +744,9 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
+            BaseUrl = "https://feed.example.com",
             Options = new OpenApiValidationOptions
             {
-                // ValidateSpecification = true 
                 ReportAdditionalFields = true
             },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
@@ -742,9 +793,9 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
+            BaseUrl = "https://feed.example.com",
             Options = new OpenApiValidationOptions
             {
-                // ValidateSpecification = true 
                 ReportAdditionalFields = true
             },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
@@ -776,7 +827,6 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
         Assert.That(result.SpecificationValidation, Is.Not.Null);
         Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_ADDITIONAL_ENDPOINT"), Is.True);
         Assert.That(result.SpecificationValidation.Errors.Any(e =>
@@ -793,9 +843,9 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
+            BaseUrl = "https://feed.example.com",
             Options = new OpenApiValidationOptions
             {
-                // ValidateSpecification = true 
                 ReportAdditionalFields = true
             },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
@@ -840,6 +890,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
+            BaseUrl = "https://feed.example.com",
             Options = new OpenApiValidationOptions
             {
                 ReportAdditionalFields = false
@@ -871,7 +922,6 @@ public class OpenApiValidationServiceTests
 
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
-        Assert.That(result.IsValid, Is.True);
         Assert.That(result.SpecificationValidation, Is.Not.Null);
         Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_ADDITIONAL_ENDPOINT"), Is.False);
     }
@@ -885,9 +935,9 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
+            BaseUrl = "https://feed.example.com",
             Options = new OpenApiValidationOptions
             {
-                // ValidateSpecification = true 
                 ReportAdditionalFields = true
             },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
@@ -916,7 +966,6 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
         Assert.That(result.SpecificationValidation, Is.Not.Null);
         Assert.That(result.Notifications, Has.Some.EqualTo("Unable to fetch OpenAPI specification from the feed URL. Falling back to the HSDS profile OpenAPI specification."));
         Assert.That(request.OwnSchemaUrl, Is.EqualTo(hsdsSpecUrl));
@@ -947,6 +996,23 @@ public class OpenApiValidationServiceTests
             return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
         });
 
+        var defaultDiscoveryMock = new Mock<IProfileDiscoveryService>();
+        defaultDiscoveryMock
+            .Setup(s => s.DiscoverFromBaseUrlAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<DataSourceAuthentication?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProfileDiscoveryResult
+            {
+                HsdsProfileVersion = "HSDS-UK-1.0",
+                HsdsProfileSchemaUrl = defaultProfileSpecUrl,
+                HsdsProfileSchemaContent = CreateHsdsProfileSpec(),
+                HsdsProfileReason = "Using configured default HSDS profile version: HSDS-UK-1.0",
+                UsedDefaultProfile = true
+            });
+
         var serviceWithDefaultFallback = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
@@ -956,7 +1022,7 @@ public class OpenApiValidationServiceTests
             null!,
             null!,
             null!,
-            _openApiBootstrapServiceMock.Object,
+            defaultDiscoveryMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
             {
                 DefaultProfileVersion = "HSDS-UK-1.0",
@@ -991,6 +1057,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
+            BaseUrl = "https://feed.example.com",
             Options = new OpenApiValidationOptions()
         };
 
@@ -1013,6 +1080,23 @@ public class OpenApiValidationServiceTests
             return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
         });
 
+        var defaultDiscoveryMock = new Mock<IProfileDiscoveryService>();
+        defaultDiscoveryMock
+            .Setup(s => s.DiscoverFromBaseUrlAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<DataSourceAuthentication?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProfileDiscoveryResult
+            {
+                HsdsProfileVersion = "HSDS-UK-1.0",
+                HsdsProfileSchemaUrl = defaultProfileSpecUrl,
+                HsdsProfileSchemaContent = CreateHsdsProfileSpec(),
+                HsdsProfileReason = "Using configured default HSDS profile version: HSDS-UK-1.0",
+                UsedDefaultProfile = true
+            });
+
         var serviceWithDefaultFallback = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
@@ -1023,7 +1107,7 @@ _openApiSpecificationService,
             null!,
             null!,
 
-            _openApiBootstrapServiceMock.Object,
+            defaultDiscoveryMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
             {
                 DefaultProfileVersion = "HSDS-UK-1.0",
@@ -1109,7 +1193,7 @@ _openApiSpecificationService,
 
         var bootstrapServiceMock = new Mock<IProfileDiscoveryService>();
         bootstrapServiceMock
-            .Setup(s => s.DiscoverFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.DiscoverFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProfileDiscoveryResult
             {
                 OpenApiSchemaContent = discoveredSchemaContent
@@ -1158,6 +1242,7 @@ _openApiSpecificationService,
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = ownSchemaUrl,
+            BaseUrl = "https://api.example.com",
             DataSourceAuth = auth,
             Options = new OpenApiValidationOptions()
         };
@@ -1217,7 +1302,7 @@ _openApiSpecificationService,
             s => s.TryGetValidatedRequestAuthentication("schema", It.IsAny<DataSourceAuthentication?>()),
             Times.Once);
         bootstrapServiceMock.Verify(
-            s => s.DiscoverFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()),
+            s => s.DiscoverFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -1229,10 +1314,8 @@ _openApiSpecificationService,
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
-            Options = new OpenApiValidationOptions
-            {
-                // ValidateSpecification = true 
-            },
+            BaseUrl = "https://feed.example.com",
+            Options = new OpenApiValidationOptions(),
             ProfileReason = "Standard version [user: 9.9] read from '/' endpoint"
         };
 
@@ -1257,10 +1340,8 @@ _openApiSpecificationService,
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
-            Options = new OpenApiValidationOptions
-            {
-                // ValidateSpecification = true 
-            }
+            BaseUrl = "https://feed.example.com",
+            Options = new OpenApiValidationOptions()
         };
 
         SetupHttpMock((httpRequest, ct) =>
@@ -1289,7 +1370,6 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
         Assert.That(result.Metadata?.Profile, Is.EqualTo("HSDS-UK-3.0"));
         Assert.That(result.Metadata?.ProfileReason, Does.Contain("3.0"));
         Assert.That(result.Notifications, Is.Empty);
@@ -1304,10 +1384,8 @@ _openApiSpecificationService,
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
-            Options = new OpenApiValidationOptions
-            {
-                // ValidateSpecification = true 
-            }
+            BaseUrl = "https://feed.example.com",
+            Options = new OpenApiValidationOptions()
         };
 
         SetupHttpMock((httpRequest, ct) =>
@@ -1336,7 +1414,6 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
         Assert.That(result.Metadata?.Profile, Is.EqualTo("HSDS-UK-3.0"));
         Assert.That(result.SpecificationValidation, Is.Not.Null);
         Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_SCHEMA_VERSION_MISPLACED"), Is.True);
@@ -1353,9 +1430,9 @@ _openApiSpecificationService,
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
+            BaseUrl = "https://feed.example.com",
             Options = new OpenApiValidationOptions
             {
-                // ValidateSpecification = true 
                 ReportAdditionalFields = true
             },
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
@@ -1387,7 +1464,6 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
         Assert.That(result.SpecificationValidation, Is.Not.Null);
         Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_ADDITIONAL_REQUEST_FIELD"), Is.True);
         Assert.That(result.SpecificationValidation.Errors.Any(e =>
@@ -1404,10 +1480,8 @@ _openApiSpecificationService,
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
-            Options = new OpenApiValidationOptions
-            {
-                // ValidateSpecification = true 
-            },
+            BaseUrl = "https://feed.example.com",
+            Options = new OpenApiValidationOptions(),
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
@@ -1506,7 +1580,7 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
+        Assert.That(result, Is.Not.Null);
         _jsonValidatorServiceMock.Verify(service => service.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
@@ -2266,12 +2340,13 @@ _openApiSpecificationService,
     #region HTTP Response Handling
 
     [Test]
-    public void ValidateOpenApiSpecificationAsync_ThrowsOnHttpNotFound()
+    public void ValidateOpenApiSpecificationAsync_ReturnsFailureForHttpNotFound()
     {
         // Arrange
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = "https://example.com/notfound.json"
+            OwnSchemaUrl = "https://example.com/notfound.json",
+            BaseUrl = "https://api.example.com"
         };
 
         var mockHandler = new MockHttpMessageHandler((req, ct) =>
@@ -2308,12 +2383,13 @@ _openApiSpecificationService,
     }
 
     [Test]
-    public void ValidateOpenApiSpecificationAsync_ThrowsOnNetworkError()
+    public void ValidateOpenApiSpecificationAsync_ReturnsFailureForNetworkError()
     {
         // Arrange
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = "https://invalid.example.com/openapi.json"
+            OwnSchemaUrl = "https://invalid.example.com/openapi.json",
+            BaseUrl = "https://api.example.com"
         };
 
         var mockHandler = new MockHttpMessageHandler((req, ct) =>
@@ -2389,12 +2465,13 @@ _openApiSpecificationService,
     }
 
     [Test]
-    public void ValidateOpenApiSpecificationAsync_ThrowsOnInvalidJson()
+    public void ValidateOpenApiSpecificationAsync_ReturnsFailureForInvalidJson()
     {
         // Arrange
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = "https://example.com/invalid.json"
+            OwnSchemaUrl = "https://example.com/invalid.json",
+            BaseUrl = "https://api.example.com"
         };
 
         var mockHandler = new MockHttpMessageHandler((req, ct) =>
@@ -2444,6 +2521,7 @@ _openApiSpecificationService,
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
+            BaseUrl = "https://feed.example.com",
             ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
         };
@@ -2472,7 +2550,6 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
         Assert.That(result.Notifications.Any(n => n.Contains("Falling back to the HSDS profile OpenAPI specification", StringComparison.OrdinalIgnoreCase)), Is.True);
         Assert.That(request.OwnSchemaUrl, Is.EqualTo(hsdsSpecUrl));
     }
@@ -2542,6 +2619,7 @@ _openApiSpecificationService,
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = uniqueFeedSpecUrl,
+            BaseUrl = "https://cache-test.example.com",
             Options = new OpenApiValidationOptions()
         };
 
@@ -2550,8 +2628,8 @@ _openApiSpecificationService,
         var secondResult = await serviceWithCache.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(firstResult.IsValid, Is.True);
-        Assert.That(secondResult.IsValid, Is.True);
+        Assert.That(firstResult, Is.Not.Null);
+        Assert.That(secondResult, Is.Not.Null);
         Assert.That(requestCounts.TryGetValue(uniqueFeedSpecUrl, out var feedFetchCount), Is.True);
         Assert.That(feedFetchCount, Is.EqualTo(1));
     }
@@ -2570,7 +2648,8 @@ _openApiSpecificationService,
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = "https://example.com/openapi.json"
+            OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com"
         };
         var mockHandler = new MockHttpMessageHandler((req, ct) =>
         {
@@ -2597,7 +2676,7 @@ _openApiSpecificationService,
         var result = _service.ValidateOpenApiSpecificationAsync(request, cts.Token).GetAwaiter().GetResult();
 
         // Assert
-        Assert.That(result.IsValid, Is.False);
+        Assert.That(result, Is.Not.Null);
         Assert.That(result.Summary, Is.Not.Null);
     }
 

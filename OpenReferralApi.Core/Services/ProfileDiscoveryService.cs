@@ -14,7 +14,8 @@ public interface IProfileDiscoveryService
 {
     Task<ProfileDiscoveryResult> DiscoverFromBaseUrlAsync(
         string? ownSchemaUrl,
-        string baseUrl,
+    string? baseUrl,
+    string? profileReason = null,
         DataSourceAuthentication? authentication = null,
         CancellationToken cancellationToken = default);
 }
@@ -22,6 +23,7 @@ public interface IProfileDiscoveryService
 public sealed class ProfileDiscoveryResult
 {
     public string? HsdsProfileReason { get; init; }
+    public string? HsdsProfileSchemaUrl { get; init; }
     public string? OpenApiSchemaContent { get; init; }
     public string? HsdsProfileSchemaContent { get; init; }
     public string? HsdsProfileVersion { get; init; }
@@ -64,7 +66,8 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
 
     public async Task<ProfileDiscoveryResult> DiscoverFromBaseUrlAsync(
         string? ownSchemaUrl,
-        string baseUrl,
+        string? baseUrl,
+        string? profileReason = null,
         DataSourceAuthentication? authentication = null,
         CancellationToken cancellationToken = default)
     {
@@ -73,7 +76,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             throw new ArgumentException("Base URL must be provided", nameof(baseUrl));
         }
 
-        var normalizedBaseUrl = baseUrl.TrimEnd('/');
+        var normalizedBaseUrl = baseUrl?.TrimEnd('/');
         var needsSchema = _openApiValidationOptions.OwnSchemaValidation != OwnSchemaValidationMode.None;
 
         string? discoveredVersion = null;
@@ -81,61 +84,82 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         string? discoveryReason = null;
         bool usedDefaultProfile = false;
         
-        using var client = _httpClientFactory.CreateClient("OpenApiValidationService");
-        var probePaths = BuildDiscoveryProbePaths(ownSchemaUrl);
-
-        foreach (var path in probePaths)
+        if (!string.IsNullOrWhiteSpace(normalizedBaseUrl))
         {
-            // 1. Check if we already have everything we need to stop
-            if (discoveredVersion != null && (!needsSchema || discoveredSchema != null))
+            using var client = _httpClientFactory.CreateClient("OpenApiValidationService");
+            var probePaths = BuildDiscoveryProbePaths(ownSchemaUrl);
+
+            foreach (var path in probePaths)
             {
-                break;
-            }
-
-            var discoveryUrl = BuildAbsoluteUrl(normalizedBaseUrl, path);
-            try
-            {
-                _logger.ProbingStandardPath(TextSanitizer.SanitizeUrlForLogging(discoveryUrl));
-                using var request = new HttpRequestMessage(HttpMethod.Get, discoveryUrl);
-                ApplyAuthentication(request, authentication);
-                using var response = await client.SendAsync(request, cancellationToken);
-
-                if (!response.IsSuccessStatusCode) continue;
-
-                var content = await response.Content.ReadAsStringAsync(cancellationToken);
-
-                // 2. Extract version only if we don't have one yet
-                if (discoveredVersion == null)
+                // 1. Check if we already have everything we need to stop
+                if (discoveredVersion != null && (!needsSchema || discoveredSchema != null))
                 {
-                    discoveredVersion = TryExtractPotentialHsdsProfileVersion(content);
-                    if (discoveredVersion != null)
-                    {
-                        discoveryReason = $"HSDS version {discoveredVersion} discovered from base URL at {path}";
-                    }
+                    break;
                 }
 
-                // 3. Extract schema if required and not yet found
-                if (needsSchema && discoveredSchema == null)
+                var discoveryUrl = BuildAbsoluteUrl(normalizedBaseUrl, path);
+                try
                 {
-                    if (LooksLikeOpenApiSpec(content))
+                    _logger.ProbingStandardPath(TextSanitizer.SanitizeUrlForLogging(discoveryUrl));
+                    using var request = new HttpRequestMessage(HttpMethod.Get, discoveryUrl);
+                    ApplyAuthentication(request, authentication);
+                    using var response = await client.SendAsync(request, cancellationToken);
+
+                    if (!response.IsSuccessStatusCode) continue;
+
+                    var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                    // 2. Extract version only if we don't have one yet
+                    if (discoveredVersion == null)
                     {
-                        discoveredSchema = content;
+                        discoveredVersion = TryExtractPotentialHsdsProfileVersion(content);
+                        if (discoveredVersion != null)
+                        {
+                            discoveryReason = $"HSDS version {discoveredVersion} discovered from base URL at {path}";
+                        }
                     }
-                    else
+
+                    // 3. Extract schema if required and not yet found
+                    if (needsSchema && discoveredSchema == null)
                     {
-                        // Attempt scraping for indirect schema (UI/Config)
-                        discoveredSchema = await TryFetchIndirectSchemaAsync(client, content, normalizedBaseUrl, cancellationToken);
+                        if (LooksLikeOpenApiSpec(content))
+                        {
+                            discoveredSchema = content;
+                        }
+                        else
+                        {
+                            // Attempt scraping for indirect schema (UI/Config)
+                            discoveredSchema = await TryFetchIndirectSchemaAsync(client, content, normalizedBaseUrl, cancellationToken);
+                        }
                     }
                 }
+                catch (Exception ex)
+                {
+                    _logger.ProbeFailed(ex, TextSanitizer.SanitizeUrlForLogging(normalizedBaseUrl), path);
+                }
             }
-            catch (Exception ex)
+        }
+
+        if (string.IsNullOrWhiteSpace(discoveredVersion))
+        {
+            discoveredVersion = TryExtractProfileVersionFromProfileReason(profileReason);
+            if (!string.IsNullOrWhiteSpace(discoveredVersion))
             {
-                _logger.ProbeFailed(ex, TextSanitizer.SanitizeUrlForLogging(normalizedBaseUrl), path);
+                discoveryReason = $"HSDS version {discoveredVersion} extracted from profile reason";
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(discoveredVersion))
+        {
+            discoveredVersion = TryExtractProfileVersionFromSchemaUrl(ownSchemaUrl);
+            if (!string.IsNullOrWhiteSpace(discoveredVersion))
+            {
+                discoveryReason = $"HSDS version {discoveredVersion} extracted from schema URL";
             }
         }
 
         // if we get to here with no profile version, use the default if one is configured.
-        if (String.IsNullOrEmpty(discoveredVersion))
+        if (string.IsNullOrWhiteSpace(discoveredVersion))
         {
             var hasConfiguredDefaultProfile = TryGetDefaultProfileSchemaFallback(
                 out _,
@@ -147,18 +171,30 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                 discoveredVersion = defaultProfileVersion;
                 discoveryReason = $"Using configured default HSDS profile version: {defaultProfileVersion}";
             }
+            else
+            {
+                throw new ArgumentException(
+                    "Can only validate against known profile versions. No HSDS profile version was discovered from the base URL and no default profile is configured.");
+            }
+        }
+
+        if (!TryGetSchemaUrlForProfileVersion(discoveredVersion!, out var hsdsProfileSchemaUrl))
+        {
+            throw new ArgumentException(
+                $"Can only validate against known profile versions. Discovered profile '{discoveredVersion}' is not supported.");
         }
 
         var hsdsProfileSchemaContent = TryGetHsdsProfileSchemaContentFromCache(discoveredVersion);
-
         if (string.IsNullOrWhiteSpace(hsdsProfileSchemaContent))
         {
-            throw new ArgumentException("Failed to discover HSDS Profile version from base URL");
+            throw new ArgumentException(
+                $"Can only validate against known profile versions. Schema for profile '{discoveredVersion}' is not available in cache.");
         }
 
         return new ProfileDiscoveryResult
         {
             HsdsProfileVersion = discoveredVersion,
+            HsdsProfileSchemaUrl = hsdsProfileSchemaUrl,
             OpenApiSchemaContent = discoveredSchema,
             HsdsProfileSchemaContent = hsdsProfileSchemaContent,
             HsdsProfileReason = discoveryReason ?? "Discovery completed with available information.",
@@ -596,6 +632,48 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             JsonValueKind.False => bool.FalseString,
             _ => null
         };
+    }
+
+    private static string? TryExtractProfileVersionFromProfileReason(string? profileReason)
+    {
+        if (string.IsNullOrWhiteSpace(profileReason))
+        {
+            return null;
+        }
+
+        var match = Regex.Match(
+            profileReason,
+            @"Standard version \[user:\s*(?<profile>[^\]]+)\]",
+            RegexOptions.IgnoreCase);
+
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        var extracted = match.Groups["profile"].Value.Trim();
+        return string.IsNullOrWhiteSpace(extracted) ? null : extracted;
+    }
+
+    private static string? TryExtractProfileVersionFromSchemaUrl(string? schemaUrl)
+    {
+        if (string.IsNullOrWhiteSpace(schemaUrl))
+        {
+            return null;
+        }
+
+        var match = Regex.Match(
+            schemaUrl,
+            @"/specifications/(?<version>[^/]+)/openapi\.json",
+            RegexOptions.IgnoreCase);
+
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        var extracted = match.Groups["version"].Value.Trim();
+        return string.IsNullOrWhiteSpace(extracted) ? null : extracted;
     }
 
     private bool TryGetDefaultProfileSchemaFallback(out string schemaUrl, out string? profileVersion)

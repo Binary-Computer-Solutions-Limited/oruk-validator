@@ -196,10 +196,8 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         var specificationStage = await ExecuteSpecificationStageAsync(
             request,
             result,
-            discovery,
             profileState,
             discovery.OpenApiSchemaContent,
-            schemaResolutionIssues,
             cancellationToken);
         logMemoryCheckpoint("specification-validation");
 
@@ -242,24 +240,86 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         List<SchemaResolutionIssue> schemaResolutionIssues,
         CancellationToken cancellationToken)
     {
-        _ = schemaResolutionIssues;
-
-        var dataSourceRequestAuth = _authenticationValidationService.TryGetValidatedRequestAuthentication("datasource", request.DataSourceAuth);
-        
-        var bootstrap = await _profileDiscoveryService.DiscoverFromBaseUrlAsync(request.OwnSchemaUrl, request.BaseUrl!, dataSourceRequestAuth, cancellationToken);
-        JObject? resolvedHsdsProfileSpec = TryParseJObject(bootstrap.HsdsProfileSchemaContent);
-        var discoveredOwnOpenApiSpec = TryParseJObject(bootstrap.OpenApiSchemaContent);
-
-        if (_openApiValidationOptions.OwnSchemaValidation != OwnSchemaValidationMode.None
-            && discoveredOwnOpenApiSpec == null)
+        if (string.IsNullOrWhiteSpace(request.BaseUrl))
         {
-            result.Notifications.Add("OwnSchemaValidation is enabled, but no feed OpenAPI schema was discovered from the base URL.");
+            throw new ArgumentException("Base URL must be provided", nameof(request.BaseUrl));
         }
 
-        var openApiSpec = discoveredOwnOpenApiSpec ?? resolvedHsdsProfileSpec;
+        var dataSourceRequestAuth =
+            _authenticationValidationService.TryGetValidatedRequestAuthentication("datasource", request.DataSourceAuth);
+
+        var bootstrap = await _profileDiscoveryService.DiscoverFromBaseUrlAsync(
+            request.OwnSchemaUrl,
+            request.BaseUrl,
+            request.ProfileReason,
+            dataSourceRequestAuth,
+            cancellationToken);
+
+        var discoveredOwnOpenApiSpec = TryParseJObject(bootstrap.OpenApiSchemaContent);
+        var resolvedHsdsProfileSpec = TryParseJObject(bootstrap.HsdsProfileSchemaContent);
+
+        if (string.IsNullOrWhiteSpace(request.ProfileReason) && !string.IsNullOrWhiteSpace(bootstrap.HsdsProfileReason))
+        {
+            request.ProfileReason = bootstrap.HsdsProfileReason;
+        }
+
+        JObject? openApiSpec = discoveredOwnOpenApiSpec;
+        DataSourceAuthentication? schemaRequestAuth = null;
+
+        if (openApiSpec == null && !string.IsNullOrWhiteSpace(request.OwnSchemaUrl))
+        {
+            schemaRequestAuth =
+                _authenticationValidationService.TryGetValidatedRequestAuthentication("schema", request.DataSourceAuth);
+            try
+            {
+                openApiSpec = await GetCachedResolvedOpenApiSpecAsync(
+                    request.OwnSchemaUrl,
+                    schemaRequestAuth,
+                    cancellationToken,
+                    "feed",
+                    schemaResolutionIssues);
+            }
+            catch when (resolvedHsdsProfileSpec != null)
+            {
+                // Feed schema fetch failed, but a discovered HSDS profile schema is available as fallback.
+            }
+        }
+
+        var feedSpecFellBackToHsdsProfile = false;
+        if (openApiSpec == null && resolvedHsdsProfileSpec != null)
+        {
+            feedSpecFellBackToHsdsProfile = true;
+            openApiSpec = resolvedHsdsProfileSpec;
+
+            if (!string.IsNullOrWhiteSpace(request.OwnSchemaUrl))
+            {
+                result.Notifications.Add(
+                    "Unable to fetch OpenAPI specification from the feed URL. Falling back to the HSDS profile OpenAPI specification.");
+            }
+            else if (bootstrap.UsedDefaultProfile)
+            {
+                result.Notifications.Add(
+                    "Unable to discover feed OpenAPI specification from the base URL. Falling back to the configured default HSDS profile OpenAPI specification.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(bootstrap.HsdsProfileSchemaUrl))
+            {
+                request.OwnSchemaUrl = bootstrap.HsdsProfileSchemaUrl;
+            }
+        }
+
         if (openApiSpec == null)
         {
-            throw new ArgumentException("Failed to discover OpenAPI schema content and HSDS profile schema content from base URL");
+            throw new ArgumentException("Failed to discover OpenAPI schema URL or schema content from base URL");
+        }
+
+        if (_openApiValidationOptions.OwnSchemaValidation != OwnSchemaValidationMode.None
+            && discoveredOwnOpenApiSpec == null
+            && string.IsNullOrWhiteSpace(request.OwnSchemaUrl)
+            && !string.IsNullOrWhiteSpace(request.BaseUrl)
+            && !feedSpecFellBackToHsdsProfile)
+        {
+            result.Notifications.Add("OwnSchemaValidation is enabled, but no feed OpenAPI schema was discovered from the base URL.");
         }
 
         return new DiscoveryPreparation
@@ -270,18 +330,25 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
                 HsdsProfileSchemaContent = resolvedHsdsProfileSpec
             },
             OpenApiSchemaContent = openApiSpec,
-            FeedSpecFellBackToHsdsProfile = false,
-            DataSourceRequestAuth = dataSourceRequestAuth
+            FeedSpecFellBackToHsdsProfile = feedSpecFellBackToHsdsProfile,
+            EffectiveOwnSchemaUrl = request.OwnSchemaUrl,
+            DiscoveredOpenApiSchemaContent = bootstrap.OpenApiSchemaContent,
+            DiscoveredHsdsProfileSchemaContent = bootstrap.HsdsProfileSchemaContent,
+            HasConfiguredDefaultProfile = bootstrap.UsedDefaultProfile,
+            DefaultProfileSchemaUrl = null,
+            DefaultProfileVersion = bootstrap.UsedDefaultProfile ? bootstrap.HsdsProfileVersion : null,
+            SchemaRequestAuth = schemaRequestAuth,
+            DataSourceRequestAuth = dataSourceRequestAuth,
+            DiscoveredHsdsProfileVersion = bootstrap.HsdsProfileVersion,
+            DiscoveredHsdsProfileReason = bootstrap.HsdsProfileReason
         };
     }
 
     private async Task<SpecificationStageResult> ExecuteSpecificationStageAsync(
         OpenApiValidationRequest request,
         OpenApiValidationResult result,
-        DiscoveryPreparation discovery,
         ProfileResolutionState profileState,
         JObject openApiSchemaContent,
-        List<SchemaResolutionIssue> schemaResolutionIssues,
         CancellationToken cancellationToken)
     {
         var misplacedHsdsVersionWarning = TrySetProfileReasonFromOpenApiSpec(request, openApiSchemaContent);
@@ -309,8 +376,6 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             result.Notifications.Add(misplacedHsdsVersionWarning);
         }
 
-        _ = schemaResolutionIssues;
-        _ = cancellationToken;
         var finalProfileState = profileState;
 
         if (_openApiValidationOptions.ValidateSpecification && specValidation != null)
