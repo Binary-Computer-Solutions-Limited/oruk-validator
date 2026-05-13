@@ -80,6 +80,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         string? discoveredVersion = null;
         string? discoveredSchema = null;
         string? discoveryReason = null;
+        string? candidateOpenApiSpecContent = null;
         bool usedDefaultProfile = false;
         
         if (!string.IsNullOrWhiteSpace(normalizedBaseUrl))
@@ -106,6 +107,11 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                     if (!response.IsSuccessStatusCode) continue;
 
                     var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                    if (candidateOpenApiSpecContent == null && LooksLikeOpenApiSpec(content))
+                    {
+                        candidateOpenApiSpecContent = content;
+                    }
 
                     // 2. Extract version only if we don't have one yet
                     if (discoveredVersion == null)
@@ -144,6 +150,29 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             if (!string.IsNullOrWhiteSpace(discoveredVersion))
             {
                 discoveryReason = $"HSDS version {discoveredVersion} extracted from schema URL";
+            }
+        }
+
+        // Last resort before default profile fallback: infer profile version from OpenAPI spec content.
+        if (string.IsNullOrWhiteSpace(discoveredVersion))
+        {
+            var fallbackSpecContent = discoveredSchema ?? candidateOpenApiSpecContent;
+            var (versionFromOpenApiSpec, fromOpenapiField) = TryExtractProfileVersionFromOpenApiSpec(fallbackSpecContent);
+            if (!string.IsNullOrWhiteSpace(versionFromOpenApiSpec))
+            {
+                discoveredVersion = versionFromOpenApiSpec;
+                
+                if (fromOpenapiField)
+                {
+                    discoveryReason =
+                        $"Warning: The HSDS schema version was incorrectly defined in the 'openapi' field. " +
+                        $"Detected HSDS version {versionFromOpenApiSpec} from this field as a fallback. " +
+                        "Please use an 'x-hsds-version' field in your OpenAPI spec to declare the HSDS version.";
+                }
+                else
+                {
+                    discoveryReason = $"Standard version [user: {versionFromOpenApiSpec}] read from OpenAPI spec";
+                }
             }
         }
 
@@ -335,6 +364,58 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             return null;
         }
     }
+
+    private static (string? version, bool fromOpenapiField) TryExtractProfileVersionFromOpenApiSpec(string? openApiSpecContent)
+    {
+        if (string.IsNullOrWhiteSpace(openApiSpecContent))
+        {
+            return (null, false);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(openApiSpecContent);
+            var root = document.RootElement;
+
+            var candidateTokens = new[]
+            {
+                "x-hsds-version",
+                "version",
+                "info.x-hsds-version",
+                "info.x-profile-version"
+            };
+
+            foreach (var tokenPath in candidateTokens)
+            {
+                var tokenValue = root.TryGetPathString(tokenPath);
+                if (!string.IsNullOrWhiteSpace(tokenValue))
+                {
+                    return (tokenValue, false);
+                }
+            }
+
+            var openapiValue = root.TryGetPathString("openapi");
+            if (!string.IsNullOrWhiteSpace(openapiValue))
+            {
+                var parts = openapiValue.Split('.');
+                if (parts.Length >= 2)
+                {
+                    var majorMinor = $"{parts[0]}.{parts[1]}";
+                    if (!string.IsNullOrWhiteSpace(majorMinor))
+                    {
+                        return (majorMinor, true);
+                    }
+                }
+            }
+        }
+        catch
+        {
+            return (null, false);
+        }
+
+        return (null, false);
+    }
+
     private async Task<string?> TryFetchIndirectSchemaAsync(
     HttpClient client,
     string content,

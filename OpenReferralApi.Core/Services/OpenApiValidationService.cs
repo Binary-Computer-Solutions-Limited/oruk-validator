@@ -207,6 +207,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             profileState,
             discovery.OpenApiSchemaContent,
             profileReason,
+            discovery.MisplacedHsdsVersionWarning,
             cancellationToken);
 
         profileReason = specificationStage.ProfileReason ?? profileReason;
@@ -357,11 +358,9 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         ProfileResolutionState profileState,
         JObject openApiSchemaContent,
         string? profileReason,
+        string? misplacedHsdsVersionWarning,
         CancellationToken cancellationToken)
     {
-        var (updatedProfileReason, misplacedHsdsVersionWarning) = TrySetProfileReasonFromOpenApiSpec(profileReason, request.OwnSchemaUrl, openApiSchemaContent);
-        profileReason = updatedProfileReason;
-
         OpenApiSpecificationValidation? specValidation = null;
         List<ValidationError>? specValidationErrors = null;
         if (_openApiValidationOptions.ValidateSpecification)
@@ -611,37 +610,6 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         }
     }
 
-    private (string? profileReason, string? warning) TrySetProfileReasonFromOpenApiSpec(
-        string? profileReason,
-        string? ownSchemaUrl,
-        JObject openApiSpec)
-    {
-        if (HasExplicitProfileVersionContext(profileReason, ownSchemaUrl))
-        {
-            return (profileReason, null);
-        }
-
-        var (versionFromSpec, fromOpenapiField) = TryExtractProfileVersionFromOpenApiSpec(openApiSpec);
-        if (!string.IsNullOrWhiteSpace(versionFromSpec))
-        {
-            var updatedReason = $"Standard version [user: {versionFromSpec}] read from OpenAPI spec";
-            if (fromOpenapiField)
-            {
-                _logger.HsdsVersionMisplaced(
-                    TextSanitizer.SanitizeStringForLogging(openApiSpec.SelectToken("openapi")?.ToString() ?? string.Empty),
-                    versionFromSpec);
-                return (updatedReason,
-                    $"Warning: The HSDS schema version was incorrectly defined in the 'openapi' field. " +
-                    $"Detected HSDS version {versionFromSpec} from this field as a fallback. " +
-                    $"Please use an 'x-hsds-version' field in your OpenAPI spec to declare the HSDS version.");
-            }
-
-            return (updatedReason, null);
-        }
-
-        return (profileReason, null);
-    }
-
     private sealed class ValidationExecutionOutcome
     {
         public OpenApiSpecificationValidation? SpecificationValidation { get; init; }
@@ -665,6 +633,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         public DataSourceAuthentication? DataSourceRequestAuth { get; init; }
         public string? DiscoveredHsdsProfileVersion { get; init; }
         public string? DiscoveredHsdsProfileReason { get; init; }
+        public string? MisplacedHsdsVersionWarning { get; init; }
     }
 
     private sealed class ProfileResolutionState
@@ -1119,11 +1088,6 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             : TimeSpan.FromHours(2);
     }
 
-    private bool HasExplicitProfileVersionContext(string? profileReason, string? schemaUrl)
-    {
-        return !string.IsNullOrWhiteSpace(_hsdsComplianceService.ExtractClaimedProfileVersion(profileReason, schemaUrl));
-    }
-
     private string? ResolveMetadataProfileIdentifier(string? profileReason, string? claimedProfileVersion, string? schemaUrl)
     {
         var explicitProfileFromReason = TryExtractProfileIdentifierFromProfileReason(profileReason);
@@ -1238,44 +1202,6 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
                 StringComparison.OrdinalIgnoreCase));
     }
 
-    private static (string? version, bool fromOpenapiField) TryExtractProfileVersionFromOpenApiSpec(JObject openApiSpec)
-    {
-        var candidateTokens = new[]
-        {
-            "x-hsds-version",
-            "version",
-            "info.x-hsds-version",
-            "info.x-profile-version"
-        };
-
-        foreach (var tokenPath in candidateTokens)
-        {
-            var tokenValue = openApiSpec.SelectToken(tokenPath)?.ToString()?.Trim();
-            if (!string.IsNullOrWhiteSpace(tokenValue))
-            {
-                return (tokenValue, false);
-            }
-        }
-
-        // Last resort: use the "openapi" field (e.g. "3.0.3" -> "3.0").
-        // This is incorrect usage — the "openapi" field specifies the OpenAPI spec version,
-        // not the HSDS schema version — so we flag it as incorrectly defined.
-        var openapiValue = openApiSpec.SelectToken("openapi")?.ToString();
-        if (!string.IsNullOrWhiteSpace(openapiValue))
-        {
-            var parts = openapiValue.Split('.');
-            if (parts.Length >= 2)
-            {
-                var majorMinor = $"{parts[0]}.{parts[1]}";
-                if (!string.IsNullOrWhiteSpace(majorMinor))
-                {
-                    return (majorMinor, true);
-                }
-            }
-        }
-
-        return (null, false);
-    }
     private static Exception GetInnermostException(Exception exception)
     {
         var current = exception;

@@ -133,8 +133,7 @@ public class ProfileDiscoveryServiceTests
         var service = CreateService();
         var result = await service.DiscoverFromBaseUrlAsync(
             null,
-            "https://api.example.com",
-            profileReason: "Standard version [user: HSDS-UK-3.0] read from '/' endpoint");
+            "https://api.example.com");
 
         Assert.That(result.OpenApiSchemaContent, Does.Contain("openapi"));
     }
@@ -175,8 +174,7 @@ public class ProfileDiscoveryServiceTests
         var service = CreateService();
         var result = await service.DiscoverFromBaseUrlAsync(
             null,
-            "https://api.example.com",
-            profileReason: "Standard version [user: HSDS-UK-3.0] read from '/' endpoint");
+            "https://api.example.com");
 
         Assert.That(result.OpenApiSchemaContent, Does.Contain("openapi"));
     }

@@ -32,29 +32,11 @@ public class OpenApiValidationServiceTests
             .Setup(s => s.DiscoverFromBaseUrlAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
-                It.IsAny<string?>(),
                 It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string? ownSchemaUrl, string? baseUrl, string? profileReason, DataSourceAuthentication? _, CancellationToken _) =>
+            .ReturnsAsync((string? ownSchemaUrl, string? baseUrl, DataSourceAuthentication? _, CancellationToken _) =>
             {
                 string? profileVersion = null;
-
-                // profileReason is always null now after removal from requests, but kept for completeness
-                if (!string.IsNullOrWhiteSpace(profileReason))
-                {
-                    if (profileReason.Contains("9.9", StringComparison.OrdinalIgnoreCase))
-                    {
-                        profileVersion = null;
-                    }
-                    else if (profileReason.Contains("3.0", StringComparison.OrdinalIgnoreCase))
-                    {
-                        profileVersion = "HSDS-UK-3.0";
-                    }
-                    else if (profileReason.Contains("1.0", StringComparison.OrdinalIgnoreCase))
-                    {
-                        profileVersion = "HSDS-UK-1.0";
-                    }
-                }
 
                 if (string.IsNullOrWhiteSpace(profileVersion) && !string.IsNullOrWhiteSpace(ownSchemaUrl))
                 {
@@ -229,7 +211,6 @@ public class OpenApiValidationServiceTests
             .Setup(s => s.DiscoverFromBaseUrlAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
-                It.IsAny<string?>(),
                 It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProfileDiscoveryResult
@@ -1011,7 +992,6 @@ public class OpenApiValidationServiceTests
             .Setup(s => s.DiscoverFromBaseUrlAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
-                It.IsAny<string?>(),
                 It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProfileDiscoveryResult
@@ -1095,7 +1075,6 @@ public class OpenApiValidationServiceTests
             .Setup(s => s.DiscoverFromBaseUrlAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
-                It.IsAny<string?>(),
                 It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProfileDiscoveryResult
@@ -1203,7 +1182,7 @@ _openApiSpecificationService,
 
         var bootstrapServiceMock = new Mock<IProfileDiscoveryService>();
         bootstrapServiceMock
-            .Setup(s => s.DiscoverFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.DiscoverFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProfileDiscoveryResult
             {
                 OpenApiSchemaContent = discoveredSchemaContent
@@ -1312,7 +1291,7 @@ _openApiSpecificationService,
             s => s.TryGetValidatedRequestAuthentication("schema", It.IsAny<DataSourceAuthentication?>()),
             Times.Once);
         bootstrapServiceMock.Verify(
-            s => s.DiscoverFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()),
+            s => s.DiscoverFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
