@@ -1,21 +1,20 @@
-using Microsoft.Extensions.Logging;
-using System.Text.Json;
-using OpenReferralApi.Core.Logging;
-using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Caching.Memory;
-using OpenReferralApi.Core.Helpers;
-using OpenReferralApi.Core.Extensions;
-using System.Text.RegularExpressions;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using OpenReferralApi.Core.Extensions;
+using OpenReferralApi.Core.Helpers;
+using OpenReferralApi.Core.Logging;
 namespace OpenReferralApi.Core.Services;
 
 public interface IProfileDiscoveryService
 {
     Task<ProfileDiscoveryResult> DiscoverFromBaseUrlAsync(
         string? ownSchemaUrl,
-    string? baseUrl,
-    string? profileReason = null,
+        string? baseUrl,
         DataSourceAuthentication? authentication = null,
         CancellationToken cancellationToken = default);
 }
@@ -67,7 +66,6 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
     public async Task<ProfileDiscoveryResult> DiscoverFromBaseUrlAsync(
         string? ownSchemaUrl,
         string? baseUrl,
-        string? profileReason = null,
         DataSourceAuthentication? authentication = null,
         CancellationToken cancellationToken = default)
     {
@@ -137,15 +135,6 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                 {
                     _logger.ProbeFailed(ex, TextSanitizer.SanitizeUrlForLogging(normalizedBaseUrl), path);
                 }
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(discoveredVersion))
-        {
-            discoveredVersion = TryExtractProfileVersionFromProfileReason(profileReason);
-            if (!string.IsNullOrWhiteSpace(discoveredVersion))
-            {
-                discoveryReason = $"HSDS version {discoveredVersion} extracted from profile reason";
             }
         }
 
@@ -634,27 +623,6 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         };
     }
 
-    private static string? TryExtractProfileVersionFromProfileReason(string? profileReason)
-    {
-        if (string.IsNullOrWhiteSpace(profileReason))
-        {
-            return null;
-        }
-
-        var match = Regex.Match(
-            profileReason,
-            @"Standard version \[user:\s*(?<profile>[^\]]+)\]",
-            RegexOptions.IgnoreCase);
-
-        if (!match.Success)
-        {
-            return null;
-        }
-
-        var extracted = match.Groups["profile"].Value.Trim();
-        return string.IsNullOrWhiteSpace(extracted) ? null : extracted;
-    }
-
     private static string? TryExtractProfileVersionFromSchemaUrl(string? schemaUrl)
     {
         if (string.IsNullOrWhiteSpace(schemaUrl))
@@ -700,6 +668,4 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
 
         return true;
     }
-
-
 }

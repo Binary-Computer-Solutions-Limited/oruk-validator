@@ -264,7 +264,6 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         var bootstrap = await _profileDiscoveryService.DiscoverFromBaseUrlAsync(
             request.OwnSchemaUrl,
             request.BaseUrl,
-            null,
             dataSourceRequestAuth,
             cancellationToken);
 
