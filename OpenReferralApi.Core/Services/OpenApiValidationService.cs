@@ -198,7 +198,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             discovery.HsdsProfileVersion,
             discovery.HsdsProfileSchemaContent,
             discovery.OpenApiSchemaContent,
-            discovery.MisplacedHsdsVersionWarning,
+            discovery.DiscoveredHsdsProfileReason,
             cancellationToken);
         logMemoryCheckpoint("specification-validation");
 
@@ -307,18 +307,6 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         }
 
         var discoveredProfileVersion = bootstrap.HsdsProfileVersion;
-        string? misplacedHsdsVersionWarning = null;
-        if (string.IsNullOrWhiteSpace(discoveredProfileVersion))
-        {
-            var (profileVersionFromSpec, fromOpenapiField) = TryExtractProfileVersionFromOpenApiSpec(openApiSpec);
-            discoveredProfileVersion = profileVersionFromSpec;
-
-            if (fromOpenapiField && !string.IsNullOrWhiteSpace(profileVersionFromSpec))
-            {
-                misplacedHsdsVersionWarning =
-                    $"Warning: The HSDS schema version was incorrectly defined in the 'openapi' field (value: {profileVersionFromSpec}). The 'openapi' field specifies the OpenAPI specification version, not the HSDS schema version. Detected HSDS version {profileVersionFromSpec} — please add an 'x-hsds-version' or 'version' field to the spec.";
-            }
-        }
 
         if (_openApiValidationOptions.OwnSchemaValidation != OwnSchemaValidationMode.None
             && discoveredOwnOpenApiSpec == null
@@ -344,62 +332,8 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             SchemaRequestAuth = schemaRequestAuth,
             DataSourceRequestAuth = dataSourceRequestAuth,
             DiscoveredHsdsProfileVersion = discoveredProfileVersion,
-            DiscoveredHsdsProfileReason = bootstrap.HsdsProfileReason,
-            MisplacedHsdsVersionWarning = misplacedHsdsVersionWarning
+            DiscoveredHsdsProfileReason = bootstrap.HsdsProfileReason
         };
-    }
-
-    private static (string? Version, bool FromOpenapiField) TryExtractProfileVersionFromOpenApiSpec(JObject openApiSpec)
-    {
-        if (openApiSpec["x-hsds-version"]?.ToString() is string directVersion && !string.IsNullOrWhiteSpace(directVersion))
-        {
-            return (directVersion.Trim(), false);
-        }
-
-        if (openApiSpec["info"] is JObject infoObject)
-        {
-            var infoHsdsVersion = infoObject["x-hsds-version"]?.ToString();
-            if (!string.IsNullOrWhiteSpace(infoHsdsVersion))
-            {
-                return (infoHsdsVersion.Trim(), false);
-            }
-
-            var infoProfileVersion = infoObject["x-profile-version"]?.ToString();
-            if (!string.IsNullOrWhiteSpace(infoProfileVersion))
-            {
-                return (infoProfileVersion.Trim(), false);
-            }
-        }
-
-        var openApiValue = openApiSpec["openapi"]?.ToString();
-        if (!string.IsNullOrWhiteSpace(openApiValue))
-        {
-            var parts = openApiValue.Split('.');
-            if (parts.Length >= 2)
-            {
-                var majorMinor = $"{parts[0]}.{parts[1]}";
-                if (!string.IsNullOrWhiteSpace(majorMinor))
-                {
-                    return (majorMinor, true);
-                }
-            }
-        }
-
-        if (openApiSpec["version"]?.ToString() is string version && !string.IsNullOrWhiteSpace(version))
-        {
-            return (version.Trim(), false);
-        }
-
-        if (openApiSpec["info"] is JObject fallbackInfoObject)
-        {
-            var infoVersion = fallbackInfoObject["version"]?.ToString();
-            if (!string.IsNullOrWhiteSpace(infoVersion))
-            {
-                return (infoVersion.Trim(), false);
-            }
-        }
-
-        return (null, false);
     }
 
     private async Task<SpecificationStageResult> ExecuteSpecificationStageAsync(
@@ -408,9 +342,10 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         string? hsdsProfileVersion,
         JObject? hsdsProfileSchemaContent,
         JObject openApiSchemaContent,
-        string? misplacedHsdsVersionWarning,
+        string? profileReason,
         CancellationToken cancellationToken)
     {
+        var isMisplacedVersionWarning = profileReason?.StartsWith("Warning:", StringComparison.Ordinal) == true;
         OpenApiSpecificationValidation? specValidation = null;
         List<ValidationError>? specValidationErrors = null;
         if (_openApiValidationOptions.ValidateSpecification)
@@ -418,20 +353,20 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             specValidation = await _openApiSpecificationService.ValidateAsync(openApiSchemaContent, cancellationToken);
             specValidationErrors = new List<ValidationError>(specValidation.Errors);
 
-            if (!string.IsNullOrWhiteSpace(misplacedHsdsVersionWarning))
+            if (isMisplacedVersionWarning)
             {
                 specValidationErrors.Add(new ValidationError
                 {
                     Path = "openapi",
-                    Message = misplacedHsdsVersionWarning,
+                    Message = profileReason!,
                     ErrorCode = "HSDS_SCHEMA_VERSION_MISPLACED",
                     Severity = "Warning"
                 });
             }
         }
-        else if (!string.IsNullOrWhiteSpace(misplacedHsdsVersionWarning))
+        else if (isMisplacedVersionWarning)
         {
-            result.Notifications.Add(misplacedHsdsVersionWarning);
+            result.Notifications.Add(profileReason!);
         }
 
         if (_openApiValidationOptions.ValidateSpecification && specValidation != null)
@@ -681,7 +616,6 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         public DataSourceAuthentication? DataSourceRequestAuth { get; init; }
         public string? DiscoveredHsdsProfileVersion { get; init; }
         public string? DiscoveredHsdsProfileReason { get; init; }
-        public string? MisplacedHsdsVersionWarning { get; init; }
     }
 
     private sealed class SpecificationStageResult

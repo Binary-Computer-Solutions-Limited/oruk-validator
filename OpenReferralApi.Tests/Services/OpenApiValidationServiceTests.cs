@@ -1376,6 +1376,22 @@ _openApiSpecificationService,
             Options = new OpenApiValidationOptions()
         };
 
+        // ProfileDiscoveryService returns the warning in HsdsProfileReason when version is in the 'openapi' field
+        _openApiBootstrapServiceMock
+            .Setup(s => s.DiscoverFromBaseUrlAsync(
+                It.IsAny<string?>(),
+                It.Is<string?>(u => u != null && u.Contains("unknown-version.example.com", StringComparison.OrdinalIgnoreCase)),
+                It.IsAny<DataSourceAuthentication?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProfileDiscoveryResult
+            {
+                HsdsProfileVersion = "HSDS-UK-3.0",
+                HsdsProfileSchemaUrl = hsdsSpecUrl,
+                HsdsProfileSchemaContent = CreateHsdsProfileSpec(),
+                HsdsProfileReason = "Warning: The HSDS schema version was incorrectly defined in the 'openapi' field. Detected HSDS version HSDS-UK-3.0 from this field as a fallback. Please use an 'x-hsds-version' field in your OpenAPI spec to declare the HSDS version.",
+                UsedDefaultProfile = false
+            });
+
         SetupHttpMock((httpRequest, ct) =>
         {
             var requestUrl = httpRequest.RequestUri?.ToString();
