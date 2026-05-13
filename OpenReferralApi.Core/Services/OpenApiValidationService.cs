@@ -64,6 +64,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         var result = new OpenApiValidationResult();
         var schemaResolutionIssues = new List<SchemaResolutionIssue>();
         var memoryCheckpointTracker = new MemoryCheckpointTracker(stopwatch);
+        string? profileReason = null;
 
         void LogMemoryCheckpoint(string stage)
         {
@@ -75,8 +76,8 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             var snapshot = memoryCheckpointTracker.Capture();
             var sanitizedBaseUrl = TextSanitizer.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty);
             var profile = ResolveMetadataProfileIdentifier(
-                request.ProfileReason,
-                _hsdsComplianceService.ExtractClaimedProfileVersion(request.ProfileReason, request.OwnSchemaUrl),
+                profileReason,
+                _hsdsComplianceService.ExtractClaimedProfileVersion(profileReason, request.OwnSchemaUrl),
                 request.OwnSchemaUrl);
             var cacheState = GetResolvedOpenApiCacheState();
 
@@ -124,7 +125,10 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
                 result,
                 schemaResolutionIssues,
                 LogMemoryCheckpoint,
+                r => profileReason = r,
                 cancellationToken);
+
+            profileReason = executionOutcome.ProfileReason;
 
             result.SpecificationValidation = executionOutcome.SpecificationValidation;
             result.EndpointTests = executionOutcome.EndpointTests;
@@ -139,8 +143,8 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
                 TestTimestamp = DateTime.UtcNow,
                 TestDuration = stopwatch.Elapsed,
                 UserAgent = "OpenReferral-Validator/1.0",
-                Profile = ResolveMetadataProfileIdentifier(request.ProfileReason, executionOutcome.ClaimedProfileVersion, request.OwnSchemaUrl),
-                ProfileReason = request.ProfileReason
+                Profile = ResolveMetadataProfileIdentifier(profileReason, executionOutcome.ClaimedProfileVersion, request.OwnSchemaUrl),
+                ProfileReason = profileReason
             };
 
             _logger.OpenApiTestingCompleted(result.IsValid, result.EndpointTests.Count);
@@ -186,9 +190,13 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         OpenApiValidationResult result,
         List<SchemaResolutionIssue> schemaResolutionIssues,
         Action<string> logMemoryCheckpoint,
+        Action<string?> setProfileReason,
         CancellationToken cancellationToken)
     {
         var discovery = await PrepareValidationDiscoveryAsync(request, result, schemaResolutionIssues, cancellationToken);
+
+        var profileReason = discovery.DiscoveredHsdsProfileReason;
+        setProfileReason(profileReason);
         logMemoryCheckpoint("schema-url-discovery");
 
         var profileState = discovery.ProfileState;
@@ -198,7 +206,11 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             result,
             profileState,
             discovery.OpenApiSchemaContent,
+            profileReason,
             cancellationToken);
+
+        profileReason = specificationStage.ProfileReason ?? profileReason;
+        setProfileReason(profileReason);
         logMemoryCheckpoint("specification-validation");
 
         // Advance to the finalized profile state produced by the specification stage.
@@ -230,7 +242,8 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         {
             SpecificationValidation = result.SpecificationValidation,
             EndpointTests = endpointTests,
-            ClaimedProfileVersion = profileState.HsdsProfileVersion
+            ClaimedProfileVersion = profileState.HsdsProfileVersion,
+            ProfileReason = profileReason
         };
     }
 
@@ -251,17 +264,12 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         var bootstrap = await _profileDiscoveryService.DiscoverFromBaseUrlAsync(
             request.OwnSchemaUrl,
             request.BaseUrl,
-            request.ProfileReason,
+            null,
             dataSourceRequestAuth,
             cancellationToken);
 
         var discoveredOwnOpenApiSpec = TryParseJObject(bootstrap.OpenApiSchemaContent);
         var resolvedHsdsProfileSpec = TryParseJObject(bootstrap.HsdsProfileSchemaContent);
-
-        if (string.IsNullOrWhiteSpace(request.ProfileReason) && !string.IsNullOrWhiteSpace(bootstrap.HsdsProfileReason))
-        {
-            request.ProfileReason = bootstrap.HsdsProfileReason;
-        }
 
         JObject? openApiSpec = discoveredOwnOpenApiSpec;
         DataSourceAuthentication? schemaRequestAuth = null;
@@ -349,9 +357,11 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         OpenApiValidationResult result,
         ProfileResolutionState profileState,
         JObject openApiSchemaContent,
+        string? profileReason,
         CancellationToken cancellationToken)
     {
-        var misplacedHsdsVersionWarning = TrySetProfileReasonFromOpenApiSpec(request, openApiSchemaContent);
+        var (updatedProfileReason, misplacedHsdsVersionWarning) = TrySetProfileReasonFromOpenApiSpec(profileReason, request.OwnSchemaUrl, openApiSchemaContent);
+        profileReason = updatedProfileReason;
 
         OpenApiSpecificationValidation? specValidation = null;
         List<ValidationError>? specValidationErrors = null;
@@ -384,14 +394,16 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
                 request,
                 openApiSchemaContent,
                 finalProfileState,
-                specValidationErrors!);
+                specValidationErrors!,
+                profileReason);
         }
 
         return new SpecificationStageResult
         {
             SpecValidation = specValidation,
             SpecValidationErrors = specValidationErrors,
-            FinalProfileState = finalProfileState
+            FinalProfileState = finalProfileState,
+            ProfileReason = profileReason
         };
     }
 
@@ -399,7 +411,8 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         OpenApiValidationRequest request,
         JObject openApiSchemaContent,
         ProfileResolutionState profileState,
-        List<ValidationError> specValidationErrors)
+        List<ValidationError> specValidationErrors,
+        string? profileReason)
     {
         if (profileState.HsdsProfileSchemaContent != null)
         {
@@ -419,7 +432,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             return;
         }
 
-        var hasProfileContext = !string.IsNullOrWhiteSpace(request.ProfileReason)
+        var hasProfileContext = !string.IsNullOrWhiteSpace(profileReason)
             || !string.IsNullOrWhiteSpace(request.BaseUrl);
 
         if (hasProfileContext)
@@ -599,34 +612,35 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         }
     }
 
-    private string? TrySetProfileReasonFromOpenApiSpec(
-        OpenApiValidationRequest request,
+    private (string? profileReason, string? warning) TrySetProfileReasonFromOpenApiSpec(
+        string? profileReason,
+        string? ownSchemaUrl,
         JObject openApiSpec)
     {
-        if (HasExplicitProfileVersionContext(request.ProfileReason, request.OwnSchemaUrl))
+        if (HasExplicitProfileVersionContext(profileReason, ownSchemaUrl))
         {
-            return null;
+            return (profileReason, null);
         }
 
         var (versionFromSpec, fromOpenapiField) = TryExtractProfileVersionFromOpenApiSpec(openApiSpec);
         if (!string.IsNullOrWhiteSpace(versionFromSpec))
         {
-            request.ProfileReason = $"Standard version [user: {versionFromSpec}] read from OpenAPI spec";
+            var updatedReason = $"Standard version [user: {versionFromSpec}] read from OpenAPI spec";
             if (fromOpenapiField)
             {
                 _logger.HsdsVersionMisplaced(
                     TextSanitizer.SanitizeStringForLogging(openApiSpec.SelectToken("openapi")?.ToString() ?? string.Empty),
                     versionFromSpec);
-                return
+                return (updatedReason,
                     $"Warning: The HSDS schema version was incorrectly defined in the 'openapi' field. " +
                     $"Detected HSDS version {versionFromSpec} from this field as a fallback. " +
-                    $"Please use an 'x-hsds-version' field in your OpenAPI spec to declare the HSDS version.";
+                    $"Please use an 'x-hsds-version' field in your OpenAPI spec to declare the HSDS version.");
             }
 
-            return null;
+            return (updatedReason, null);
         }
 
-        return null;
+        return (profileReason, null);
     }
 
     private sealed class ValidationExecutionOutcome
@@ -634,6 +648,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         public OpenApiSpecificationValidation? SpecificationValidation { get; init; }
         public List<EndpointTestResult> EndpointTests { get; init; } = new();
         public string? ClaimedProfileVersion { get; init; }
+        public string? ProfileReason { get; init; }
     }
 
     private sealed class DiscoveryPreparation
@@ -664,6 +679,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         public OpenApiSpecificationValidation? SpecValidation { get; init; }
         public List<ValidationError>? SpecValidationErrors { get; init; }
         public required ProfileResolutionState FinalProfileState { get; init; }
+        public string? ProfileReason { get; init; }
     }
 
     private void CollectSchemaResolutionIssues(ICollection<SchemaResolutionIssue>? collectedIssues)

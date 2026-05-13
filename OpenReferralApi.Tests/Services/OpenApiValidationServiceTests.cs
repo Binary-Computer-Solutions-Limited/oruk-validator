@@ -39,6 +39,7 @@ public class OpenApiValidationServiceTests
             {
                 string? profileVersion = null;
 
+                // profileReason is always null now after removal from requests, but kept for completeness
                 if (!string.IsNullOrWhiteSpace(profileReason))
                 {
                     if (profileReason.Contains("9.9", StringComparison.OrdinalIgnoreCase))
@@ -65,12 +66,27 @@ public class OpenApiValidationServiceTests
                     {
                         profileVersion = "HSDS-UK-1.0";
                     }
+                    else if (ownSchemaUrl.Contains("/3.2/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        profileVersion = "HSDS-3.2";
+                    }
+                }
+
+                // Fallback: For standard test URLs, default to HSDS-UK-3.0
+                // But only if not using baseUrl that explicitly expects no profile discovery
+                if (string.IsNullOrWhiteSpace(profileVersion) && !string.IsNullOrWhiteSpace(baseUrl))
+                {
+                    if (baseUrl.Contains("feed.example.com", StringComparison.OrdinalIgnoreCase))
+                    {
+                        profileVersion = "HSDS-UK-3.0";
+                    }
                 }
 
                 var schemaUrl = profileVersion switch
                 {
                     "HSDS-UK-3.0" => "https://openreferraluk.org/specifications/3.0/openapi.json",
                     "HSDS-UK-1.0" => "https://openreferraluk.org/specifications/1.0/openapi.json",
+                    "HSDS-3.2" => ownSchemaUrl, // Return the ownSchemaUrl for custom profiles
                     _ => null
                 };
 
@@ -294,7 +310,6 @@ public class OpenApiValidationServiceTests
         {
             OwnSchemaUrl = customProfileSpecUrl,
             BaseUrl = "https://api.example.com",
-            ProfileReason = "Standard version [user: 3.2] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
         };
 
@@ -749,7 +764,6 @@ public class OpenApiValidationServiceTests
             {
                 ReportAdditionalFields = true
             },
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
         SetupHttpMock((httpRequest, ct) =>
@@ -798,7 +812,6 @@ public class OpenApiValidationServiceTests
             {
                 ReportAdditionalFields = true
             },
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
         SetupHttpMock((httpRequest, ct) =>
@@ -848,7 +861,6 @@ public class OpenApiValidationServiceTests
             {
                 ReportAdditionalFields = true
             },
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
         SetupHttpMock((httpRequest, ct) =>
@@ -895,7 +907,6 @@ public class OpenApiValidationServiceTests
             {
                 ReportAdditionalFields = false
             },
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
         SetupHttpMock((httpRequest, ct) =>
@@ -940,7 +951,6 @@ public class OpenApiValidationServiceTests
             {
                 ReportAdditionalFields = true
             },
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
         SetupHttpMock((httpRequest, ct) =>
@@ -1310,13 +1320,12 @@ _openApiSpecificationService,
     public async Task ValidateOpenApiSpecificationAsync_AddsUnknownProfileErrorWhenProfileContextCannotBeMapped()
     {
         // Arrange
-        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var feedSpecUrl = "https://unknown-profile.example.com/openapi.json";
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
-            BaseUrl = "https://feed.example.com",
+            BaseUrl = "https://unknown-profile.example.com",
             Options = new OpenApiValidationOptions(),
-            ProfileReason = "Standard version [user: 9.9] read from '/' endpoint"
         };
 
         SetupHttpMock(CreateOpenApi30Spec());
@@ -1379,12 +1388,12 @@ _openApiSpecificationService,
     public async Task ValidateOpenApiSpecificationAsync_ExtractsProfileVersionFromOpenApiFieldAndWarns()
     {
         // Arrange
-        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var feedSpecUrl = "https://unknown-version.example.com/openapi.json";
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
-            BaseUrl = "https://feed.example.com",
+            BaseUrl = "https://unknown-version.example.com",
             Options = new OpenApiValidationOptions()
         };
 
@@ -1435,7 +1444,6 @@ _openApiSpecificationService,
             {
                 ReportAdditionalFields = true
             },
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
         SetupHttpMock((httpRequest, ct) =>
@@ -1482,7 +1490,6 @@ _openApiSpecificationService,
             OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
             Options = new OpenApiValidationOptions(),
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
         _schemaResolverServiceMock
@@ -1547,7 +1554,6 @@ _openApiSpecificationService,
         {
             OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
         };
 
@@ -1678,7 +1684,6 @@ _openApiSpecificationService,
         {
             OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
         };
 
@@ -1820,7 +1825,6 @@ _openApiSpecificationService,
         {
             OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
         };
 
@@ -2034,7 +2038,6 @@ _openApiSpecificationService,
         {
             OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
         };
 
@@ -2123,7 +2126,6 @@ _openApiSpecificationService,
         {
             OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
         };
 
@@ -2178,7 +2180,7 @@ _openApiSpecificationService,
     public async Task ValidateOpenApiSpecificationAsync_WhenOwnSchemaValidationNone_AndNoHsdsProfileAvailable_FallsBackToFeedSpec()
     {
         // Arrange
-        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var feedSpecUrl = "https://unknown-version.example.com/openapi.json";
         Newtonsoft.Json.Linq.JObject? capturedSpec = null;
 
         var hsdsComplianceServiceMock = new Mock<IHsdsComplianceService>();
@@ -2206,7 +2208,7 @@ _openApiSpecificationService,
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
-            BaseUrl = "https://feed.example.com",
+            BaseUrl = "https://unknown-version.example.com",
             Options = new OpenApiValidationOptions()
         };
 
@@ -2280,7 +2282,6 @@ _openApiSpecificationService,
         {
             OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
         };
 
@@ -2522,7 +2523,6 @@ _openApiSpecificationService,
         {
             OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
         };
 
@@ -3000,7 +3000,6 @@ _openApiSpecificationService,
         {
             OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
         };
 

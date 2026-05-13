@@ -44,10 +44,4 @@ public class OpenApiValidationRequest
     [JsonProperty("options")]
     public OpenApiValidationOptions? Options { get; set; }
 
-    /// <summary>
-    /// Internal property to pass the profile discovery reason from discovery to validation.
-    /// This is not part of the public API request and should not be set by clients.
-    /// </summary>
-    [System.Text.Json.Serialization.JsonIgnore]
-    public string? ProfileReason { get; set; }
 }
