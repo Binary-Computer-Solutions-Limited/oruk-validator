@@ -188,7 +188,6 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
     {
         // Step 1: Discovery and preparation of OpenAPI schema content, HSDS profile schemas, and related metadata.
         var discovery = await PrepareValidationDiscoveryAsync(request, result, schemaResolutionIssues, cancellationToken);
-
         logMemoryCheckpoint("schema-url-discovery");
 
         // Step 2: Specification validation, including comparison against any discovered HSDS profile schema to produce profile compliance findings.
@@ -202,6 +201,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             cancellationToken);
         logMemoryCheckpoint("specification-validation");
 
+        // Step 3: Endpoint testing.
         var endpointTests = await ExecuteEndpointTestingAsync(
             request,
             result,
@@ -213,8 +213,10 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             cancellationToken);
         logMemoryCheckpoint("endpoint-testing");
 
+        // Step 4: Finalize specification validation.
         FinalizeSpecificationValidation(result, schemaResolutionIssues, specificationStage);
 
+        // Step 5: Full HSDS runtime validation.
         await ExecuteFullHsdsRuntimeValidationAsync(
             request,
             result,
@@ -224,6 +226,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             cancellationToken);
         logMemoryCheckpoint("full-hsds-runtime");
 
+        // The endpoint test results may have been mutated by the full HSDS runtime validation step, so we use the (potentially) updated results in the final shaping and summary generation steps.
         return new ValidationExecutionOutcome
         {
             SpecificationValidation = result.SpecificationValidation,
