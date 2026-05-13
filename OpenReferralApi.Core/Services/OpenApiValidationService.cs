@@ -191,27 +191,23 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
 
         logMemoryCheckpoint("schema-url-discovery");
 
-        var profileState = discovery.ProfileState;
-
         // Step 2: Specification validation, including comparison against any discovered HSDS profile schema to produce profile compliance findings.
         var specificationStage = await ExecuteSpecificationStageAsync(
             request,
             result,
-            profileState,
+            discovery.HsdsProfileVersion,
+            discovery.HsdsProfileSchemaContent,
             discovery.OpenApiSchemaContent,
             discovery.MisplacedHsdsVersionWarning,
             cancellationToken);
         logMemoryCheckpoint("specification-validation");
-
-        // Advance to the finalized profile state produced by the specification stage.
-        profileState = specificationStage.FinalProfileState;
 
         var endpointTests = await ExecuteEndpointTestingAsync(
             request,
             result,
             discovery.DataSourceRequestAuth,
             discovery.OpenApiSchemaContent,
-            profileState.HsdsProfileSchemaContent,
+            specificationStage.HsdsProfileSchemaContent,
             specificationStage.SpecValidation,
             specificationStage.SpecValidationErrors,
             cancellationToken);
@@ -224,7 +220,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             result,
             endpointTests,
             discovery.FeedSpecFellBackToHsdsProfile,
-            profileState.HsdsProfileSchemaContent,
+            specificationStage.HsdsProfileSchemaContent,
             cancellationToken);
         logMemoryCheckpoint("full-hsds-runtime");
 
@@ -335,11 +331,8 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
 
         return new DiscoveryPreparation
         {
-            ProfileState = new ProfileResolutionState
-            {
-                HsdsProfileVersion = discoveredProfileVersion,
-                HsdsProfileSchemaContent = resolvedHsdsProfileSpec
-            },
+            HsdsProfileVersion = discoveredProfileVersion,
+            HsdsProfileSchemaContent = resolvedHsdsProfileSpec,
             OpenApiSchemaContent = openApiSpec,
             FeedSpecFellBackToHsdsProfile = feedSpecFellBackToHsdsProfile,
             EffectiveOwnSchemaUrl = request.OwnSchemaUrl,
@@ -412,7 +405,8 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
     private async Task<SpecificationStageResult> ExecuteSpecificationStageAsync(
         OpenApiValidationRequest request,
         OpenApiValidationResult result,
-        ProfileResolutionState profileState,
+        string? hsdsProfileVersion,
+        JObject? hsdsProfileSchemaContent,
         JObject openApiSchemaContent,
         string? misplacedHsdsVersionWarning,
         CancellationToken cancellationToken)
@@ -440,36 +434,34 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             result.Notifications.Add(misplacedHsdsVersionWarning);
         }
 
-        var finalProfileState = profileState;
-
         if (_openApiValidationOptions.ValidateSpecification && specValidation != null)
         {
             ApplySpecificationComparisonAgainstProfile(
                 request,
                 openApiSchemaContent,
-                finalProfileState,
+                hsdsProfileSchemaContent,
                 specValidationErrors!,
-                profileState.HsdsProfileVersion);
+                hsdsProfileVersion);
         }
 
         return new SpecificationStageResult
         {
             SpecValidation = specValidation,
             SpecValidationErrors = specValidationErrors,
-            FinalProfileState = finalProfileState
+            HsdsProfileSchemaContent = hsdsProfileSchemaContent
         };
     }
 
     private void ApplySpecificationComparisonAgainstProfile(
         OpenApiValidationRequest request,
         JObject openApiSchemaContent,
-        ProfileResolutionState profileState,
+        JObject? hsdsProfileSchemaContent,
         List<ValidationError> specValidationErrors,
         string? profileVersion)
     {
-        if (profileState.HsdsProfileSchemaContent != null)
+        if (hsdsProfileSchemaContent != null)
         {
-            var profileComplianceFindings = _hsdsComplianceService.CompareFeedSpecAgainstHsdsProfile(openApiSchemaContent, profileState.HsdsProfileSchemaContent);
+            var profileComplianceFindings = _hsdsComplianceService.CompareFeedSpecAgainstHsdsProfile(openApiSchemaContent, hsdsProfileSchemaContent);
             if (!request.Options!.ReportAdditionalFields)
             {
                 profileComplianceFindings = profileComplianceFindings
@@ -675,7 +667,8 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
 
     private sealed class DiscoveryPreparation
     {
-        public required ProfileResolutionState ProfileState { get; init; }
+        public string? HsdsProfileVersion { get; init; }
+        public JObject? HsdsProfileSchemaContent { get; init; }
         public required JObject OpenApiSchemaContent { get; init; }
         public bool FeedSpecFellBackToHsdsProfile { get; init; }
         public string? EffectiveOwnSchemaUrl { get; init; }
@@ -691,17 +684,11 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         public string? MisplacedHsdsVersionWarning { get; init; }
     }
 
-    private sealed class ProfileResolutionState
-    {
-        public string? HsdsProfileVersion { get; init; }
-        public JObject? HsdsProfileSchemaContent { get; init; }
-    }
-
     private sealed class SpecificationStageResult
     {
         public OpenApiSpecificationValidation? SpecValidation { get; init; }
         public List<ValidationError>? SpecValidationErrors { get; init; }
-        public required ProfileResolutionState FinalProfileState { get; init; }
+        public JObject? HsdsProfileSchemaContent { get; init; }
     }
 
     private void CollectSchemaResolutionIssues(ICollection<SchemaResolutionIssue>? collectedIssues)
