@@ -13,7 +13,7 @@ namespace OpenReferralApi.Core.Services;
 public interface IProfileDiscoveryService
 {
     Task<ProfileDiscoveryResult> DiscoverFromBaseUrlAsync(
-        string ownSchemaUrl,
+        string? ownSchemaUrl,
         string baseUrl,
         DataSourceAuthentication? authentication = null,
         CancellationToken cancellationToken = default);
@@ -63,7 +63,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
     }
 
     public async Task<ProfileDiscoveryResult> DiscoverFromBaseUrlAsync(
-        string ownSchemaUrl,
+        string? ownSchemaUrl,
         string baseUrl,
         DataSourceAuthentication? authentication = null,
         CancellationToken cancellationToken = default)
@@ -82,7 +82,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         bool usedDefaultProfile = false;
         
         using var client = _httpClientFactory.CreateClient("OpenApiValidationService");
-        var probePaths = BuildDiscoveryProbePaths();
+        var probePaths = BuildDiscoveryProbePaths(ownSchemaUrl);
 
         foreach (var path in probePaths)
         {
@@ -235,13 +235,19 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         }
     }
 
-    private static IReadOnlyList<string> BuildDiscoveryProbePaths()
+    private static IReadOnlyList<string> BuildDiscoveryProbePaths(string? ownSchemaUrl = null)
     {
-        return ExpandSpecPaths(Constants.OpenApiDocumentProbePaths)
+        var paths = ExpandSpecPaths(Constants.OpenApiDocumentProbePaths)
             .Concat(Constants.SwaggerConfigProbePaths)
             .Concat(Constants.DocumentationUiProbePaths)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(ownSchemaUrl))
+        {
+            paths = new[] { ownSchemaUrl }.Concat(paths).Distinct(StringComparer.OrdinalIgnoreCase);
+        }
+
+        return paths.ToArray();
     }
 
     private static IEnumerable<string> ExpandSpecPaths(IEnumerable<string> basePaths)
@@ -513,9 +519,13 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
 
     private static string BuildAbsoluteUrl(string baseUrl, string relativePath)
     {
-        return string.IsNullOrWhiteSpace(relativePath)
-            ? baseUrl
-            : $"{baseUrl}/{relativePath.TrimStart('/')}";
+        if (string.IsNullOrWhiteSpace(relativePath))
+            return baseUrl;
+
+        if (Uri.IsWellFormedUriString(relativePath, UriKind.Absolute))
+            return relativePath;
+
+        return $"{baseUrl}/{relativePath.TrimStart('/')}";
     }
 
     private static void ApplyAuthentication(HttpRequestMessage request, IAuthenticationConfig? auth)
