@@ -743,31 +743,6 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         return !error.ErrorCode.StartsWith("HSDS_ADDITIONAL_", StringComparison.OrdinalIgnoreCase);
     }
 
-    private bool TryGetDefaultProfileSchemaFallback(out string schemaUrl, out string? profileVersion)
-    {
-        schemaUrl = string.Empty;
-        profileVersion = null;
-
-        if (string.IsNullOrWhiteSpace(_specificationOptions.DefaultProfileVersion) || _specificationOptions.Urls.Count == 0)
-        {
-            return false;
-        }
-
-        var configuredDefaultKey = _specificationOptions.DefaultProfileVersion.Trim();
-        if (!_specificationOptions.Urls.TryGetValue(configuredDefaultKey, out var configuredDefaultSchemaUrl)
-            || string.IsNullOrWhiteSpace(configuredDefaultSchemaUrl)
-            || !Uri.IsWellFormedUriString(configuredDefaultSchemaUrl, UriKind.Absolute))
-        {
-            _logger.InvalidDefaultProfileVersion(TextSanitizer.SanitizeStringForLogging(configuredDefaultKey));
-            return false;
-        }
-
-        schemaUrl = configuredDefaultSchemaUrl;
-        profileVersion = configuredDefaultKey;
-
-        return true;
-    }
-
     private static JObject? TryParseJObject(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
