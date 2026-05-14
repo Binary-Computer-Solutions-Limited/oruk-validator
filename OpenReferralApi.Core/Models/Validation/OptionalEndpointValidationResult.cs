@@ -1,4 +1,4 @@
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace OpenReferralApi.Core.Models.Validation;
 
@@ -7,24 +7,24 @@ namespace OpenReferralApi.Core.Models.Validation;
 /// </summary>
 public class OptionalEndpointValidationResult
 {
-    [JsonProperty("isOptional")]
+    [JsonPropertyName("isOptional")]
     public bool IsOptional { get; set; }
 
-    [JsonProperty("validationStatus")]
+    [JsonPropertyName("validationStatus")]
     public OptionalEndpointStatus ValidationStatus { get; set; }
 
-    [JsonProperty("statusCode")]
+    [JsonPropertyName("statusCode")]
     public int StatusCode { get; set; }
 
-    [JsonProperty("category")]
+    [JsonPropertyName("category")]
     public string? Category { get; set; }
 
-    [JsonProperty("isValid")]
+    [JsonPropertyName("isValid")]
     public bool IsValid { get; set; }
 
-    [JsonProperty("requiresSchemaValidation")]
+    [JsonPropertyName("requiresSchemaValidation")]
     public bool RequiresSchemaValidation { get; set; }
 
-    [JsonProperty("message")]
+    [JsonPropertyName("message")]
     public string Message { get; set; } = string.Empty;
 }

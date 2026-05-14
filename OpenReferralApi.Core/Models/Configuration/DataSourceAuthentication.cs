@@ -1,5 +1,5 @@
 using System.ComponentModel;
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace OpenReferralApi.Core.Models.Configuration;
 
@@ -9,20 +9,20 @@ namespace OpenReferralApi.Core.Models.Configuration;
 public class DataSourceAuthentication : IAuthenticationConfig
 {
     [DefaultValue("")]
-    [JsonProperty("apiKey")]
+    [JsonPropertyName("apiKey")]
     public string? ApiKey { get; set; }
 
     [DefaultValue("X-API-Key")]
-    [JsonProperty("apiKeyHeader")]
+    [JsonPropertyName("apiKeyHeader")]
     public string ApiKeyHeader { get; set; } = "X-API-Key";
 
     [DefaultValue("")]
-    [JsonProperty("bearerToken")]
+    [JsonPropertyName("bearerToken")]
     public string? BearerToken { get; set; }
 
-    [JsonProperty("basicAuth")]
+    [JsonPropertyName("basicAuth")]
     public BasicAuthentication? BasicAuth { get; set; }
 
-    [JsonProperty("customHeaders")]
+    [JsonPropertyName("customHeaders")]
     public Dictionary<string, string>? CustomHeaders { get; set; } = new();
 }

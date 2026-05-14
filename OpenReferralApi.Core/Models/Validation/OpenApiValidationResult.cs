@@ -1,4 +1,4 @@
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace OpenReferralApi.Core.Models.Validation;
 
@@ -13,7 +13,7 @@ public class OpenApiValidationResult
     /// False if any critical errors are found in specification validation or endpoint testing
     /// Use Summary property for detailed breakdown of success/failure counts
     /// </summary>
-    [JsonProperty("isValid")]
+    [JsonPropertyName("isValid")]
     public bool IsValid { get; set; }
 
     /// <summary>
@@ -21,7 +21,7 @@ public class OpenApiValidationResult
     /// Includes timestamps, API information, testing configuration, and version details
     /// Helpful for audit trails, debugging, and result correlation
     /// </summary>
-    [JsonProperty("metadata")]
+    [JsonPropertyName("metadata")]
     public CommonValidationMetadata? Metadata { get; set; }
 
     /// <summary>
@@ -29,7 +29,7 @@ public class OpenApiValidationResult
     /// Includes schema compliance, security analysis, quality metrics, and recommendations
     /// Null if specification validation was disabled in options
     /// </summary>
-    [JsonProperty("specificationValidation")]
+    [JsonPropertyName("specificationValidation")]
     public OpenApiSpecificationValidation? SpecificationValidation { get; set; }
 
     /// <summary>
@@ -37,7 +37,7 @@ public class OpenApiValidationResult
     /// Each item represents one endpoint (path + method combination) with detailed test results
     /// Empty list if endpoint testing was disabled or no testable endpoints were found
     /// </summary>
-    [JsonProperty("endpointTests")]
+    [JsonPropertyName("endpointTests")]
     public List<EndpointTestResult> EndpointTests { get; set; } = new();
 
     /// <summary>
@@ -45,7 +45,7 @@ public class OpenApiValidationResult
     /// Provides quick overview of success rates, performance metrics, and overall health
     /// Useful for dashboards, reports, and automated decision making
     /// </summary>
-    [JsonProperty("summary")]
+    [JsonPropertyName("summary")]
     public OpenApiValidationSummary Summary { get; set; } = new();
 
     /// <summary>
@@ -53,13 +53,13 @@ public class OpenApiValidationResult
     /// Includes specification validation, endpoint discovery, and all HTTP requests
     /// Useful for performance monitoring and optimization
     /// </summary>
-    [JsonProperty("duration")]
+    [JsonPropertyName("duration")]
     public TimeSpan Duration { get; set; }
 
     /// <summary>
     /// User-facing notifications about non-validation failures encountered during processing.
     /// Includes issues such as failing to fetch or resolve the OpenAPI specification.
     /// </summary>
-    [JsonProperty("notifications")]
+    [JsonPropertyName("notifications")]
     public List<string> Notifications { get; set; } = new();
 }

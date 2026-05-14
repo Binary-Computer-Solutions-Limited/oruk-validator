@@ -1,5 +1,5 @@
 using System.ComponentModel;
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace OpenReferralApi.Core.Models.Configuration;
 
@@ -29,7 +29,7 @@ public class OpenApiValidationOptions : ValidationOptionsBase
     /// Must be explicitly set to true to include response bodies in validation results.
     /// </summary>
     [DefaultValue(false)]
-    [JsonProperty("includeResponseBody")]
+    [JsonPropertyName("includeResponseBody")]
     public bool IncludeResponseBody { get; set; } = false;
 
     /// <summary>
@@ -39,7 +39,7 @@ public class OpenApiValidationOptions : ValidationOptionsBase
     /// Must be explicitly set to true to include detailed test results in validation output.
     /// Note: This only affects the TestResults collection; summary information and validation errors are always included.
     /// </summary>
-    [JsonProperty("includeTestResults")]
+    [JsonPropertyName("includeTestResults")]
     public bool IncludeTestResults { get; set; } = true;
 }
 
@@ -80,7 +80,7 @@ public class OpenApiValidationServerOptions
     /// Includes schema validation, security analysis, and quality metrics
     /// Recommended to keep enabled for comprehensive validation
     /// </summary>
-    [JsonProperty("validateSpecification")]
+    [JsonPropertyName("validateSpecification")]
     public bool ValidateSpecification { get; set; } = true;
 
     /// <summary>

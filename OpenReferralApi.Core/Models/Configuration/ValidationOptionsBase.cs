@@ -1,18 +1,18 @@
 using System.ComponentModel;
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace OpenReferralApi.Core.Models.Configuration;
 
 public abstract class ValidationOptionsBase
 {
     [DefaultValue(30)]
-    [JsonProperty("timeoutSeconds")]
+    [JsonPropertyName("timeoutSeconds")]
     public int TimeoutSeconds { get; set; } = 30;
 
     [DefaultValue(5)]
-    [JsonProperty("maxConcurrentRequests")]
+    [JsonPropertyName("maxConcurrentRequests")]
     public int MaxConcurrentRequests { get; set; } = 5;
 
-    [JsonProperty("reportAdditionalFields")]
+    [JsonPropertyName("reportAdditionalFields")]
     public bool ReportAdditionalFields { get; set; } = false;
 }

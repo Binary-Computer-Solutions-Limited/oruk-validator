@@ -1,4 +1,5 @@
-using Newtonsoft.Json.Linq;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using OpenReferralApi.Core.Services;
 
 namespace OpenReferralApi.Tests.Services;
@@ -45,7 +46,7 @@ public class OpenReferralUKValidationResponseMapperTests
 
         // Assert
         Assert.That(response, Is.Not.Null);
-        var json = JObject.FromObject(response);
+        var json = JsonSerializer.SerializeToNode(response)!.AsObject();
         Assert.That(json["service"], Is.Not.Null);
         Assert.That(json["testSuites"], Is.Not.Null);
         Assert.That(json["specificationValidation"], Is.Not.Null);
@@ -80,8 +81,8 @@ public class OpenReferralUKValidationResponseMapperTests
         var response = _mapper.MapToOpenReferralUKValidationResponse(result);
 
         // Assert
-        var json = JObject.FromObject(response);
-        var testSuites = json["testSuites"] as JArray;
+        var json = JsonSerializer.SerializeToNode(response)!.AsObject();
+        var testSuites = json["testSuites"] as JsonArray;
         Assert.That(testSuites, Is.Not.Null);
         Assert.That(testSuites, Is.Empty);
     }
@@ -110,7 +111,7 @@ public class OpenReferralUKValidationResponseMapperTests
 
         // Assert
         Assert.That(response, Is.Not.Null);
-        var json = JObject.FromObject(response);
+        var json = JsonSerializer.SerializeToNode(response)!.AsObject();
         Assert.That(json["service"]!["url"]!.ToString(), Is.EqualTo(""));
     }
 
@@ -193,18 +194,18 @@ public class OpenReferralUKValidationResponseMapperTests
         var response = _mapper.MapToOpenReferralUKValidationResponse(result);
 
         // Assert
-        var json = JObject.FromObject(response);
+        var json = JsonSerializer.SerializeToNode(response)!.AsObject();
         var specValidation = json["specificationValidation"];
 
         Assert.That(specValidation, Is.Not.Null);
-        Assert.That(specValidation!["isValid"]!.Value<bool>(), Is.False);
-        Assert.That(specValidation["version"]!.Value<string>(), Is.EqualTo("3.0.0"));
+        Assert.That(specValidation!["isValid"]!.GetValue<bool>(), Is.False);
+        Assert.That(specValidation["version"]!.GetValue<string>(), Is.EqualTo("3.0.0"));
 
-        var errors = specValidation["errors"] as JArray;
+        var errors = specValidation["errors"] as JsonArray;
         Assert.That(errors, Is.Not.Null);
         Assert.That(errors!.Count, Is.EqualTo(1));
-        Assert.That(errors[0]!["name"]!.Value<string>(), Is.EqualTo("HSDS_MISSING_ENDPOINT"));
-        Assert.That(errors[0]!["errorIn"]!.Value<string>(), Is.EqualTo("paths.GET /organizations"));
+        Assert.That(errors[0]!["name"]!.GetValue<string>(), Is.EqualTo("HSDS_MISSING_ENDPOINT"));
+        Assert.That(errors[0]!["errorIn"]!.GetValue<string>(), Is.EqualTo("paths.GET /organizations"));
     }
 
     [Test]
@@ -244,17 +245,17 @@ public class OpenReferralUKValidationResponseMapperTests
         var response = _mapper.MapToOpenReferralUKValidationResponse(result);
 
         // Assert
-        var json = JObject.FromObject(response);
-        var suites = json["testSuites"] as JArray;
+        var json = JsonSerializer.SerializeToNode(response)!.AsObject();
+        var suites = json["testSuites"] as JsonArray;
 
         Assert.That(suites, Is.Not.Null);
         Assert.That(suites!.Count, Is.EqualTo(2));
-        Assert.That(suites[0]!["name"]!.Value<string>(), Is.EqualTo("Level 1 Compliance - Basic checks"));
-        Assert.That(suites[0]!["required"]!.Value<bool>(), Is.True);
-        Assert.That(suites[0]!["messageLevel"]!.Value<string>(), Is.EqualTo("error"));
-        Assert.That(suites[1]!["name"]!.Value<string>(), Is.EqualTo("Level 2 Compliance - Extended checks"));
-        Assert.That(suites[1]!["required"]!.Value<bool>(), Is.False);
-        Assert.That(suites[1]!["messageLevel"]!.Value<string>(), Is.EqualTo("warning"));
+        Assert.That(suites[0]!["name"]!.GetValue<string>(), Is.EqualTo("Level 1 Compliance - Basic checks"));
+        Assert.That(suites[0]!["required"]!.GetValue<bool>(), Is.True);
+        Assert.That(suites[0]!["messageLevel"]!.GetValue<string>(), Is.EqualTo("error"));
+        Assert.That(suites[1]!["name"]!.GetValue<string>(), Is.EqualTo("Level 2 Compliance - Extended checks"));
+        Assert.That(suites[1]!["required"]!.GetValue<bool>(), Is.False);
+        Assert.That(suites[1]!["messageLevel"]!.GetValue<string>(), Is.EqualTo("warning"));
     }
 
     [Test]
@@ -378,12 +379,12 @@ public class OpenReferralUKValidationResponseMapperTests
         var response = _mapper.MapToOpenReferralUKValidationResponse(result);
 
         // Assert
-        var json = JObject.FromObject(response);
-        var messages = json["testSuites"]![0]!["tests"]![0]!["messages"] as JArray;
+        var json = JsonSerializer.SerializeToNode(response)!.AsObject();
+        var messages = json["testSuites"]![0]!["tests"]![0]!["messages"] as JsonArray;
 
         Assert.That(messages, Is.Not.Null);
         Assert.That(messages!.Count, Is.EqualTo(1));
-        Assert.That(messages[0]!["errorIn"]!.Value<string>(), Is.EqualTo(duplicatePath));
+        Assert.That(messages[0]!["errorIn"]!.GetValue<string>(), Is.EqualTo(duplicatePath));
     }
 
     [Test]
@@ -417,13 +418,13 @@ public class OpenReferralUKValidationResponseMapperTests
         var response = _mapper.MapToOpenReferralUKValidationResponse(result);
 
         // Assert
-        var json = JObject.FromObject(response);
-        var messages = json["testSuites"]![0]!["tests"]![0]!["messages"] as JArray;
+        var json = JsonSerializer.SerializeToNode(response)!.AsObject();
+        var messages = json["testSuites"]![0]!["tests"]![0]!["messages"] as JsonArray;
 
         Assert.That(messages, Is.Not.Null);
         Assert.That(messages!.Count, Is.EqualTo(1));
-        Assert.That(messages[0]!["name"]!.Value<string>(), Is.EqualTo("Performance"));
-        Assert.That(messages[0]!["description"]!.Value<string>(), Is.EqualTo("Warning"));
-        Assert.That(messages[0]!["message"]!.Value<string>(), Does.Contain("Average response time is 6500ms"));
+        Assert.That(messages[0]!["name"]!.GetValue<string>(), Is.EqualTo("Performance"));
+        Assert.That(messages[0]!["description"]!.GetValue<string>(), Is.EqualTo("Warning"));
+        Assert.That(messages[0]!["message"]!.GetValue<string>(), Does.Contain("Average response time is 6500ms"));
     }
 }

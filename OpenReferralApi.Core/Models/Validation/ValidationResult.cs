@@ -1,4 +1,4 @@
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace OpenReferralApi.Core.Models.Validation;
 
@@ -15,10 +15,10 @@ public interface IMetadata
 /// </summary>
 public abstract class ValidationResultBase
 {
-    [JsonProperty("isValid")]
+    [JsonPropertyName("isValid")]
     public bool IsValid { get; set; }
 
-    [JsonProperty("errors")]
+    [JsonPropertyName("errors")]
     public List<ValidationError> Errors { get; set; } = new();
 
 }
@@ -26,37 +26,37 @@ public abstract class ValidationResultBase
 public class ValidationResult : ValidationResultBase
 {
 
-    [JsonProperty("duration")]
+    [JsonPropertyName("duration")]
     public TimeSpan Duration { get; set; }
 
-    [JsonProperty("schemaVersion")]
+    [JsonPropertyName("schemaVersion")]
     public string? SchemaVersion { get; set; }
 
-    [JsonProperty("metadata")]
+    [JsonPropertyName("metadata")]
     public CommonValidationMetadata? Metadata { get; set; }
 }
 
 public class ValidationError
 {
-    [JsonProperty("path")]
+    [JsonPropertyName("path")]
     public string Path { get; set; } = string.Empty;
 
-    [JsonProperty("message")]
+    [JsonPropertyName("message")]
     public string Message { get; set; } = string.Empty;
 
-    [JsonProperty("errorCode")]
+    [JsonPropertyName("errorCode")]
     public string ErrorCode { get; set; } = string.Empty;
 
-    [JsonProperty("severity")]
+    [JsonPropertyName("severity")]
     public string Severity { get; set; } = "Error";
 
-    [JsonProperty("lineNumber")]
+    [JsonPropertyName("lineNumber")]
     public int? LineNumber { get; set; }
 
-    [JsonProperty("columnNumber")]
+    [JsonPropertyName("columnNumber")]
     public int? ColumnNumber { get; set; }
 
-    [JsonProperty("sourceIdentifier")]
+    [JsonPropertyName("sourceIdentifier")]
     public string? SourceIdentifier { get; set; }
 }
 

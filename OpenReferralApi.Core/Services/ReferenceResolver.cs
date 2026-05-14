@@ -89,7 +89,7 @@ public class ReferenceResolver
 
                     // If internal reference resolution failed (returned null), keep the original $ref
                     // This prevents null values from being inserted into schema structures like allOf arrays
-                    // where Newtonsoft.Json.Schema cannot handle them
+                    // where downstream schema validators cannot handle them
                     if (resolved == null)
                     {
                         _logger.CouldNotResolveInternalReference(refString);

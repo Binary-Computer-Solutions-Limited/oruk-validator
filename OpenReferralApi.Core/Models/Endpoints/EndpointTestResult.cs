@@ -1,4 +1,4 @@
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace OpenReferralApi.Core.Models.Endpoints;
 
@@ -46,68 +46,68 @@ public class EndpointTestResult
     /// The URL path of the endpoint being tested (e.g., "/users/{id}", "/orders")
     /// Used to identify which endpoint this result corresponds to
     /// </summary>
-    [JsonProperty("path")]
+    [JsonPropertyName("path")]
     public string Path { get; set; } = string.Empty;
 
     /// <summary>
     /// The HTTP method used for testing this endpoint (e.g., "GET", "POST", "PUT")
     /// Distinguishes between different operations on the same path
     /// </summary>
-    [JsonProperty("method")]
+    [JsonPropertyName("method")]
     public string Method { get; set; } = string.Empty;
 
     /// <summary>
     /// The unique operation identifier from the OpenAPI specification, if provided
     /// Useful for referencing specific operations and generating code/documentation
     /// </summary>
-    [JsonProperty("operationId")]
+    [JsonPropertyName("operationId")]
     public string? OperationId { get; set; }
 
     /// <summary>
     /// The name of the endpoint as defined in the OpenAPI specification
     /// </summary>
-    [JsonProperty("name")]
+    [JsonPropertyName("name")]
     public string? Name { get; internal set; }
 
     /// <summary>
     /// Brief description of what this endpoint does, extracted from the OpenAPI specification
     /// Provides context for understanding the endpoint's purpose
     /// </summary>
-    [JsonProperty("summary")]
+    [JsonPropertyName("summary")]
     public string? Summary { get; set; }
 
     /// <summary>
     /// Indicates whether this endpoint is marked as optional in the OpenAPI specification
     /// </summary>
-    [JsonProperty("isOptional")]
+    [JsonPropertyName("isOptional")]
     public bool IsOptional { get; internal set; }
 
     /// <summary>
     /// Indicates whether actual HTTP testing was performed on this endpoint
     /// False if testing was skipped due to configuration, errors, or missing requirements
     /// </summary>
-    [JsonProperty("isTested")]
+    [JsonPropertyName("isTested")]
     public bool IsTested { get; set; }
 
     /// <summary>
     /// Overall status of the endpoint test.
     /// Provides a quick summary of the testing outcome for dashboard/reporting purposes
     /// </summary>
-    [JsonProperty("status")]
+    [JsonPropertyName("status")]
     public EndpointTestStatus Status { get; set; } = EndpointTestStatus.NotTested;
 
     /// <summary>
     /// Collection of HTTP test results for this endpoint, including request/response details
     /// May contain multiple results if the endpoint was tested with different parameters or conditions
     /// </summary>
-    [JsonProperty("testResults")]
+    [JsonPropertyName("testResults")]
     public List<HttpTestResult> TestResults { get; set; } = new();
 
     /// <summary>
     /// Flattened validation errors aggregated across all test results.
     /// Provides direct access to endpoint-level issues without traversing nested test result objects.
     /// </summary>
-    [JsonProperty("validationErrors")]
+    [JsonPropertyName("validationErrors")]
     public List<ValidationError> ValidationErrors
     {
         get => _validationErrors ??= AggregateValidationErrors(TestResults);
@@ -118,7 +118,7 @@ public class EndpointTestResult
     /// First failing test result for quick diagnostics, or first available result if none failed.
     /// </summary>
     [JsonIgnore]
-    [JsonProperty("primaryTestResult")]
+    [JsonPropertyName("primaryTestResult")]
     internal HttpTestResult? PrimaryTestResult =>
         TestResults.FirstOrDefault(tr => tr.ValidationResult != null && !tr.ValidationResult.IsValid)
         ?? TestResults.FirstOrDefault();

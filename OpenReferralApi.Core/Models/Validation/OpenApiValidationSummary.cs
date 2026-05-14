@@ -1,4 +1,4 @@
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace OpenReferralApi.Core.Models.Validation;
 
@@ -13,7 +13,7 @@ public class OpenApiValidationSummary
     /// Represents the complete API surface area defined in the specification
     /// Used as the denominator for calculating test coverage percentages
     /// </summary>
-    [JsonProperty("totalEndpoints")]
+    [JsonPropertyName("totalEndpoints")]
     public int TotalEndpoints { get; set; }
 
     /// <summary>
@@ -21,7 +21,7 @@ public class OpenApiValidationSummary
     /// May be less than TotalEndpoints if testing was limited by configuration or errors
     /// Indicates the scope of live validation performed
     /// </summary>
-    [JsonProperty("testedEndpoints")]
+    [JsonPropertyName("testedEndpoints")]
     public int TestedEndpoints { get; set; }
 
     /// <summary>
@@ -29,7 +29,7 @@ public class OpenApiValidationSummary
     /// Success is typically defined as receiving expected HTTP status codes (2xx)
     /// Higher numbers indicate better API health and specification accuracy
     /// </summary>
-    [JsonProperty("successfulTests")]
+    [JsonPropertyName("successfulTests")]
     public int SuccessfulTests { get; set; }
 
     /// <summary>
@@ -37,7 +37,7 @@ public class OpenApiValidationSummary
     /// Includes HTTP errors (4xx, 5xx), network failures, and validation mismatches
     /// Lower numbers indicate better API reliability and specification compliance
     /// </summary>
-    [JsonProperty("failedTests")]
+    [JsonPropertyName("failedTests")]
     public int FailedTests { get; set; }
 
     /// <summary>
@@ -45,7 +45,7 @@ public class OpenApiValidationSummary
     /// May include endpoints requiring specific authentication, data, or unsupported methods
     /// Indicates gaps in test coverage that may need manual verification
     /// </summary>
-    [JsonProperty("skippedTests")]
+    [JsonPropertyName("skippedTests")]
     public int SkippedTests { get; set; }
 
     /// <summary>
@@ -53,7 +53,7 @@ public class OpenApiValidationSummary
     /// May exceed TestedEndpoints if multiple requests were made per endpoint
     /// Useful for understanding testing load and API request volume
     /// </summary>
-    [JsonProperty("totalRequests")]
+    [JsonPropertyName("totalRequests")]
     public int TotalRequests { get; set; }
 
     /// <summary>
@@ -61,7 +61,7 @@ public class OpenApiValidationSummary
     /// Provides baseline performance metrics for API responsiveness
     /// Excludes failed requests and timeouts from calculation
     /// </summary>
-    [JsonProperty("averageResponseTime")]
+    [JsonPropertyName("averageResponseTime")]
     public TimeSpan AverageResponseTime { get; set; }
 
     /// <summary>
@@ -69,6 +69,6 @@ public class OpenApiValidationSummary
     /// True indicates the specification follows OpenAPI standards and best practices
     /// Independent of endpoint testing results - focuses on specification quality
     /// </summary>
-    [JsonProperty("specificationValid")]
+    [JsonPropertyName("specificationValid")]
     public bool SpecificationValid { get; set; }
 }
