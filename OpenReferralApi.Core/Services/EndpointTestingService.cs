@@ -867,7 +867,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                         var schemaForValidation = GetValidationSchemaForResponse(schema, openApiDocument);
 
                         // Build schema in full OpenAPI context so internal refs like
-                        // #/components/schemas/* can be pre-resolved before JSchema creation.
+                        // #/components/schemas/* are pre-resolved before runtime validation.
                         var validationRequest = new ValidationRequest
                         {
                             JsonData = parsedResponseJsonByResult.TryGetValue(testResult, out var parsedJson)

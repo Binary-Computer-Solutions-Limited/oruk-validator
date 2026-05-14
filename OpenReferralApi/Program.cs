@@ -203,7 +203,7 @@ builder.Services.AddSingleton<IRequestProcessingService, RequestProcessingServic
 builder.Services.AddSingleton<ISchemaWarmupStatusTracker, SchemaWarmupStatusTracker>();
 builder.Services.AddSingleton<ISchemaWarmupStatusProvider>(sp => sp.GetRequiredService<ISchemaWarmupStatusTracker>());
 
-// Schema Resolver Service - resolves $ref in remote schema files and creates JSchema objects
+// Schema Resolver Service - resolves $ref in remote schema files for runtime schema validation
 builder.Services.AddScoped<ISchemaResolverService, SchemaResolverService>();
 builder.Services.AddHostedService<SchemaWarmupBackgroundService>();
 

@@ -2,8 +2,6 @@ using System.Text.RegularExpressions;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Newtonsoft.Json.Linq;
-using Newtonsoft.Json.Schema;
 using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Logging;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
@@ -33,7 +31,6 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
 
     public async Task<OpenApiSpecificationValidation> ValidateAsync(JsonObject openApiSpec, CancellationToken cancellationToken = default)
     {
-        var openApiJObject = JObject.Parse(openApiSpec.ToJsonString());
         var validation = new OpenApiSpecificationValidation();
         var errors = new List<ValidationError>();
 
@@ -41,11 +38,11 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         {
             _logger.ValidatingOpenApiSpecification();
 
-            await ValidateOpenApiSpecObjectAsync(openApiJObject, validation, errors, null, cancellationToken);
+            await ValidateOpenApiSpecObjectAsync(openApiSpec, validation, errors, cancellationToken);
 
-            validation.SchemaAnalysis = AnalyzeSchemaStructure(openApiJObject);
-            validation.QualityMetrics = AnalyzeQualityMetrics(openApiJObject);
-            validation.Recommendations = GenerateRecommendations(openApiJObject, errors);
+            validation.SchemaAnalysis = AnalyzeSchemaStructure(openApiSpec);
+            validation.QualityMetrics = AnalyzeQualityMetrics(openApiSpec);
+            validation.Recommendations = GenerateRecommendations(openApiSpec, errors);
 
             return validation;
         }
@@ -67,10 +64,9 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
     }
 
     private async Task ValidateOpenApiSpecObjectAsync(
-        JObject specObject,
+        JsonObject specObject,
         OpenApiSpecificationValidation validation,
         List<ValidationError> errors,
-        JSchema? originalSchema = null,
         CancellationToken cancellationToken = default)
     {
         if (!specObject.ContainsKey("openapi") && !specObject.ContainsKey("swagger"))
@@ -145,7 +141,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         else
         {
             var paths = specObject["paths"];
-            if (paths is JObject pathsObject)
+            if (paths is JsonObject pathsObject)
             {
                 validation.EndpointCount = pathsObject.Count;
 
@@ -167,10 +163,9 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
             var schemaUri = this.GetOpenApiSchemaUri(specObject, validation.OpenApiVersion);
             if (!string.IsNullOrEmpty(schemaUri))
             {
-                object dataForValidation = originalSchema != null ? originalSchema : specObject;
                 var validationRequest = new ValidationRequest
                 {
-                    JsonData = dataForValidation,
+                    JsonData = specObject,
                     SchemaUri = schemaUri
                 };
 
@@ -218,7 +213,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         _logger.OpenApiValidationCompleted(validation.IsValid, validation.Errors.Count);
     }
 
-    private string? GetOpenApiSchemaUri(JObject specObject, string? version)
+    private string? GetOpenApiSchemaUri(JsonObject specObject, string? version)
     {
         if (specObject.ContainsKey("jsonSchemaDialect"))
         {
@@ -253,7 +248,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         return knownUrls?.Contains(dialect, StringComparer.OrdinalIgnoreCase) == true;
     }
 
-    private SchemaAnalysis AnalyzeSchemaStructure(JObject specObject)
+    private SchemaAnalysis AnalyzeSchemaStructure(JsonObject specObject)
     {
         var analysis = new SchemaAnalysis();
 
@@ -262,14 +257,14 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
             if (specObject.ContainsKey("components"))
             {
                 var components = specObject["components"];
-                if (components is JObject componentsObject)
+                if (components is JsonObject componentsObject)
                 {
                     analysis.ComponentCount = 1;
 
                     if (componentsObject.ContainsKey("schemas"))
                     {
                         var schemas = componentsObject["schemas"];
-                        if (schemas is JObject schemasObject)
+                        if (schemas is JsonObject schemasObject)
                         {
                             analysis.SchemaCount = schemasObject.Count;
                         }
@@ -278,7 +273,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                     if (componentsObject.ContainsKey("responses"))
                     {
                         var responses = componentsObject["responses"];
-                        if (responses is JObject responsesObject)
+                        if (responses is JsonObject responsesObject)
                         {
                             analysis.ResponseCount = responsesObject.Count;
                         }
@@ -287,7 +282,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                     if (componentsObject.ContainsKey("parameters"))
                     {
                         var parameters = componentsObject["parameters"];
-                        if (parameters is JObject parametersObject)
+                        if (parameters is JsonObject parametersObject)
                         {
                             analysis.ParameterCount = parametersObject.Count;
                         }
@@ -296,7 +291,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                     if (componentsObject.ContainsKey("requestBodies"))
                     {
                         var requestBodies = componentsObject["requestBodies"];
-                        if (requestBodies is JObject requestBodiesObject)
+                        if (requestBodies is JsonObject requestBodiesObject)
                         {
                             analysis.RequestBodyCount = requestBodiesObject.Count;
                         }
@@ -305,7 +300,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                     if (componentsObject.ContainsKey("headers"))
                     {
                         var headers = componentsObject["headers"];
-                        if (headers is JObject headersObject)
+                        if (headers is JsonObject headersObject)
                         {
                             analysis.HeaderCount = headersObject.Count;
                         }
@@ -314,7 +309,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                     if (componentsObject.ContainsKey("links"))
                     {
                         var links = componentsObject["links"];
-                        if (links is JObject linksObject)
+                        if (links is JsonObject linksObject)
                         {
                             analysis.LinkCount = linksObject.Count;
                         }
@@ -323,7 +318,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                     if (componentsObject.ContainsKey("callbacks"))
                     {
                         var callbacks = componentsObject["callbacks"];
-                        if (callbacks is JObject callbacksObject)
+                        if (callbacks is JsonObject callbacksObject)
                         {
                             analysis.CallbackCount = callbacksObject.Count;
                         }
@@ -334,7 +329,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
             if (specObject.ContainsKey("definitions"))
             {
                 var definitions = specObject["definitions"];
-                if (definitions is JObject definitionsObject)
+                if (definitions is JsonObject definitionsObject)
                 {
                     analysis.SchemaCount = definitionsObject.Count;
                 }
@@ -354,7 +349,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         return analysis;
     }
 
-    private int CountExamplesInSpec(JObject specObject)
+    private int CountExamplesInSpec(JsonObject specObject)
     {
         int exampleCount = 0;
 
@@ -363,10 +358,10 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
             if (specObject.ContainsKey("components"))
             {
                 var components = specObject["components"];
-                if (components is JObject componentsObject && componentsObject.ContainsKey("examples"))
+                if (components is JsonObject componentsObject && componentsObject.ContainsKey("examples"))
                 {
                     var examples = componentsObject["examples"];
-                    if (examples is JObject examplesObject)
+                    if (examples is JsonObject examplesObject)
                     {
                         exampleCount += examplesObject.Count;
                     }
@@ -376,27 +371,27 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
             if (specObject.ContainsKey("paths"))
             {
                 var paths = specObject["paths"];
-                if (paths is JObject pathsObject)
+                if (paths is JsonObject pathsObject)
                 {
-                    foreach (var path in pathsObject.Properties())
+                    foreach (var path in pathsObject)
                     {
-                        if (path.Value is JObject pathObject)
+                        if (path.Value is JsonObject pathObject)
                         {
-                            foreach (var operation in pathObject.Properties())
+                            foreach (var operation in pathObject)
                             {
-                                if (operation.Value is JObject operationObject)
+                                if (operation.Value is JsonObject operationObject)
                                 {
                                     if (operationObject.ContainsKey("requestBody"))
                                     {
                                         var requestBody = operationObject["requestBody"];
-                                        if (requestBody is JObject requestBodyObject && requestBodyObject.ContainsKey("content"))
+                                        if (requestBody is JsonObject requestBodyObject && requestBodyObject.ContainsKey("content"))
                                         {
                                             var content = requestBodyObject["content"];
-                                            if (content is JObject contentObject)
+                                            if (content is JsonObject contentObject)
                                             {
-                                                foreach (var mediaType in contentObject.Properties())
+                                                foreach (var mediaType in contentObject)
                                                 {
-                                                    if (mediaType.Value is JObject mediaTypeObject)
+                                                    if (mediaType.Value is JsonObject mediaTypeObject)
                                                     {
                                                         if (mediaTypeObject.ContainsKey("example"))
                                                         {
@@ -405,7 +400,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                                                         if (mediaTypeObject.ContainsKey("examples"))
                                                         {
                                                             var examples = mediaTypeObject["examples"];
-                                                            if (examples is JObject examplesObject)
+                                                            if (examples is JsonObject examplesObject)
                                                             {
                                                                 exampleCount += examplesObject.Count;
                                                             }
@@ -419,18 +414,18 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                                     if (operationObject.ContainsKey("responses"))
                                     {
                                         var responses = operationObject["responses"];
-                                        if (responses is JObject responsesObject)
+                                        if (responses is JsonObject responsesObject)
                                         {
-                                            foreach (var response in responsesObject.Properties())
+                                            foreach (var response in responsesObject)
                                             {
-                                                if (response.Value is JObject responseObject && responseObject.ContainsKey("content"))
+                                                if (response.Value is JsonObject responseObject && responseObject.ContainsKey("content"))
                                                 {
                                                     var content = responseObject["content"];
-                                                    if (content is JObject contentObject)
+                                                    if (content is JsonObject contentObject)
                                                     {
-                                                        foreach (var mediaType in contentObject.Properties())
+                                                        foreach (var mediaType in contentObject)
                                                         {
-                                                            if (mediaType.Value is JObject mediaTypeObject)
+                                                            if (mediaType.Value is JsonObject mediaTypeObject)
                                                             {
                                                                 if (mediaTypeObject.ContainsKey("example"))
                                                                 {
@@ -439,7 +434,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                                                                 if (mediaTypeObject.ContainsKey("examples"))
                                                                 {
                                                                     var examples = mediaTypeObject["examples"];
-                                                                    if (examples is JObject examplesObject)
+                                                                    if (examples is JsonObject examplesObject)
                                                                     {
                                                                         exampleCount += examplesObject.Count;
                                                                     }
@@ -466,7 +461,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         return exampleCount;
     }
 
-    private QualityMetrics AnalyzeQualityMetrics(JObject specObject)
+    private QualityMetrics AnalyzeQualityMetrics(JsonObject specObject)
     {
         var metrics = new QualityMetrics();
 
@@ -475,7 +470,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
             if (specObject.ContainsKey("paths"))
             {
                 var paths = specObject["paths"];
-                if (paths is JObject pathsObject)
+                if (paths is JsonObject pathsObject)
                 {
                     int totalEndpoints = 0;
                     int endpointsWithDescription = 0;
@@ -486,13 +481,13 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                     int totalResponseCodes = 0;
                     int responseCodesDocumented = 0;
 
-                    foreach (var path in pathsObject.Properties())
+                    foreach (var path in pathsObject)
                     {
-                        if (path.Value is JObject pathObject)
+                        if (path.Value is JsonObject pathObject)
                         {
-                            foreach (var method in pathObject.Properties())
+                            foreach (var method in pathObject)
                             {
-                                if (method.Value is JObject operationObject)
+                                if (method.Value is JsonObject operationObject)
                                 {
                                     totalEndpoints++;
 
@@ -516,11 +511,11 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                                     if (operationObject.ContainsKey("parameters"))
                                     {
                                         var parameters = operationObject["parameters"];
-                                        if (parameters is JArray parametersArray)
+                                        if (parameters is JsonArray parametersArray)
                                         {
                                             totalParameters += parametersArray.Count;
                                             parametersWithDescription += parametersArray
-                                                .Where(p => p is JObject pObj &&
+                                                .Where(p => p is JsonObject pObj &&
                                                        pObj.ContainsKey("description") &&
                                                        !string.IsNullOrWhiteSpace(pObj["description"]?.ToString()))
                                                 .Count();
@@ -530,11 +525,11 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                                     if (operationObject.ContainsKey("responses"))
                                     {
                                         var responses = operationObject["responses"];
-                                        if (responses is JObject responsesObject)
+                                        if (responses is JsonObject responsesObject)
                                         {
                                             totalResponseCodes += responsesObject.Count;
-                                            responseCodesDocumented += responsesObject.Properties()
-                                                .Where(r => r.Value is JObject rObj &&
+                                            responseCodesDocumented += responsesObject
+                                                .Where(r => r.Value is JsonObject rObj &&
                                                        rObj.ContainsKey("description") &&
                                                        !string.IsNullOrWhiteSpace(rObj["description"]?.ToString()))
                                                 .Count();
@@ -571,12 +566,12 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         return metrics;
     }
 
-    private bool HasExamples(JObject operationObject)
+    private bool HasExamples(JsonObject operationObject)
     {
         if (operationObject.ContainsKey("requestBody"))
         {
             var requestBody = operationObject["requestBody"];
-            if (requestBody is JObject requestBodyObject && HasContentExamples(requestBodyObject))
+            if (requestBody is JsonObject requestBodyObject && HasContentExamples(requestBodyObject))
             {
                 return true;
             }
@@ -585,11 +580,11 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         if (operationObject.ContainsKey("responses"))
         {
             var responses = operationObject["responses"];
-            if (responses is JObject responsesObject)
+            if (responses is JsonObject responsesObject)
             {
-                foreach (var response in responsesObject.Properties())
+                foreach (var response in responsesObject)
                 {
-                    if (response.Value is JObject responseObject && HasContentExamples(responseObject))
+                    if (response.Value is JsonObject responseObject && HasContentExamples(responseObject))
                     {
                         return true;
                     }
@@ -600,16 +595,16 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         return false;
     }
 
-    private bool HasContentExamples(JObject contentContainer)
+    private bool HasContentExamples(JsonObject contentContainer)
     {
         if (contentContainer.ContainsKey("content"))
         {
             var content = contentContainer["content"];
-            if (content is JObject contentObject)
+            if (content is JsonObject contentObject)
             {
-                foreach (var mediaType in contentObject.Properties())
+                foreach (var mediaType in contentObject)
                 {
-                    if (mediaType.Value is JObject mediaTypeObject)
+                    if (mediaType.Value is JsonObject mediaTypeObject)
                     {
                         if (mediaTypeObject.ContainsKey("example") || mediaTypeObject.ContainsKey("examples"))
                         {
@@ -622,19 +617,19 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         return false;
     }
 
-    private void CountSchemaDescriptions(JObject specObject, QualityMetrics metrics)
+    private void CountSchemaDescriptions(JsonObject specObject, QualityMetrics metrics)
     {
         if (specObject.ContainsKey("components"))
         {
             var components = specObject["components"];
-            if (components is JObject componentsObject && componentsObject.ContainsKey("schemas"))
+            if (components is JsonObject componentsObject && componentsObject.ContainsKey("schemas"))
             {
                 var schemas = componentsObject["schemas"];
-                if (schemas is JObject schemasObject)
+                if (schemas is JsonObject schemasObject)
                 {
                     metrics.TotalSchemas = schemasObject.Count;
-                    metrics.SchemasWithDescription = schemasObject.Properties()
-                        .Where(s => s.Value is JObject sObj &&
+                    metrics.SchemasWithDescription = schemasObject
+                        .Where(s => s.Value is JsonObject sObj &&
                                sObj.ContainsKey("description") &&
                                !string.IsNullOrWhiteSpace(sObj["description"]?.ToString()))
                         .Count();
@@ -645,11 +640,11 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         if (specObject.ContainsKey("definitions"))
         {
             var definitions = specObject["definitions"];
-            if (definitions is JObject definitionsObject)
+            if (definitions is JsonObject definitionsObject)
             {
                 metrics.TotalSchemas = definitionsObject.Count;
-                metrics.SchemasWithDescription = definitionsObject.Properties()
-                    .Where(d => d.Value is JObject dObj &&
+                metrics.SchemasWithDescription = definitionsObject
+                    .Where(d => d.Value is JsonObject dObj &&
                            dObj.ContainsKey("description") &&
                            !string.IsNullOrWhiteSpace(dObj["description"]?.ToString()))
                     .Count();
@@ -692,7 +687,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         metrics.QualityScore = factors > 0 ? score / factors : 0;
     }
 
-    private List<Recommendation> GenerateRecommendations(JObject specObject, List<ValidationError> errors)
+    private List<Recommendation> GenerateRecommendations(JsonObject specObject, List<ValidationError> errors)
     {
         var recommendations = new List<Recommendation>();
 
@@ -736,9 +731,9 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         return recommendations;
     }
 
-    private void AddQualityRecommendations(JObject specObject, List<Recommendation> recommendations)
+    private void AddQualityRecommendations(JsonObject specObject, List<Recommendation> recommendations)
     {
-        if (!specObject.ContainsKey("info") || specObject["info"] is not JObject infoObject)
+        if (!specObject.ContainsKey("info") || specObject["info"] is not JsonObject infoObject)
         {
             return;
         }
@@ -788,7 +783,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         AddEndpointQualityRecommendations(specObject, recommendations);
     }
 
-    private void AddEndpointQualityRecommendations(JObject specObject, List<Recommendation> recommendations)
+    private void AddEndpointQualityRecommendations(JsonObject specObject, List<Recommendation> recommendations)
     {
         if (!HasServerMetadata(specObject))
         {
@@ -804,26 +799,26 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
             });
         }
 
-        if (!specObject.ContainsKey("paths") || specObject["paths"] is not JObject pathsObject)
+        if (!specObject.ContainsKey("paths") || specObject["paths"] is not JsonObject pathsObject)
         {
             return;
         }
 
-        foreach (var path in pathsObject.Properties())
+        foreach (var path in pathsObject)
         {
-            if (path.Value is not JObject pathObject)
+            if (path.Value is not JsonObject pathObject)
             {
                 continue;
             }
 
-            foreach (var method in pathObject.Properties())
+            foreach (var method in pathObject)
             {
-                if (!IsOperationMethod(method.Name) || method.Value is not JObject operationObject)
+                if (!IsOperationMethod(method.Key) || method.Value is not JsonObject operationObject)
                 {
                     continue;
                 }
 
-                var operationPath = $"paths.{path.Name}.{method.Name}";
+                var operationPath = $"paths.{path.Key}.{method.Key}";
 
                 if (string.IsNullOrWhiteSpace(operationObject["operationId"]?.ToString()))
                 {
@@ -855,7 +850,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                     continue;
                 }
 
-                var hasErrorResponse = responsesObject.Properties().Any(p => IsErrorStatusCode(p.Name));
+                var hasErrorResponse = responsesObject.Any(p => IsErrorStatusCode(p.Key));
                 if (!hasErrorResponse)
                 {
                     recommendations.Add(new Recommendation
@@ -870,9 +865,9 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                     });
                 }
 
-                var successResponseWithoutSchema = responsesObject.Properties()
-                    .Where(p => IsSuccessStatusCode(p.Name) && p.Value is JObject)
-                    .Any(p => !ResponseHasSchema((JObject)p.Value));
+                var successResponseWithoutSchema = responsesObject
+                    .Where(p => IsSuccessStatusCode(p.Key) && p.Value is JsonObject)
+                    .Any(p => ResponseHasSchema(p.Value as JsonObject) == false);
 
                 if (successResponseWithoutSchema)
                 {
@@ -891,16 +886,16 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         }
     }
 
-    private static bool HasServerMetadata(JObject specObject)
+    private static bool HasServerMetadata(JsonObject specObject)
     {
-        if (specObject["servers"] is JArray servers && servers.Count > 0)
+        if (specObject["servers"] is JsonArray servers && servers.Count > 0)
         {
             return true;
         }
 
         var host = specObject["host"]?.ToString();
         var basePath = specObject["basePath"]?.ToString();
-        var schemes = specObject["schemes"] as JArray;
+        var schemes = specObject["schemes"] as JsonArray;
 
         return !string.IsNullOrWhiteSpace(host)
                || !string.IsNullOrWhiteSpace(basePath)
@@ -919,10 +914,10 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                || methodName.Equals("trace", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool TryGetResponsesObject(JObject operationObject, out JObject responsesObject)
+    private static bool TryGetResponsesObject(JsonObject operationObject, out JsonObject responsesObject)
     {
         responsesObject = null!;
-        if (operationObject["responses"] is not JObject responses)
+        if (operationObject["responses"] is not JsonObject responses)
         {
             return false;
         }
@@ -950,14 +945,19 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                && responseCode.All(char.IsDigit);
     }
 
-    private static bool ResponseHasSchema(JObject responseObject)
+    private static bool ResponseHasSchema(JsonObject? responseObject)
     {
-        // OpenAPI 3.x: responses.<code>.content.<mediaType>.schema
-        if (responseObject["content"] is JObject contentObject)
+        if (responseObject == null)
         {
-            foreach (var mediaType in contentObject.Properties())
+            return false;
+        }
+
+        // OpenAPI 3.x: responses.<code>.content.<mediaType>.schema
+        if (responseObject["content"] is JsonObject contentObject)
+        {
+            foreach (var mediaType in contentObject)
             {
-                if (mediaType.Value is JObject mediaTypeObject && mediaTypeObject["schema"] != null)
+                if (mediaType.Value is JsonObject mediaTypeObject && mediaTypeObject["schema"] != null)
                 {
                     return true;
                 }
