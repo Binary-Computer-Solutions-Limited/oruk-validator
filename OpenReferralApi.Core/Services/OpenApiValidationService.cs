@@ -452,13 +452,11 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             }
         }
 
-        var endpointValidationSpecUrl = string.Empty;
         endpointTests = await _endpointTestingService.TestEndpointsAsync(
             endpointValidationSpec,
             request.BaseUrl,
             request.Options!,
             dataSourceRequestAuth,
-            endpointValidationSpecUrl,
             cancellationToken);
 
         return endpointTests;
@@ -572,7 +570,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
     {
         public string? HsdsProfileVersion { get; init; }
         public JObject? HsdsProfileSchema { get; init; }
-        public required JObject OwnSchema { get; init; }
+        public required JObject? OwnSchema { get; init; }
         public bool FellBackToHsdsProfile { get; init; }
         public string? OwnSchemaUrl { get; init; }
         public bool HasConfiguredDefaultProfile { get; init; }

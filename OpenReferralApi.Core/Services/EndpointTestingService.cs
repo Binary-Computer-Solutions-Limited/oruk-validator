@@ -26,7 +26,6 @@ public interface IEndpointTestingService
         string baseUrl,
         OpenApiValidationOptions options,
         DataSourceAuthentication? authentication,
-        string? documentUri,
         CancellationToken cancellationToken = default);
 }
 
@@ -71,7 +70,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         _hsdsComplianceService = hsdsComplianceService;
         _openApiValidationOptions = openApiValidationOptions?.Value;
     }
-    public async Task<List<EndpointTestResult>> TestEndpointsAsync(JObject openApiSpec, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, string? documentUri, CancellationToken cancellationToken = default)
+    public async Task<List<EndpointTestResult>> TestEndpointsAsync(JObject openApiSpec, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, CancellationToken cancellationToken = default)
     {
         var results = new List<EndpointTestResult>();
         var compiledValidationSchemaCache = CompiledValidationSchemaCache;
@@ -177,7 +176,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                 foreach (var endpoint in group.CollectionEndpoints)
                 {
                     var result = await TestSingleEndpointWithIdExtractionAsync(endpoint.Path, endpoint.Method, endpoint.Operation,
-                        baseUrl, options, authentication, extractedIds, semaphore, openApiSpec, documentUri, endpoint.PathItem, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+                        baseUrl, options, authentication, extractedIds, semaphore, openApiSpec, endpoint.PathItem, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
                     results.Add(result);
                 }
 
@@ -189,7 +188,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                 foreach (var endpoint in group.ParameterizedEndpoints)
                 {
                     var task = TestSingleEndpointWithIdSubstitutionAsync(endpoint.Path, endpoint.Method, endpoint.Operation,
-                        baseUrl, options, authentication, extractedIds, semaphore, openApiSpec, documentUri, endpoint.PathItem, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+                        baseUrl, options, authentication, extractedIds, semaphore, openApiSpec, endpoint.PathItem, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
                     parameterizedTasks.Add(task);
                 }
 
@@ -213,7 +212,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         return results;
     }
 
-    private async Task<EndpointTestResult> TestSingleEndpointAsync(string path, string method, JObject operation, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, SemaphoreSlim semaphore, JObject openApiDocument, string? documentUri, JObject pathItem, ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken, string? testedId = null)
+    private async Task<EndpointTestResult> TestSingleEndpointAsync(string path, string method, JObject operation, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, SemaphoreSlim semaphore, JObject openApiDocument, JObject pathItem, ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken, string? testedId = null)
     {
         await semaphore.WaitAsync(cancellationToken);
 
@@ -249,7 +248,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             if (hasPagination)
             {
                 // Test pagination: first page, middle page(s), last page
-                await TestPaginatedEndpointAsync(result, path, method, operation, baseUrl, options, authentication, resolvedParams, openApiDocument, documentUri, pathItem, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+                await TestPaginatedEndpointAsync(result, path, method, operation, baseUrl, options, authentication, resolvedParams, openApiDocument, pathItem, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
             }
             else
             {
@@ -316,7 +315,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                 // Validate response if schema is defined
                 if (testResult.IsSuccessStatusCode && HasResponsePayload(testResult, parsedResponseJsonByResult))
                 {
-                    await ValidateResponseAsync(testResult, operation, openApiDocument, documentUri, options, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+                    await ValidateResponseAsync(testResult, operation, openApiDocument, options, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
 
                     var validationResult = testResult.ValidationResult;
                     if (validationResult == null || (validationResult.Errors.Count == 0 && !validationResult.IsValid))
@@ -403,7 +402,6 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         DataSourceAuthentication? auth,
         JArray resolvedParams,
         JObject openApiDocument,
-        string? documentUri,
         JObject pathItem,
         ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache,
         ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult,
@@ -454,7 +452,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         // Validate first page response schema
         if (HasResponsePayload(firstPageResult, parsedResponseJsonByResult))
         {
-            await ValidateResponseAsync(firstPageResult, operation, openApiDocument, documentUri, options, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+            await ValidateResponseAsync(firstPageResult, operation, openApiDocument, options, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
         }
 
         // Try to determine total pages and check for empty feed
@@ -496,7 +494,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
 
                 if (middlePageResult.IsSuccessStatusCode && HasResponsePayload(middlePageResult, parsedResponseJsonByResult))
                 {
-                    await ValidateResponseAsync(middlePageResult, operation, openApiDocument, documentUri, options, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+                    await ValidateResponseAsync(middlePageResult, operation, openApiDocument, options, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
                 }
 
                 // Release the middle page's parsed JSON document after validation is complete.
@@ -511,7 +509,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
 
             if (lastPageResult.IsSuccessStatusCode && HasResponsePayload(lastPageResult, parsedResponseJsonByResult))
             {
-                await ValidateResponseAsync(lastPageResult, operation, openApiDocument, documentUri, options, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+                await ValidateResponseAsync(lastPageResult, operation, openApiDocument, options, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
             }
 
             // Release the last page's parsed JSON document after validation is complete.
@@ -842,7 +840,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         return testResult;
     }
 
-    private async Task ValidateResponseAsync(HttpTestResult testResult, JObject operation, JObject openApiDocument, string? documentUri, OpenApiValidationOptions options, ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken)
+    private async Task ValidateResponseAsync(HttpTestResult testResult, JObject operation, JObject openApiDocument, OpenApiValidationOptions options, ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken)
     {
         try
         {
@@ -869,11 +867,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                                 if (schema != null)
                                 {
                                     var schemaForValidation = GetValidationSchemaForResponse(schema, openApiDocument);
-                                    var compiledSchema = GetCompiledValidationSchemaForResponse(
-                                        schemaForValidation,
-                                        documentUri,
-                                        schema.Path,
-                                        compiledValidationSchemaCache);
+
                                     // Build schema in full OpenAPI context so internal refs like
                                     // #/components/schemas/* can be pre-resolved before JSchema creation.
                                     var validationRequest = new ValidationRequest
@@ -881,7 +875,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                                         JsonData = parsedResponseJsonByResult.TryGetValue(testResult, out var parsedJson)
                                             ? (object)parsedJson
                                             : (testResult.ResponseBody ?? "{}"),
-                                        Schema = compiledSchema,
+                                        Schema = schemaForValidation,
                                         Options = new ValidationOptions
                                         {
                                             MaxErrors = ResolveMaxValidationErrorsPerResponse(),
@@ -1245,9 +1239,9 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         string path, string method, JObject operation, string baseUrl,
         OpenApiValidationOptions options, DataSourceAuthentication? authentication,
         ConcurrentDictionary<string, List<string>> extractedIds, SemaphoreSlim semaphore,
-        JObject openApiDocument, string? documentUri, JObject pathItem, ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken)
+        JObject openApiDocument, JObject pathItem, ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken)
     {
-        var result = await TestSingleEndpointAsync(path, method, operation, baseUrl, options, authentication, semaphore, openApiDocument, documentUri, pathItem, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+        var result = await TestSingleEndpointAsync(path, method, operation, baseUrl, options, authentication, semaphore, openApiDocument, pathItem, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
 
         // Extract IDs from successful GET responses for dependency testing
         if (method == "GET" && result.TestResults.Any(r => r.IsSuccessStatusCode && HasResponsePayload(r, parsedResponseJsonByResult)))
@@ -1319,7 +1313,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         string path, string method, JObject operation, string baseUrl,
         OpenApiValidationOptions options, DataSourceAuthentication? authentication,
         ConcurrentDictionary<string, List<string>> extractedIds, SemaphoreSlim semaphore,
-        JObject openApiDocument, string? documentUri, JObject pathItem, ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken)
+        JObject openApiDocument, JObject pathItem, ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken)
     {
         var rootPath = EndpointInfo.GetRootPath(path);
 
@@ -1360,7 +1354,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                 var substitutedPath = SubstitutePathParametersWithSpecificId(path, id);
                 _logger.TestingEndpointWithExtractedId();
 
-                var singleResult = await TestSingleEndpointAsync(substitutedPath, method, operation, baseUrl, options, authentication, semaphore, openApiDocument, documentUri, pathItem, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken, testedId: id);
+                var singleResult = await TestSingleEndpointAsync(substitutedPath, method, operation, baseUrl, options, authentication, semaphore, openApiDocument, pathItem, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken, testedId: id);
 
                 // Aggregate the results
                 compositeResult.TestResults.AddRange(singleResult.TestResults);
