@@ -195,9 +195,9 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             request,
             result,
             discovery.HsdsProfileVersion,
-            discovery.HsdsProfileSchemaContent,
-            discovery.OpenApiSchemaContent,
-            discovery.DiscoveredHsdsProfileReason,
+            discovery.HsdsProfileSchema,
+            discovery.OwnSchema,
+            discovery.HsdsProfileReason,
             cancellationToken);
         logMemoryCheckpoint("specification-validation");
 
@@ -206,7 +206,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             request,
             result,
             discovery.DataSourceRequestAuth,
-            discovery.OpenApiSchemaContent,
+            discovery.OwnSchema,
             specificationStage.HsdsProfileSchemaContent,
             specificationStage.SpecValidation,
             specificationStage.SpecValidationErrors,
@@ -221,7 +221,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             request,
             result,
             endpointTests,
-            discovery.FeedSpecFellBackToHsdsProfile,
+            discovery.FellBackToHsdsProfile,
             specificationStage.HsdsProfileSchemaContent,
             cancellationToken);
         logMemoryCheckpoint("full-hsds-runtime");
@@ -231,8 +231,8 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         {
             SpecificationValidation = result.SpecificationValidation,
             EndpointTests = endpointTests,
-            ClaimedProfileVersion = discovery.DiscoveredHsdsProfileVersion,
-            ProfileReason = discovery.DiscoveredHsdsProfileReason
+            ClaimedProfileVersion = discovery.HsdsProfileVersion,
+            ProfileReason = discovery.HsdsProfileReason
         };
     }
 
@@ -256,36 +256,14 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             dataSourceRequestAuth,
             cancellationToken);
 
-        var discoveredOwnOpenApiSpec = TryParseJObject(bootstrap.OpenApiSchemaContent);
+        var ownSchema = TryParseJObject(bootstrap.OpenApiSchemaContent);
         var resolvedHsdsProfileSpec = TryParseJObject(bootstrap.HsdsProfileSchemaContent);
 
-        JObject? openApiSpec = discoveredOwnOpenApiSpec;
-        DataSourceAuthentication? schemaRequestAuth = null;
-
-        if (openApiSpec == null && !string.IsNullOrWhiteSpace(request.OwnSchemaUrl))
-        {
-            schemaRequestAuth =
-                _authenticationValidationService.TryGetValidatedRequestAuthentication("schema", request.DataSourceAuth);
-            try
-            {
-                openApiSpec = await GetCachedResolvedOpenApiSpecAsync(
-                    request.OwnSchemaUrl,
-                    schemaRequestAuth,
-                    cancellationToken,
-                    "feed",
-                    schemaResolutionIssues);
-            }
-            catch when (resolvedHsdsProfileSpec != null)
-            {
-                // Feed schema fetch failed, but a discovered HSDS profile schema is available as fallback.
-            }
-        }
-
         var feedSpecFellBackToHsdsProfile = false;
-        if (openApiSpec == null && resolvedHsdsProfileSpec != null)
+        if (ownSchema == null && resolvedHsdsProfileSpec != null)
         {
             feedSpecFellBackToHsdsProfile = true;
-            openApiSpec = resolvedHsdsProfileSpec;
+            ownSchema = resolvedHsdsProfileSpec;
 
             if (!string.IsNullOrWhiteSpace(request.OwnSchemaUrl))
             {
@@ -304,7 +282,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             }
         }
 
-        if (openApiSpec == null)
+        if (ownSchema == null)
         {
             throw new ArgumentException("Failed to discover OpenAPI schema URL or schema content from base URL");
         }
@@ -312,7 +290,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         var discoveredProfileVersion = bootstrap.HsdsProfileVersion;
 
         if (_openApiValidationOptions.OwnSchemaValidation != OwnSchemaValidationMode.None
-            && discoveredOwnOpenApiSpec == null
+            && ownSchema == null
             && string.IsNullOrWhiteSpace(request.OwnSchemaUrl)
             && !string.IsNullOrWhiteSpace(request.BaseUrl)
             && !feedSpecFellBackToHsdsProfile)
@@ -323,19 +301,13 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         return new DiscoveryPreparation
         {
             HsdsProfileVersion = discoveredProfileVersion,
-            HsdsProfileSchemaContent = resolvedHsdsProfileSpec,
-            OpenApiSchemaContent = openApiSpec,
-            FeedSpecFellBackToHsdsProfile = feedSpecFellBackToHsdsProfile,
-            EffectiveOwnSchemaUrl = request.OwnSchemaUrl,
-            DiscoveredOpenApiSchemaContent = bootstrap.OpenApiSchemaContent,
-            DiscoveredHsdsProfileSchemaContent = bootstrap.HsdsProfileSchemaContent,
+            HsdsProfileSchema = resolvedHsdsProfileSpec,
+            OwnSchema = ownSchema,
+            FellBackToHsdsProfile = feedSpecFellBackToHsdsProfile,
+            OwnSchemaUrl = request.OwnSchemaUrl,
             HasConfiguredDefaultProfile = bootstrap.UsedDefaultProfile,
-            DefaultProfileSchemaUrl = null,
-            DefaultProfileVersion = bootstrap.UsedDefaultProfile ? bootstrap.HsdsProfileVersion : null,
-            SchemaRequestAuth = schemaRequestAuth,
             DataSourceRequestAuth = dataSourceRequestAuth,
-            DiscoveredHsdsProfileVersion = discoveredProfileVersion,
-            DiscoveredHsdsProfileReason = bootstrap.HsdsProfileReason
+            HsdsProfileReason = bootstrap.HsdsProfileReason
         };
     }
 
@@ -606,19 +578,13 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
     private sealed class DiscoveryPreparation
     {
         public string? HsdsProfileVersion { get; init; }
-        public JObject? HsdsProfileSchemaContent { get; init; }
-        public required JObject OpenApiSchemaContent { get; init; }
-        public bool FeedSpecFellBackToHsdsProfile { get; init; }
-        public string? EffectiveOwnSchemaUrl { get; init; }
-        public string? DiscoveredOpenApiSchemaContent { get; init; }
-        public string? DiscoveredHsdsProfileSchemaContent { get; init; }
+        public JObject? HsdsProfileSchema { get; init; }
+        public required JObject OwnSchema { get; init; }
+        public bool FellBackToHsdsProfile { get; init; }
+        public string? OwnSchemaUrl { get; init; }
         public bool HasConfiguredDefaultProfile { get; init; }
-        public string? DefaultProfileSchemaUrl { get; init; }
-        public string? DefaultProfileVersion { get; init; }
-        public DataSourceAuthentication? SchemaRequestAuth { get; init; }
         public DataSourceAuthentication? DataSourceRequestAuth { get; init; }
-        public string? DiscoveredHsdsProfileVersion { get; init; }
-        public string? DiscoveredHsdsProfileReason { get; init; }
+                public string? HsdsProfileReason { get; init; }
     }
 
     private sealed class SpecificationStageResult
