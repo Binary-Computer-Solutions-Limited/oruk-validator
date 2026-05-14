@@ -207,7 +207,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             result,
             discovery.DataSourceRequestAuth,
             discovery.OwnSchema,
-            specificationStage.HsdsProfileSchemaContent,
+            discovery.HsdsProfileSchema,
             specificationStage.SpecValidation,
             specificationStage.SpecValidationErrors,
             cancellationToken);
@@ -222,7 +222,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             result,
             endpointTests,
             discovery.FellBackToHsdsProfile,
-            specificationStage.HsdsProfileSchemaContent,
+            discovery.HsdsProfileSchema,
             cancellationToken);
         logMemoryCheckpoint("full-hsds-runtime");
 
@@ -357,8 +357,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         return new SpecificationStageResult
         {
             SpecValidation = specValidation,
-            SpecValidationErrors = specValidationErrors,
-            HsdsProfileSchemaContent = hsdsProfileSchemaContent
+            SpecValidationErrors = specValidationErrors
         };
     }
 
@@ -591,7 +590,6 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
     {
         public OpenApiSpecificationValidation? SpecValidation { get; init; }
         public List<ValidationError>? SpecValidationErrors { get; init; }
-        public JObject? HsdsProfileSchemaContent { get; init; }
     }
 
     private void CollectSchemaResolutionIssues(ICollection<SchemaResolutionIssue>? collectedIssues)
