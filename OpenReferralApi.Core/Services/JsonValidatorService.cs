@@ -320,19 +320,19 @@ public class JsonValidatorService : IJsonValidatorService
         }
         else if (request.Schema is System.Text.Json.Nodes.JsonNode schemaNode)
         {
-            return BuildSchemaDetails(schemaNode.ToJsonString());
+            return await CreateSchemaFromJsonAsync(schemaNode.ToJsonString());
         }
         else if (request.Schema is System.Text.Json.JsonDocument schemaDocument)
         {
-            return BuildSchemaDetails(schemaDocument.RootElement.GetRawText());
+            return await CreateSchemaFromJsonAsync(schemaDocument.RootElement.GetRawText());
         }
         else if (request.Schema is System.Text.Json.JsonElement schemaElement)
         {
-            return BuildSchemaDetails(schemaElement.GetRawText());
+            return await CreateSchemaFromJsonAsync(schemaElement.GetRawText());
         }
         else if (request.Schema is string schemaString)
         {
-            return BuildSchemaDetails(schemaString);
+            return await CreateSchemaFromJsonAsync(schemaString);
         }
         else if (request.Schema != null)
         {
@@ -462,9 +462,7 @@ public class JsonValidatorService : IJsonValidatorService
                 })
             };
 
-            var resolvedSchemaJson = await _schemaResolverService.ResolveAsync(schemaJson);
-            var effectiveSchemaJson = string.IsNullOrWhiteSpace(resolvedSchemaJson) ? schemaJson : resolvedSchemaJson;
-            return BuildSchemaDetails(effectiveSchemaJson);
+            return await CreateSchemaFromJsonAsync(schemaJson);
         }
         catch (System.Text.Json.JsonException ex) when (IsCycleOrDepthViolation(ex))
         {
@@ -480,13 +478,138 @@ public class JsonValidatorService : IJsonValidatorService
         }
     }
 
+    private async Task<ResolvedSchemaDetails> CreateSchemaFromJsonAsync(string schemaJson, string? documentUri = null)
+    {
+        var resolvedSchemaJson = await _schemaResolverService.ResolveAsync(schemaJson, documentUri, auth: null);
+        var effectiveSchemaJson = string.IsNullOrWhiteSpace(resolvedSchemaJson) ? schemaJson : resolvedSchemaJson;
+        return BuildSchemaDetails(effectiveSchemaJson);
+    }
+
     private static ResolvedSchemaDetails BuildSchemaDetails(string schemaJson)
     {
-        var builtSchema = JsonSchema.FromText(schemaJson);
         var schemaNode = System.Text.Json.Nodes.JsonNode.Parse(schemaJson);
+        if (schemaNode is null)
+        {
+            throw new InvalidOperationException("Schema JSON could not be parsed");
+        }
+
+        // Accept common OpenAPI-style schema keywords by normalizing them to JSON Schema.
+        NormalizeSchemaNodeForDialect(schemaNode);
+
+        var normalizedSchemaJson = schemaNode.ToJsonString();
+        var builtSchema = JsonSchema.FromText(normalizedSchemaJson);
         var title = TryReadSchemaStringField(schemaNode, "title");
         var description = TryReadSchemaStringField(schemaNode, "description");
         return new ResolvedSchemaDetails(builtSchema, schemaNode, title, description);
+    }
+
+    private static void NormalizeSchemaNodeForDialect(System.Text.Json.Nodes.JsonNode node)
+    {
+        if (node is System.Text.Json.Nodes.JsonObject obj)
+        {
+            if (obj.TryGetPropertyValue("example", out var exampleValue))
+            {
+                if (!obj.ContainsKey("examples"))
+                {
+                    var examples = new System.Text.Json.Nodes.JsonArray();
+                    if (exampleValue != null)
+                    {
+                        examples.Add(exampleValue.DeepClone());
+                    }
+
+                    obj["examples"] = examples;
+                }
+
+                _ = obj.Remove("example");
+            }
+
+            _ = obj.Remove("name");
+
+            var properties = obj.ToList();
+            foreach (var (key, value) in properties)
+            {
+                if (value == null)
+                {
+                    continue;
+                }
+
+                if (IsSchemaMapKeyword(key) && value is System.Text.Json.Nodes.JsonObject schemaMap)
+                {
+                    foreach (var (_, mappedSchema) in schemaMap.ToList())
+                    {
+                        if (mappedSchema != null)
+                        {
+                            NormalizeSchemaNodeForDialect(mappedSchema);
+                        }
+                    }
+
+                    continue;
+                }
+
+                if (IsSchemaArrayKeyword(key) && value is System.Text.Json.Nodes.JsonArray schemaArray)
+                {
+                    foreach (var item in schemaArray)
+                    {
+                        if (item != null)
+                        {
+                            NormalizeSchemaNodeForDialect(item);
+                        }
+                    }
+
+                    continue;
+                }
+
+                if (IsSchemaObjectKeyword(key) && value is System.Text.Json.Nodes.JsonObject nestedSchema)
+                {
+                    NormalizeSchemaNodeForDialect(nestedSchema);
+                }
+            }
+
+            return;
+        }
+
+        if (node is System.Text.Json.Nodes.JsonArray array)
+        {
+            foreach (var item in array)
+            {
+                if (item != null)
+                {
+                    NormalizeSchemaNodeForDialect(item);
+                }
+            }
+        }
+    }
+
+    private static bool IsSchemaMapKeyword(string keyword)
+    {
+        return keyword is "properties"
+            or "patternProperties"
+            or "$defs"
+            or "definitions"
+            or "dependentSchemas";
+    }
+
+    private static bool IsSchemaArrayKeyword(string keyword)
+    {
+        return keyword is "allOf"
+            or "anyOf"
+            or "oneOf"
+            or "prefixItems";
+    }
+
+    private static bool IsSchemaObjectKeyword(string keyword)
+    {
+        return keyword is "items"
+            or "contains"
+            or "if"
+            or "then"
+            or "else"
+            or "not"
+            or "propertyNames"
+            or "additionalProperties"
+            or "unevaluatedItems"
+            or "unevaluatedProperties"
+            or "contentSchema";
     }
 
     private static string? TryReadSchemaStringField(System.Text.Json.Nodes.JsonNode? node, string fieldName)
@@ -819,6 +942,16 @@ public class JsonValidatorService : IJsonValidatorService
                 Path = "",
                 Message = $"Invalid JSON format: {TextSanitizer.SanitizeExceptionMessage(ex.Message)}",
                 ErrorCode = "INVALID_JSON",
+                Severity = "Error"
+            });
+        }
+        catch (RefResolutionException ex)
+        {
+            errors.Add(new ValidationError
+            {
+                Path = "",
+                Message = $"Schema reference could not be resolved: {TextSanitizer.SanitizeExceptionMessage(ex.Message)}",
+                ErrorCode = "SCHEMA_REFERENCE_UNRESOLVED",
                 Severity = "Error"
             });
         }
