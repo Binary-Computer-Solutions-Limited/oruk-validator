@@ -188,8 +188,6 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         // Step 1: Discovery and preparation of OpenAPI schema content, HSDS profile schemas, and related metadata.
         var discovery = await PrepareValidationDiscoveryAsync(request, result, schemaResolutionIssues, cancellationToken);
         logMemoryCheckpoint("schema-url-discovery");
-        var ownSchema = discovery.OwnSchema
-            ?? throw new InvalidOperationException("Own OpenAPI schema content was not available after discovery.");
 
         // Step 2: Specification validation, including comparison against any discovered HSDS profile schema to produce profile compliance findings.
         var specificationStage = await ExecuteSpecificationStageAsync(
@@ -197,22 +195,24 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             result,
             discovery.HsdsProfileVersion,
             discovery.HsdsProfileSchema,
-            ownSchema,
+            discovery.OwnSchemaSpec,
             discovery.HsdsProfileReason,
             cancellationToken);
         logMemoryCheckpoint("specification-validation");
 
         // Step 3: Endpoint testing.
+
         var endpointTests = await ExecuteEndpointTestingAsync(
-            request,
-            result,
-            discovery.DataSourceRequestAuth,
-            ownSchema,
-            discovery.HsdsProfileSchema,
-            specificationStage.SpecValidation,
-            specificationStage.SpecValidationErrors,
-            cancellationToken);
+        request,
+        result,
+        discovery.DataSourceRequestAuth,
+        discovery.OwnSchemaSpec,
+        discovery.HsdsProfileSchema,
+        specificationStage.SpecValidation,
+        specificationStage.SpecValidationErrors,
+        cancellationToken);
         logMemoryCheckpoint("endpoint-testing");
+
 
         // Step 4: Finalize specification validation.
         FinalizeSpecificationValidation(result, schemaResolutionIssues, specificationStage);
@@ -264,7 +264,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         if (ownSchema == null && resolvedHsdsProfileSpec != null)
         {
             feedSpecFellBackToHsdsProfile = true;
-            
+
             if (!string.IsNullOrWhiteSpace(request.OwnSchemaUrl))
             {
                 result.Notifications.Add(
@@ -297,7 +297,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         {
             HsdsProfileVersion = discoveredProfileVersion,
             HsdsProfileSchema = resolvedHsdsProfileSpec,
-            OwnSchema = ownSchema,
+            OwnSchemaSpec = ownSchema,
             FellBackToHsdsProfile = feedSpecFellBackToHsdsProfile,
             OwnSchemaUrl = request.OwnSchemaUrl,
             HasConfiguredDefaultProfile = bootstrap.UsedDefaultProfile,
@@ -311,42 +311,39 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         OpenApiValidationResult result,
         string? hsdsProfileVersion,
         JsonObject? hsdsProfileSchemaContent,
-        JsonObject openApiSchemaContent,
+        JsonObject? ownSchemaContent,
         string? profileReason,
         CancellationToken cancellationToken)
     {
-        var isMisplacedVersionWarning = profileReason?.StartsWith("Warning:", StringComparison.Ordinal) == true;
         OpenApiSpecificationValidation? specValidation = null;
-        List<ValidationError>? specValidationErrors = null;
+        List<ValidationError>? specValidationErrors = new List<ValidationError>();
         if (_openApiValidationOptions.ValidateSpecification)
         {
-            specValidation = await _openApiSpecificationService.ValidateAsync(openApiSchemaContent, cancellationToken);
-            specValidationErrors = new List<ValidationError>(specValidation.Errors);
-
-            if (isMisplacedVersionWarning)
+            if (ownSchemaContent == null)
             {
                 specValidationErrors.Add(new ValidationError
                 {
                     Path = "openapi",
-                    Message = profileReason!,
-                    ErrorCode = "HSDS_SCHEMA_VERSION_MISPLACED",
-                    Severity = "Warning"
+                    Message = "Unable to fetch or parse the feed's OpenAPI specification. Specification validation was skipped.",
+                    ErrorCode = "OPENAPI_SPECIFICATION_UNRESOLVED",
+                    Severity = "Error"
                 });
             }
-        }
-        else if (isMisplacedVersionWarning)
-        {
-            result.Notifications.Add(profileReason!);
-        }
+            else
+            {
+                specValidation = await _openApiSpecificationService.ValidateAsync(ownSchemaContent, cancellationToken);
+                specValidationErrors.AddRange(specValidation.Errors);
 
-        if (_openApiValidationOptions.ValidateSpecification && specValidation != null)
-        {
-            ApplySpecificationComparisonAgainstProfile(
-                request,
-                openApiSchemaContent,
-                hsdsProfileSchemaContent,
-                specValidationErrors!,
-                hsdsProfileVersion);
+                if (specValidation != null)
+                {
+                    ApplySpecificationComparisonAgainstProfile(
+                        request,
+                        ownSchemaContent,
+                        hsdsProfileSchemaContent,
+                        specValidationErrors!,
+                        hsdsProfileVersion);
+                }
+            }
         }
 
         return new SpecificationStageResult
@@ -400,14 +397,14 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         OpenApiValidationRequest request,
         OpenApiValidationResult result,
         DataSourceAuthentication? dataSourceRequestAuth,
-        JsonObject openApiSchemaContent,
-        JsonObject? resolvedHsdsProfileSpec,
+        JsonObject? ownSchemaSpec,
+        JsonObject? hsdsProfileSpec,
         OpenApiSpecificationValidation? specValidation,
         List<ValidationError>? specValidationErrors,
         CancellationToken cancellationToken)
     {
         var endpointTests = new List<EndpointTestResult>();
-        if (!_openApiValidationOptions.TestEndpoints || string.IsNullOrEmpty(request.BaseUrl))
+        if (!_openApiValidationOptions.TestEndpoints || string.IsNullOrEmpty(request.BaseUrl) || (ownSchemaSpec == null && hsdsProfileSpec == null))
         {
             return endpointTests;
         }
@@ -416,22 +413,22 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         JsonObject endpointValidationSpec;
         if (!useOwnSchemaValidation)
         {
-            if (resolvedHsdsProfileSpec != null)
+            if (hsdsProfileSpec != null)
             {
-                endpointValidationSpec = resolvedHsdsProfileSpec;
+                endpointValidationSpec = hsdsProfileSpec;
                 result.Notifications.Add(
                     "OwnSchemaValidation is set to None: endpoint responses are validated against the HSDS profile schema instead of the feed's own schema.");
             }
             else
             {
-                endpointValidationSpec = openApiSchemaContent;
+                endpointValidationSpec = ownSchemaSpec;
                 result.Notifications.Add(
                     "OwnSchemaValidation is set to None but no HSDS profile schema could be resolved; falling back to the feed's own schema for endpoint validation.");
             }
         }
         else
         {
-            endpointValidationSpec = openApiSchemaContent;
+            endpointValidationSpec = ownSchemaSpec;
         }
 
         endpointValidationSpec = PrepareEndpointValidationSpecForEndpointTesting(endpointValidationSpec, request.BaseUrl, out var pathDeduplicationWarning);
@@ -486,7 +483,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         OpenApiValidationResult result,
         List<EndpointTestResult> endpointTests,
         bool feedSpecFellBackToHsdsProfile,
-        JsonObject? resolvedHsdsProfileSpec,
+        JsonObject? hsdsProfileSpec,
         CancellationToken cancellationToken)
     {
         if (_openApiValidationOptions.HsdsValidationMode != HsdsValidationMode.FullHsdsRuntime)
@@ -503,11 +500,11 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             result.Notifications.Add(
                 $"Full HSDS runtime validation was skipped: {skipReason} No second pass is needed.");
         }
-        else if (resolvedHsdsProfileSpec != null)
+        else if (hsdsProfileSpec != null)
         {
             await _hsdsComplianceService.ValidateEndpointResponsesAgainstHsdsProfileAsync(
                 endpointTests,
-                resolvedHsdsProfileSpec,
+                hsdsProfileSpec,
                 request.Options!,
                 cancellationToken);
         }
@@ -571,7 +568,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
     {
         public string? HsdsProfileVersion { get; init; }
         public JsonObject? HsdsProfileSchema { get; init; }
-        public required JsonObject? OwnSchema { get; init; }
+        public required JsonObject? OwnSchemaSpec { get; init; }
         public bool FellBackToHsdsProfile { get; init; }
         public string? OwnSchemaUrl { get; init; }
         public bool HasConfiguredDefaultProfile { get; init; }
