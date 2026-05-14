@@ -3,8 +3,6 @@ using System.Reflection;
 using Json.Schema;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Logging;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
@@ -284,12 +282,6 @@ public class JsonValidatorService : IJsonValidatorService
             // false cycle detection; parse from its JSON representation instead.
             return System.Text.Json.JsonDocument.Parse(jsonNode.ToJsonString());
         }
-        else if (request.JsonData is JToken jToken)
-        {
-            // JToken is already a parsed JSON tree. Convert directly to JSON text to avoid
-            // object-graph traversal over framework internals.
-            return System.Text.Json.JsonDocument.Parse(jToken.ToString(Formatting.None));
-        }
         else if (request.JsonData != null)
         {
             var options = new System.Text.Json.JsonSerializerOptions
@@ -326,9 +318,21 @@ public class JsonValidatorService : IJsonValidatorService
         {
             return BuildSchemaDetails(compiledSchema.ToString() ?? "{}");
         }
-        else if (request.Schema != null && request.Schema.GetType().FullName == "Newtonsoft.Json.Schema.JSchema")
+        else if (request.Schema is System.Text.Json.Nodes.JsonNode schemaNode)
         {
-            return BuildSchemaDetails(request.Schema.ToString() ?? "{}");
+            return BuildSchemaDetails(schemaNode.ToJsonString());
+        }
+        else if (request.Schema is System.Text.Json.JsonDocument schemaDocument)
+        {
+            return BuildSchemaDetails(schemaDocument.RootElement.GetRawText());
+        }
+        else if (request.Schema is System.Text.Json.JsonElement schemaElement)
+        {
+            return BuildSchemaDetails(schemaElement.GetRawText());
+        }
+        else if (request.Schema is string schemaString)
+        {
+            return BuildSchemaDetails(schemaString);
         }
         else if (request.Schema != null)
         {
@@ -446,12 +450,17 @@ public class JsonValidatorService : IJsonValidatorService
     {
         try
         {
-            var schemaJson = schema is JToken token
-                ? token.ToString(Formatting.None)
-                : System.Text.Json.JsonSerializer.Serialize(schema, new System.Text.Json.JsonSerializerOptions
+            var schemaJson = schema switch
+            {
+                string schemaString => schemaString,
+                System.Text.Json.Nodes.JsonNode schemaNode => schemaNode.ToJsonString(),
+                System.Text.Json.JsonDocument schemaDocument => schemaDocument.RootElement.GetRawText(),
+                System.Text.Json.JsonElement schemaElement => schemaElement.GetRawText(),
+                _ => System.Text.Json.JsonSerializer.Serialize(schema, new System.Text.Json.JsonSerializerOptions
                 {
                     MaxDepth = MaxAllowedJsonDepth
-                });
+                })
+            };
 
             var resolvedSchemaJson = await _schemaResolverService.ResolveAsync(schemaJson);
             var effectiveSchemaJson = string.IsNullOrWhiteSpace(resolvedSchemaJson) ? schemaJson : resolvedSchemaJson;
@@ -934,78 +943,59 @@ public class JsonValidatorService : IJsonValidatorService
 
     private string? GetSchemaTitle(ValidationRequest request, ResolvedSchemaDetails schema)
     {
-        // First try to get the title from the original schema object
-        if (request.Schema != null)
-        {
-            try
-            {
-                var jObject = JObject.FromObject(request.Schema);
-                var title = jObject["title"]?.ToString();
-                if (!string.IsNullOrEmpty(title))
-                {
-                    return title;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.FailedToExtractTitleFromOriginalSchema(ex);
-            }
-        }
-
-        return schema.Title;
+        return TryGetSchemaStringFieldFromObject(request.Schema, "title") ?? schema.Title;
     }
 
     private string? GetSchemaDescription(ValidationRequest request, ResolvedSchemaDetails schema)
     {
-        // First try to get the description from the original schema object
-        if (request.Schema != null)
-        {
-            try
-            {
-                var jObject = JObject.FromObject(request.Schema);
-                var description = jObject["description"]?.ToString();
-                if (!string.IsNullOrEmpty(description))
-                {
-                    return description;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.FailedToExtractDescriptionFromOriginalSchema(ex);
-            }
-        }
-
-        return schema.Description;
+        return TryGetSchemaStringFieldFromObject(request.Schema, "description") ?? schema.Description;
     }
 
     private string? GetSchemaTitleFromObject(object? schemaObject)
     {
-        if (schemaObject == null) return null;
-
-        try
-        {
-            var jObject = JObject.FromObject(schemaObject);
-            return jObject["title"]?.ToString();
-        }
-        catch (Exception ex)
-        {
-            _logger.FailedToExtractTitleFromSchema(ex);
-            return null;
-        }
+        return TryGetSchemaStringFieldFromObject(schemaObject, "title");
     }
 
     private string? GetSchemaDescriptionFromObject(object? schemaObject)
     {
-        if (schemaObject == null) return null;
+        return TryGetSchemaStringFieldFromObject(schemaObject, "description");
+    }
+
+    private string? TryGetSchemaStringFieldFromObject(object? schemaObject, string fieldName)
+    {
+        if (schemaObject == null)
+        {
+            return null;
+        }
 
         try
         {
-            var jObject = JObject.FromObject(schemaObject);
-            return jObject["description"]?.ToString();
+            var schemaJson = schemaObject switch
+            {
+                string schemaString => schemaString,
+                System.Text.Json.Nodes.JsonNode schemaNode => schemaNode.ToJsonString(),
+                System.Text.Json.JsonDocument schemaDocument => schemaDocument.RootElement.GetRawText(),
+                System.Text.Json.JsonElement schemaElement => schemaElement.GetRawText(),
+                _ => System.Text.Json.JsonSerializer.Serialize(schemaObject, new System.Text.Json.JsonSerializerOptions
+                {
+                    MaxDepth = MaxAllowedJsonDepth
+                })
+            };
+
+            var schemaNodeText = System.Text.Json.Nodes.JsonNode.Parse(schemaJson);
+            return TryReadSchemaStringField(schemaNodeText, fieldName);
         }
         catch (Exception ex)
         {
-            _logger.FailedToExtractDescriptionFromSchema(ex);
+            if (fieldName == "title")
+            {
+                _logger.FailedToExtractTitleFromSchema(ex);
+            }
+            else if (fieldName == "description")
+            {
+                _logger.FailedToExtractDescriptionFromSchema(ex);
+            }
+
             return null;
         }
     }

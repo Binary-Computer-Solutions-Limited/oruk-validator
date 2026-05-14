@@ -22,7 +22,7 @@ namespace OpenReferralApi.Core.Services;
 public interface IEndpointTestingService
 {
     Task<List<EndpointTestResult>> TestEndpointsAsync(
-        JObject openApiSpec,
+    JObject openApiSpec,
         string baseUrl,
         OpenApiValidationOptions options,
         DataSourceAuthentication? authentication,
@@ -54,7 +54,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     private readonly IJsonValidatorService _jsonValidatorService;
     private readonly IHsdsComplianceService _hsdsComplianceService;
     private readonly OpenApiValidationServerOptions? _openApiValidationOptions;
-    private readonly ConcurrentDictionary<string, JToken> _validationSchemaCache = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, JsonNode> _validationSchemaCache = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<string, JSchema> CompiledValidationSchemaCache = new(StringComparer.Ordinal);
 
     public EndpointTestingService(
@@ -226,13 +226,13 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             Name = operation["name"]?.ToString(),
             OperationId = operation["operationId"]?.ToString(),
             Summary = operation["summary"]?.ToString(),
-            IsOptional = operation.IsOptionalEndpoint(),
+            IsOptional = ToJsonNode(operation).IsOptionalEndpoint(),
             Status = EndpointTestStatus.NotTested
         };
 
         try
         {
-            bool isOptional = operation.IsOptionalEndpoint();
+            bool isOptional = ToJsonNode(operation).IsOptionalEndpoint();
             bool skipOptional = !(_openApiValidationOptions?.TestOptionalEndpoints ?? true) && isOptional;
             if (skipOptional)
             {
@@ -262,7 +262,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                 // Check for non-success status codes and handle based on endpoint requirements
                 if (!testResult.IsSuccessStatusCode)
                 {
-                    var isOptionalEndpoint = pathItem.IsOptionalEndpoint();
+                    var isOptionalEndpoint = ToJsonNode(pathItem).IsOptionalEndpoint();
                     var statusCode = testResult.ResponseStatusCode ?? 0;
                     var errorMessage = $"Endpoint returned {statusCode} status code";
 
@@ -419,7 +419,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
 
         if (!firstPageResult.IsSuccessStatusCode)
         {
-            var isOptionalEndpoint = pathItem.IsOptionalEndpoint();
+            var isOptionalEndpoint = ToJsonNode(pathItem).IsOptionalEndpoint();
             var statusCode = firstPageResult.ResponseStatusCode ?? 0;
 
             if (isOptionalEndpoint)
@@ -844,54 +844,57 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     {
         try
         {
-            if (operation.ContainsKey("responses"))
+            var operationNode = ToJsonObject(operation);
+            var openApiDocumentNode = ToJsonObject(openApiDocument);
+            if (operationNode == null || openApiDocumentNode == null)
             {
-                var responses = operation["responses"];
-                if (responses is JObject responsesObject)
+                return;
+            }
+
+            if (operationNode["responses"] is JsonObject responsesObject)
+            {
+                var statusCode = testResult.ResponseStatusCode?.ToString() ?? "default";
+                var responseSchema = responsesObject[statusCode] ?? responsesObject["default"];
+
+                if (responseSchema is JsonObject responseSchemaObject
+                    && responseSchemaObject["content"] is JsonObject contentObject)
                 {
-                    var statusCode = testResult.ResponseStatusCode?.ToString() ?? "default";
-                    var responseSchema = responsesObject[statusCode] ?? responsesObject["default"];
-
-                    if (responseSchema is JObject responseSchemaObject && responseSchemaObject.ContainsKey("content"))
+                    JsonObject? jsonContentObject = null;
+                    foreach (var contentEntry in contentObject)
                     {
-                        var content = responseSchemaObject["content"];
-                        if (content is JObject contentObject)
+                        if (contentEntry.Key.Contains("application/json", StringComparison.OrdinalIgnoreCase)
+                            && contentEntry.Value is JsonObject candidate)
                         {
-                            // Find JSON content type
-                            var jsonContent = contentObject.Properties()
-                                .FirstOrDefault(p => p.Name.Contains("application/json"));
-
-                            if (jsonContent?.Value is JObject jsonContentObject && jsonContentObject.ContainsKey("schema"))
-                            {
-                                var schema = jsonContentObject["schema"];
-                                if (schema != null)
-                                {
-                                    var schemaForValidation = GetValidationSchemaForResponse(schema, openApiDocument);
-
-                                    // Build schema in full OpenAPI context so internal refs like
-                                    // #/components/schemas/* can be pre-resolved before JSchema creation.
-                                    var validationRequest = new ValidationRequest
-                                    {
-                                        JsonData = parsedResponseJsonByResult.TryGetValue(testResult, out var parsedJson)
-                                            ? (object)parsedJson
-                                            : (testResult.ResponseBody ?? "{}"),
-                                        Schema = schemaForValidation,
-                                        Options = new ValidationOptions
-                                        {
-                                            MaxErrors = ResolveMaxValidationErrorsPerResponse(),
-                                            ReportAdditionalFields = (options?.ReportAdditionalFields ?? false)
-                                                || ((_openApiValidationOptions?.OwnSchemaValidation
-                                                     ?? OwnSchemaValidationMode.StrictOwnSchemaValidation)
-                                                    == OwnSchemaValidationMode.StrictOwnSchemaValidation)
-                                        }
-                                    };
-                                    var validationResult = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
-                                    _hsdsComplianceService.ApplyAdditionalFieldPolicy(validationResult, options?.ReportAdditionalFields ?? false);
-                                    testResult.ValidationResult = validationResult;
-                                    NormalizeValidationResultErrors(testResult.ValidationResult);
-                                }
-                            }
+                            jsonContentObject = candidate;
+                            break;
                         }
+                    }
+
+                    if (jsonContentObject? ["schema"] is JsonNode schema)
+                    {
+                        var schemaForValidation = GetValidationSchemaForResponse(schema, openApiDocumentNode);
+
+                        // Build schema in full OpenAPI context so internal refs like
+                        // #/components/schemas/* can be pre-resolved before JSchema creation.
+                        var validationRequest = new ValidationRequest
+                        {
+                            JsonData = parsedResponseJsonByResult.TryGetValue(testResult, out var parsedJson)
+                                ? (object)parsedJson
+                                : (testResult.ResponseBody ?? "{}"),
+                            Schema = schemaForValidation,
+                            Options = new ValidationOptions
+                            {
+                                MaxErrors = ResolveMaxValidationErrorsPerResponse(),
+                                ReportAdditionalFields = (options?.ReportAdditionalFields ?? false)
+                                    || ((_openApiValidationOptions?.OwnSchemaValidation
+                                         ?? OwnSchemaValidationMode.StrictOwnSchemaValidation)
+                                        == OwnSchemaValidationMode.StrictOwnSchemaValidation)
+                            }
+                        };
+                        var validationResult = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
+                        _hsdsComplianceService.ApplyAdditionalFieldPolicy(validationResult, options?.ReportAdditionalFields ?? false);
+                        testResult.ValidationResult = validationResult;
+                        NormalizeValidationResultErrors(testResult.ValidationResult);
                     }
                 }
             }
@@ -902,16 +905,13 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         }
     }
 
-    private JToken GetValidationSchemaForResponse(JToken schema, JObject openApiDocument)
+    private JsonNode GetValidationSchemaForResponse(JsonNode schema, JsonObject openApiDocument)
     {
-        if (string.IsNullOrWhiteSpace(schema.Path))
-        {
-            return BuildValidationSchemaWithComponentsContext(schema, openApiDocument);
-        }
-
+        var schemaNode = schema.DeepClone();
+        var cacheKey = ComputeSha256Hex(schemaNode.ToJsonString());
         return _validationSchemaCache.GetOrAdd(
-            schema.Path,
-            _ => BuildValidationSchemaWithComponentsContext(schema, openApiDocument));
+            cacheKey,
+            _ => BuildValidationSchemaWithComponentsContext(schemaNode, openApiDocument));
     }
 
     private JSchema GetCompiledValidationSchemaForResponse(
@@ -955,7 +955,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             IEnumerable<EndpointTestResult> endpointResults,
             ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult,
             ConcurrentDictionary<string, List<string>> extractedIds,
-            ConcurrentDictionary<string, JToken> validationSchemaCache)
+            ConcurrentDictionary<string, JsonNode> validationSchemaCache)
     {
         int retainedResponseBodies = 0;
         long retainedResponseBodyChars = 0;
@@ -1099,19 +1099,19 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         }
     }
 
-    private static JToken BuildValidationSchemaWithComponentsContext(JToken schema, JObject openApiDocument)
+    private static JsonNode BuildValidationSchemaWithComponentsContext(JsonNode schema, JsonObject openApiDocument)
     {
         if (!RequiresComponentsContext(schema)
-            || openApiDocument["components"] is not JObject components)
+            || openApiDocument["components"] is not JsonObject components)
         {
             return schema.DeepClone();
         }
 
         // Keep the response schema at document root and attach components so refs like
         // #/components/schemas/* remain resolvable without introducing synthetic wrapper refs.
-        if (schema is JObject schemaObject)
+        if (schema is JsonObject schemaObject)
         {
-            var schemaWithComponents = (JObject)schemaObject.DeepClone();
+            var schemaWithComponents = (JsonObject)schemaObject.DeepClone();
             if (!schemaWithComponents.ContainsKey("components"))
             {
                 schemaWithComponents["components"] = components.DeepClone();
@@ -1123,21 +1123,34 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         return schema.DeepClone();
     }
 
-    private static bool RequiresComponentsContext(JToken schema)
+    private static bool RequiresComponentsContext(JsonNode schema)
     {
-        if (schema is JObject schemaObject
-            && schemaObject.TryGetValue("$ref", out var refToken)
-            && refToken.Type == JTokenType.String
+        if (schema is JsonObject schemaObject
+            && schemaObject.TryGetPropertyValue("$ref", out var refToken)
+            && refToken is not null
             && refToken.ToString().StartsWith("#/components/", StringComparison.Ordinal))
         {
             return true;
         }
 
-        foreach (var child in schema.Children())
+        if (schema is JsonObject objectNode)
         {
-            if (RequiresComponentsContext(child))
+            foreach (var child in objectNode)
             {
-                return true;
+                if (child.Value is not null && RequiresComponentsContext(child.Value))
+                {
+                    return true;
+                }
+            }
+        }
+        else if (schema is JsonArray arrayNode)
+        {
+            foreach (var child in arrayNode)
+            {
+                if (child is not null && RequiresComponentsContext(child))
+                {
+                    return true;
+                }
             }
         }
 
@@ -1341,7 +1354,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                 Name = operation["name"]?.ToString(),
                 OperationId = operation["operationId"]?.ToString(),
                 Summary = operation["summary"]?.ToString(),
-                IsOptional = operation.IsOptionalEndpoint(),
+                IsOptional = ToJsonNode(operation).IsOptionalEndpoint(),
                 Status = EndpointTestStatus.NotTested,
                 IsTested = false
             };
@@ -1427,7 +1440,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                 Name = operation["name"]?.ToString(),
                 OperationId = operation["operationId"]?.ToString(),
                 Summary = operation["summary"]?.ToString(),
-                IsOptional = operation.IsOptionalEndpoint(),
+                IsOptional = ToJsonNode(operation).IsOptionalEndpoint(),
                 Status = EndpointTestStatus.NotTested,
                 IsTested = false,
                 TestResults = new List<HttpTestResult>(){
@@ -1613,33 +1626,6 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     }
 
     /// <summary>
-    /// Extracts an ID from a JSON object using OpenAPI schema-identified ID fields, with fallback to common names
-    /// </summary>
-    private static string? ExtractIdFromObject(JToken item, List<string> schemaIdFields)
-    {
-        if (item is not JObject obj)
-            return null;
-
-        // First try fields identified from the OpenAPI schema
-        foreach (var idField in schemaIdFields)
-        {
-            var idValue = obj[idField]?.ToString();
-            if (!string.IsNullOrWhiteSpace(idValue))
-                return idValue;
-        }
-
-        // Fallback to common ID field names if schema-based extraction failed
-        foreach (var idField in new[] { "id", "_id", "uid", "uuid", "identifier", "key" })
-        {
-            var idValue = obj[idField]?.ToString();
-            if (!string.IsNullOrWhiteSpace(idValue))
-                return idValue;
-        }
-
-        return null;
-    }
-
-    /// <summary>
     /// Extracts ID field names from the OpenAPI response schema
     /// </summary>
     private List<string> ExtractIdFieldsFromSchema(JObject operation, JObject openApiDocument)
@@ -1650,9 +1636,10 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         {
             // Get the 200 response schema
             var responseSchema = operation["responses"]?["200"]?["content"]?["application/json"]?["schema"];
-            if (responseSchema != null)
+            var responseSchemaNode = ToJsonNode(responseSchema);
+            if (responseSchemaNode != null)
             {
-                ExtractIdFieldsFromSchemaRecursive(responseSchema, idFields);
+                ExtractIdFieldsFromSchemaRecursive(responseSchemaNode, idFields);
             }
         }
         catch (Exception ex)
@@ -1674,9 +1661,10 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         {
             // Get the 200 response schema
             var responseSchema = operation["responses"]?["200"]?["content"]?["application/json"]?["schema"];
-            if (responseSchema != null)
+            var responseSchemaNode = ToJsonNode(responseSchema);
+            if (responseSchemaNode != null)
             {
-                ExtractCollectionPropertiesFromSchemaRecursive(responseSchema, collectionProps);
+                ExtractCollectionPropertiesFromSchemaRecursive(responseSchemaNode, collectionProps);
             }
         }
         catch (Exception ex)
@@ -1690,16 +1678,16 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     /// <summary>
     /// Recursively extracts ID field names from a schema structure
     /// </summary>
-    private static void ExtractIdFieldsFromSchemaRecursive(JToken schema, List<string> idFields)
+    private static void ExtractIdFieldsFromSchemaRecursive(JsonNode schema, List<string> idFields)
     {
-        if (schema is JObject schemaObj)
+        if (schema is JsonObject schemaObj)
         {
             // Check if this schema has properties
-            if (schemaObj["properties"] is JObject properties)
+            if (schemaObj["properties"] is JsonObject properties)
             {
-                foreach (var prop in properties.Properties())
+                foreach (var prop in properties)
                 {
-                    var propName = prop.Name;
+                    var propName = prop.Key;
                     var propSchema = prop.Value;
 
                     // Check if this looks like an ID field
@@ -1709,12 +1697,15 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                     }
 
                     // Recursively check nested properties
-                    ExtractIdFieldsFromSchemaRecursive(propSchema, idFields);
+                    if (propSchema != null)
+                    {
+                        ExtractIdFieldsFromSchemaRecursive(propSchema, idFields);
+                    }
                 }
             }
 
             // Check array items
-            if (schemaObj["items"] is JToken itemsSchema)
+            if (schemaObj["items"] is JsonNode itemsSchema)
             {
                 ExtractIdFieldsFromSchemaRecursive(itemsSchema, idFields);
             }
@@ -1722,11 +1713,14 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             // Check allOf, anyOf, oneOf
             foreach (var combiner in new[] { "allOf", "anyOf", "oneOf" })
             {
-                if (schemaObj[combiner] is JArray combinerArray)
+                if (schemaObj[combiner] is JsonArray combinerArray)
                 {
                     foreach (var item in combinerArray)
                     {
-                        ExtractIdFieldsFromSchemaRecursive(item, idFields);
+                        if (item != null)
+                        {
+                            ExtractIdFieldsFromSchemaRecursive(item, idFields);
+                        }
                     }
                 }
             }
@@ -1736,37 +1730,43 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     /// <summary>
     /// Recursively extracts collection property names from a schema structure
     /// </summary>
-    private static void ExtractCollectionPropertiesFromSchemaRecursive(JToken schema, List<string> collectionProps)
+    private static void ExtractCollectionPropertiesFromSchemaRecursive(JsonNode schema, List<string> collectionProps)
     {
-        if (schema is JObject schemaObj)
+        if (schema is JsonObject schemaObj)
         {
             // Check if this schema has properties
-            if (schemaObj["properties"] is JObject properties)
+            if (schemaObj["properties"] is JsonObject properties)
             {
-                foreach (var prop in properties.Properties())
+                foreach (var prop in properties)
                 {
-                    var propName = prop.Name;
+                    var propName = prop.Key;
                     var propSchema = prop.Value;
 
                     // Check if this property is an array (collection)
-                    if (propSchema is JObject propObj && propObj["type"]?.ToString() == "array")
+                    if (propSchema is JsonObject propObj && propObj["type"]?.ToString() == "array")
                     {
                         collectionProps.Add(propName);
                     }
 
                     // Recursively check nested properties
-                    ExtractCollectionPropertiesFromSchemaRecursive(propSchema, collectionProps);
+                    if (propSchema != null)
+                    {
+                        ExtractCollectionPropertiesFromSchemaRecursive(propSchema, collectionProps);
+                    }
                 }
             }
 
             // Check allOf, anyOf, oneOf
             foreach (var combiner in new[] { "allOf", "anyOf", "oneOf" })
             {
-                if (schemaObj[combiner] is JArray combinerArray)
+                if (schemaObj[combiner] is JsonArray combinerArray)
                 {
                     foreach (var item in combinerArray)
                     {
-                        ExtractCollectionPropertiesFromSchemaRecursive(item, collectionProps);
+                        if (item != null)
+                        {
+                            ExtractCollectionPropertiesFromSchemaRecursive(item, collectionProps);
+                        }
                     }
                 }
             }
@@ -1776,7 +1776,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     /// <summary>
     /// Determines if a property name and schema indicate an ID field
     /// </summary>
-    private static bool IsIdField(string propName, JToken? propSchema)
+    private static bool IsIdField(string propName, JsonNode? propSchema)
     {
         // Check property name patterns
         var nameLower = propName.ToLowerInvariant();
@@ -1788,7 +1788,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         }
 
         // Check schema properties for ID indicators
-        if (propSchema is JObject schemaObj)
+        if (propSchema is JsonObject schemaObj)
         {
             var description = schemaObj["description"]?.ToString().ToLowerInvariant();
             if (!string.IsNullOrEmpty(description) &&
@@ -1897,6 +1897,21 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         }
 
         return true;
+    }
+
+    private static JsonNode? ToJsonNode(JToken? token)
+    {
+        return token is null ? null : JsonNode.Parse(token.ToString());
+    }
+
+    private static JsonObject? ToJsonObject(JToken? token)
+    {
+        return ToJsonNode(token) as JsonObject;
+    }
+
+    private static JsonObject? ToJsonObject(JsonNode? node)
+    {
+        return node as JsonObject;
     }
 
     /// <summary>

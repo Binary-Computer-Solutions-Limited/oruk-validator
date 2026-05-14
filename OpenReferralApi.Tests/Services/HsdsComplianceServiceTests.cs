@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Options;
 using Moq;
-using Newtonsoft.Json.Linq;
 using OpenReferralApi.Core.Services;
+using System.Text.Json.Nodes;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
 
 namespace OpenReferralApi.Tests.Services;
@@ -93,7 +93,7 @@ public class HsdsComplianceServiceTests
   [Test]
   public void CompareFeedSpecAgainstHsdsProfile_FindsMissingRequiredAndAdditionalEndpoints()
   {
-    var hsdsSpec = JObject.Parse("""
+    var hsdsSpec = JsonNode.Parse("""
         {
           "openapi": "3.0.0",
           "paths": {
@@ -119,9 +119,9 @@ public class HsdsComplianceServiceTests
             }
           }
         }
-        """);
+        """)!;
 
-    var feedSpec = JObject.Parse("""
+      var feedSpec = JsonNode.Parse("""
         {
           "openapi": "3.0.0",
           "paths": {
@@ -134,7 +134,7 @@ public class HsdsComplianceServiceTests
             }
           }
         }
-        """);
+        """)!;
 
     var findings = _service.CompareFeedSpecAgainstHsdsProfile(feedSpec, hsdsSpec);
 
@@ -146,7 +146,7 @@ public class HsdsComplianceServiceTests
   [Test]
   public void CompareFeedSpecAgainstHsdsProfile_FindsMissingAndAdditionalResponseFields()
   {
-    var hsdsSpec = JObject.Parse("""
+    var hsdsSpec = JsonNode.Parse("""
         {
           "openapi": "3.0.0",
           "paths": {
@@ -173,9 +173,9 @@ public class HsdsComplianceServiceTests
             }
           }
         }
-        """);
+        """)!;
 
-    var feedSpec = JObject.Parse("""
+      var feedSpec = JsonNode.Parse("""
         {
           "openapi": "3.0.0",
           "paths": {
@@ -202,7 +202,7 @@ public class HsdsComplianceServiceTests
             }
           }
         }
-        """);
+        """)!;
 
     var findings = _service.CompareFeedSpecAgainstHsdsProfile(feedSpec, hsdsSpec);
 
@@ -214,7 +214,7 @@ public class HsdsComplianceServiceTests
   [Test]
   public void CompareFeedSpecAgainstHsdsProfile_WhenRequestBodyMissing_ReportsMissingRequestBody()
   {
-    var hsdsSpec = JObject.Parse("""
+    var hsdsSpec = JsonNode.Parse("""
         {
           "openapi": "3.0.0",
           "paths": {
@@ -240,9 +240,9 @@ public class HsdsComplianceServiceTests
             }
           }
         }
-        """);
+        """)!;
 
-    var feedSpec = JObject.Parse("""
+      var feedSpec = JsonNode.Parse("""
         {
           "openapi": "3.0.0",
           "paths": {
@@ -255,7 +255,7 @@ public class HsdsComplianceServiceTests
             }
           }
         }
-        """);
+        """)!;
 
     var findings = _service.CompareFeedSpecAgainstHsdsProfile(feedSpec, hsdsSpec);
 
@@ -277,7 +277,7 @@ public class HsdsComplianceServiceTests
             }
         });
 
-    var hsdsSpec = JObject.Parse("""
+    var hsdsSpec = JsonNode.Parse("""
         {
           "openapi": "3.0.0",
           "paths": {
@@ -302,7 +302,7 @@ public class HsdsComplianceServiceTests
             }
           }
         }
-        """);
+        """)!;
 
     var endpointTests = new List<EndpointTestResult>
         {
@@ -354,7 +354,7 @@ public class HsdsComplianceServiceTests
             }
         });
 
-    var hsdsSpec = JObject.Parse("""
+    var hsdsSpec = JsonNode.Parse("""
         {
           "openapi": "3.0.0",
           "paths": {
@@ -379,7 +379,7 @@ public class HsdsComplianceServiceTests
             }
           }
         }
-        """);
+        """)!;
 
     var endpointTests = new List<EndpointTestResult>
         {
@@ -436,7 +436,7 @@ public class HsdsComplianceServiceTests
             }
         });
 
-    var hsdsSpec = JObject.Parse("""
+    var hsdsSpec = JsonNode.Parse("""
         {
           "openapi": "3.0.0",
           "paths": {
@@ -461,7 +461,7 @@ public class HsdsComplianceServiceTests
             }
           }
         }
-        """);
+        """)!;
 
     var endpointTests = new List<EndpointTestResult>
         {

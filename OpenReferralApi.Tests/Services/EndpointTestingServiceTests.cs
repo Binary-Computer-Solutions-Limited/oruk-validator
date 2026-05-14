@@ -56,7 +56,6 @@ public class EndpointTestingServiceTests
       "https://api.example.com",
       new OpenApiValidationOptions(),
       null,
-      null,
       CancellationToken.None);
 
     Assert.That(results, Has.Count.EqualTo(1));
@@ -74,7 +73,6 @@ public class EndpointTestingServiceTests
         spec,
         "https://api.example.com",
         new OpenApiValidationOptions(),
-        null,
         null,
         CancellationToken.None);
 
@@ -121,7 +119,6 @@ public class EndpointTestingServiceTests
         "https://api.example.com",
         new OpenApiValidationOptions(),
         null,
-        null,
         CancellationToken.None);
 
     Assert.That(results, Has.Count.EqualTo(2));
@@ -155,7 +152,6 @@ public class EndpointTestingServiceTests
         "https://api.example.com",
         new OpenApiValidationOptions(),
         null,
-        null,
         CancellationToken.None);
 
     Assert.That(results, Has.Count.EqualTo(1));
@@ -177,7 +173,6 @@ public class EndpointTestingServiceTests
         CreateRequiredEndpointSpec(),
         "https://api.example.com",
         new OpenApiValidationOptions(),
-        null,
         null,
         CancellationToken.None);
 
@@ -208,7 +203,6 @@ public class EndpointTestingServiceTests
       CreateSpecWithComponentRefResponseSchema(),
       "https://api.example.com",
       new OpenApiValidationOptions(),
-      null,
       null,
       CancellationToken.None);
 
@@ -247,7 +241,6 @@ public class EndpointTestingServiceTests
         "https://api.example.com",
         new OpenApiValidationOptions(),
         null,
-        null,
         CancellationToken.None);
 
     Assert.That(results, Has.Count.EqualTo(1));
@@ -285,7 +278,6 @@ public class EndpointTestingServiceTests
       CreateCollectionAndParameterizedSpec(),
       "https://api.example.com",
       new OpenApiValidationOptions(),
-      null,
       null,
       CancellationToken.None);
 
@@ -327,7 +319,6 @@ public class EndpointTestingServiceTests
       "https://api.example.com",
       new OpenApiValidationOptions(),
       null,
-      null,
       CancellationToken.None);
 
     var parameterized = results.Single(r => r.Path == "/services/{id}");
@@ -359,7 +350,6 @@ public class EndpointTestingServiceTests
       "http://api.example.com",
       new OpenApiValidationOptions(),
       auth,
-      null,
       CancellationToken.None);
 
     Assert.That(sawApiKeyHeader, Is.False);
@@ -394,7 +384,6 @@ public class EndpointTestingServiceTests
       "https://api.example.com",
       new OpenApiValidationOptions(),
       null,
-      null,
       CancellationToken.None);
 
     Assert.That(results, Has.Count.EqualTo(1));
@@ -412,7 +401,6 @@ public class EndpointTestingServiceTests
       CreateRequiredEndpointSpec(),
       "https://api.example.com",
       new OpenApiValidationOptions(),
-      null,
       null,
       CancellationToken.None);
 
@@ -448,7 +436,6 @@ public class EndpointTestingServiceTests
       "https://api.example.com",
       new OpenApiValidationOptions(),
       auth,
-      null,
       CancellationToken.None);
 
     Assert.That(sawApiKeyHeader, Is.True);
@@ -469,7 +456,6 @@ public class EndpointTestingServiceTests
       "https://api.example.com",
       new OpenApiValidationOptions(),
       null,
-      null,
       CancellationToken.None);
 
     Assert.That(results, Is.Empty);
@@ -487,7 +473,6 @@ public class EndpointTestingServiceTests
         CreateRequiredEndpointSpec(),
         "https://api.example.com",
         new OpenApiValidationOptions { IncludeResponseBody = false },
-        null,
         null,
         CancellationToken.None);
 

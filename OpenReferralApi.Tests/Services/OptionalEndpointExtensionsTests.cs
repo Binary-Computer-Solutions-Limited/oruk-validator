@@ -1,4 +1,4 @@
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Nodes;
 using OpenReferralApi.Core.Services;
 
 namespace OpenReferralApi.Tests.Services;
@@ -12,7 +12,7 @@ public class OptionalEndpointExtensionsTests
     public void IsOptionalEndpoint_WithOptionalTag_ReturnsTrue()
     {
         // Arrange
-        var pathItem = JObject.Parse(@"
+        var pathItem = JsonNode.Parse(@"
         {
             ""get"": {
                 ""tags"": [""Optional""],
@@ -31,7 +31,7 @@ public class OptionalEndpointExtensionsTests
     public void IsOptionalEndpoint_WithoutOptionalTag_ReturnsFalse()
     {
         // Arrange
-        var pathItem = JObject.Parse(@"
+        var pathItem = JsonNode.Parse(@"
         {
             ""get"": {
                 ""tags"": [""Users""],
@@ -50,7 +50,7 @@ public class OptionalEndpointExtensionsTests
     public void IsOptionalEndpoint_WithOptionalTagCaseInsensitive_ReturnsTrue()
     {
         // Arrange
-        var pathItem = JObject.Parse(@"
+        var pathItem = JsonNode.Parse(@"
         {
             ""get"": {
                 ""tags"": [""optional"", ""Users""],
@@ -69,7 +69,7 @@ public class OptionalEndpointExtensionsTests
     public void IsOptionalEndpoint_WithMultipleMethods_ReturnsTrue()
     {
         // Arrange
-        var pathItem = JObject.Parse(@"
+        var pathItem = JsonNode.Parse(@"
         {
             ""get"": {
                 ""summary"": ""Get users""
@@ -91,7 +91,7 @@ public class OptionalEndpointExtensionsTests
     public void IsOptionalEndpoint_WithNoTags_ReturnsFalse()
     {
         // Arrange
-        var pathItem = JObject.Parse(@"
+        var pathItem = JsonNode.Parse(@"
         {
             ""get"": {
                 ""summary"": ""Get users""
@@ -109,7 +109,7 @@ public class OptionalEndpointExtensionsTests
     public void IsOptionalEndpoint_WithEmptyPathItem_ReturnsFalse()
     {
         // Arrange
-        var pathItem = JObject.Parse(@"{}");
+        var pathItem = JsonNode.Parse(@"{}");
 
         // Act
         var result = pathItem.IsOptionalEndpoint();
@@ -122,7 +122,7 @@ public class OptionalEndpointExtensionsTests
     public void IsOptionalEndpoint_WithNonObjectToken_ReturnsFalse()
     {
         // Arrange
-        JToken pathItem = new JValue("not an object");
+        var pathItem = JsonNode.Parse(@"""not an object""");
 
         // Act
         var result = pathItem.IsOptionalEndpoint();
@@ -139,7 +139,7 @@ public class OptionalEndpointExtensionsTests
     public void GetOptionalEndpointCategory_WithMultipleTags_ReturnsFirstNonOptional()
     {
         // Arrange
-        var pathItem = JObject.Parse(@"
+        var pathItem = JsonNode.Parse(@"
         {
             ""get"": {
                 ""tags"": [""Optional"", ""Users"", ""Public""],
@@ -160,7 +160,7 @@ public class OptionalEndpointExtensionsTests
     public void GetOptionalEndpointCategory_WithOnlyOptionalTag_ReturnsOptional()
     {
         // Arrange
-        var pathItem = JObject.Parse(@"
+        var pathItem = JsonNode.Parse(@"
         {
             ""get"": {
                 ""tags"": [""Optional""],
@@ -179,7 +179,7 @@ public class OptionalEndpointExtensionsTests
     public void GetOptionalEndpointCategory_WithNoTags_ReturnsNull()
     {
         // Arrange
-        var pathItem = JObject.Parse(@"
+        var pathItem = JsonNode.Parse(@"
         {
             ""get"": {
                 ""summary"": ""Get users""
@@ -197,7 +197,7 @@ public class OptionalEndpointExtensionsTests
     public void GetOptionalEndpointCategory_WithRequiredEndpoint_ReturnsCategory()
     {
         // Arrange
-        var pathItem = JObject.Parse(@"
+        var pathItem = JsonNode.Parse(@"
         {
             ""get"": {
                 ""tags"": [""Users""],
@@ -216,7 +216,7 @@ public class OptionalEndpointExtensionsTests
     public void GetOptionalEndpointCategory_WithPathLevelAndOperationLevelTags_CombinesTags()
     {
         // Arrange
-        var pathItem = JObject.Parse(@"
+        var pathItem = JsonNode.Parse(@"
         {
             ""get"": {
                 ""tags"": [""Optional"", ""Users""],
@@ -307,7 +307,7 @@ public class OptionalEndpointExtensionsTests
     public void ValidateOptionalEndpointResponse_OptionalEndpointNotImplemented_ReturnsNotImplementedStatus()
     {
         // Arrange
-        var pathItem = JObject.Parse(@"
+        var pathItem = JsonNode.Parse(@"
         {
             ""get"": {
                 ""tags"": [""Optional""],
@@ -330,7 +330,7 @@ public class OptionalEndpointExtensionsTests
     public void ValidateOptionalEndpointResponse_OptionalEndpointImplemented_ReturnsImplementedStatus()
     {
         // Arrange
-        var pathItem = JObject.Parse(@"
+        var pathItem = JsonNode.Parse(@"
         {
             ""get"": {
                 ""tags"": [""Optional""],
@@ -353,7 +353,7 @@ public class OptionalEndpointExtensionsTests
     public void ValidateOptionalEndpointResponse_OptionalEndpointWithErrorStatus_ReturnsErrorStatus()
     {
         // Arrange
-        var pathItem = JObject.Parse(@"
+        var pathItem = JsonNode.Parse(@"
         {
             ""get"": {
                 ""tags"": [""Optional""],
@@ -375,7 +375,7 @@ public class OptionalEndpointExtensionsTests
     public void ValidateOptionalEndpointResponse_RequiredEndpointSuccess_ReturnsRequiredStatus()
     {
         // Arrange
-        var pathItem = JObject.Parse(@"
+        var pathItem = JsonNode.Parse(@"
         {
             ""get"": {
                 ""summary"": ""Get users""
@@ -397,7 +397,7 @@ public class OptionalEndpointExtensionsTests
     public void ValidateOptionalEndpointResponse_RequiredEndpointFailure_ReturnsInvalid()
     {
         // Arrange
-        var pathItem = JObject.Parse(@"
+        var pathItem = JsonNode.Parse(@"
         {
             ""get"": {
                 ""summary"": ""Get users""
@@ -419,7 +419,7 @@ public class OptionalEndpointExtensionsTests
     public void ValidateOptionalEndpointResponse_IncludesCategory()
     {
         // Arrange
-        var pathItem = JObject.Parse(@"
+        var pathItem = JsonNode.Parse(@"
         {
             ""get"": {
                 ""tags"": [""Optional"", ""Users""],
@@ -438,7 +438,7 @@ public class OptionalEndpointExtensionsTests
     public void ValidateOptionalEndpointResponse_With201Created_ReturnsSuccess()
     {
         // Arrange
-        var pathItem = JObject.Parse(@"
+        var pathItem = JsonNode.Parse(@"
         {
             ""post"": {
                 ""summary"": ""Create user""
@@ -457,7 +457,7 @@ public class OptionalEndpointExtensionsTests
     public void ValidateOptionalEndpointResponse_OptionalEndpointWith503_ReturnsNotImplementedStatus()
     {
         // Arrange - 503 is acceptable as non-implementation for optional endpoints
-        var pathItem = JObject.Parse(@"
+        var pathItem = JsonNode.Parse(@"
         {
             ""get"": {
                 ""tags"": [""Optional""],
@@ -482,7 +482,7 @@ public class OptionalEndpointExtensionsTests
     public void ValidateOptionalEndpointResponse_WithMultipleHttpMethods_EvaluatesAllOperations()
     {
         // Arrange
-        var pathItem = JObject.Parse(@"
+        var pathItem = JsonNode.Parse(@"
         {
             ""get"": {
                 ""tags"": [""Optional""],
@@ -512,7 +512,7 @@ public class OptionalEndpointExtensionsTests
     public void IsOptionalEndpoint_WithArrayOfTags_HandlesProperly()
     {
         // Arrange
-        var pathItem = JObject.Parse(@"
+        var pathItem = JsonNode.Parse(@"
         {
             ""get"": {
                 ""tags"": [""Users"", ""Optional"", ""Public""],
@@ -531,7 +531,7 @@ public class OptionalEndpointExtensionsTests
     public void ValidateOptionalEndpointResponse_With404AndOptionalTrue_IsValid()
     {
         // Arrange
-        var pathItem = JObject.Parse(@"
+        var pathItem = JsonNode.Parse(@"
         {
             ""get"": {
                 ""tags"": [""Optional""],
@@ -551,7 +551,7 @@ public class OptionalEndpointExtensionsTests
     public void GetOptionalEndpointCategory_WithPathItem_ExtractsFromAllOperations()
     {
         // Arrange
-        var pathItem = JObject.Parse(@"
+        var pathItem = JsonNode.Parse(@"
         {
             ""get"": {
                 ""tags"": [""API"", ""Read""],

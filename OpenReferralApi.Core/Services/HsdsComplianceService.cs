@@ -1,8 +1,6 @@
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
 
 namespace OpenReferralApi.Core.Services;
@@ -11,10 +9,10 @@ public interface IHsdsComplianceService
 {
     string? ExtractClaimedProfileVersion(string? profileReason, string? schemaUrl);
     bool TryGetKnownHsdsSchemaUrl(string? profileVersion, out string schemaUrl);
-    List<ValidationError> CompareFeedSpecAgainstHsdsProfile(JObject feedSpec, JObject hsdsSpec);
+    List<ValidationError> CompareFeedSpecAgainstHsdsProfile(JsonNode feedSpec, JsonNode hsdsSpec);
     Task ValidateEndpointResponsesAgainstHsdsProfileAsync(
         List<EndpointTestResult> endpointTests,
-        JObject hsdsSpec,
+        JsonNode hsdsSpec,
         OpenApiValidationOptions options,
         CancellationToken cancellationToken);
     void ApplyAdditionalFieldPolicy(ValidationResult? validationResult, bool reportAdditionalFields);
@@ -108,13 +106,20 @@ public class HsdsComplianceService : IHsdsComplianceService
         return false;
     }
 
-    public List<ValidationError> CompareFeedSpecAgainstHsdsProfile(JObject feedSpec, JObject hsdsSpec)
+    public List<ValidationError> CompareFeedSpecAgainstHsdsProfile(JsonNode feedSpec, JsonNode hsdsSpec)
     {
         var findings = new List<ValidationError>();
 
-        var feedOperations = GetOperationMap(feedSpec, includeOptionalOperations: true);
-        var hsdsAllOperations = GetOperationMap(hsdsSpec, includeOptionalOperations: true);
-        var hsdsRequiredOperations = GetOperationMap(hsdsSpec, includeOptionalOperations: false);
+        var feedSpecObject = ToJsonObject(feedSpec);
+        var hsdsSpecObject = ToJsonObject(hsdsSpec);
+        if (feedSpecObject is null || hsdsSpecObject is null)
+        {
+            return findings;
+        }
+
+        var feedOperations = GetOperationMap(feedSpecObject, includeOptionalOperations: true);
+        var hsdsAllOperations = GetOperationMap(hsdsSpecObject, includeOptionalOperations: true);
+        var hsdsRequiredOperations = GetOperationMap(hsdsSpecObject, includeOptionalOperations: false);
 
         foreach (var requiredOperation in hsdsRequiredOperations.Keys)
         {
@@ -186,11 +191,17 @@ public class HsdsComplianceService : IHsdsComplianceService
 
     public async Task ValidateEndpointResponsesAgainstHsdsProfileAsync(
         List<EndpointTestResult> endpointTests,
-        JObject hsdsSpec,
+        JsonNode hsdsSpec,
         OpenApiValidationOptions options,
         CancellationToken cancellationToken)
     {
-        var hsdsOperations = GetOperationMap(hsdsSpec, includeOptionalOperations: false);
+        var hsdsSpecObject = ToJsonObject(hsdsSpec);
+        if (hsdsSpecObject is null)
+        {
+            return;
+        }
+
+        var hsdsOperations = GetOperationMap(hsdsSpecObject, includeOptionalOperations: false);
 
         foreach (var endpoint in endpointTests)
         {
@@ -349,24 +360,25 @@ public class HsdsComplianceService : IHsdsComplianceService
             ? configuredMaxErrors.Value
             : 100;
     }
-    private static Dictionary<string, JObject> GetOperationMap(JObject spec, bool includeOptionalOperations)
+
+    private static Dictionary<string, JsonObject> GetOperationMap(JsonObject spec, bool includeOptionalOperations)
     {
-        var operationMap = new Dictionary<string, JObject>(StringComparer.OrdinalIgnoreCase);
-        if (spec["paths"] is not JObject paths)
+        var operationMap = new Dictionary<string, JsonObject>(StringComparer.OrdinalIgnoreCase);
+        if (spec["paths"] is not JsonObject paths)
         {
             return operationMap;
         }
 
-        foreach (var pathProperty in paths.Properties())
+        foreach (var pathProperty in paths)
         {
-            if (pathProperty.Value is not JObject pathItem)
+            if (pathProperty.Value is not JsonObject pathItem)
             {
                 continue;
             }
 
-            foreach (var methodProperty in pathItem.Properties())
+            foreach (var methodProperty in pathItem)
             {
-                if (!SupportedHttpMethods.Contains(methodProperty.Name) || methodProperty.Value is not JObject operation)
+                if (!SupportedHttpMethods.Contains(methodProperty.Key) || methodProperty.Value is not JsonObject operation)
                 {
                     continue;
                 }
@@ -376,7 +388,7 @@ public class HsdsComplianceService : IHsdsComplianceService
                     continue;
                 }
 
-                var operationKey = $"{methodProperty.Name.ToUpperInvariant()} {pathProperty.Name}";
+                var operationKey = $"{methodProperty.Key.ToUpperInvariant()} {pathProperty.Key}";
                 operationMap[operationKey] = operation;
             }
         }
@@ -384,15 +396,15 @@ public class HsdsComplianceService : IHsdsComplianceService
         return operationMap;
     }
 
-    private static JToken? GetPrimarySuccessResponseSchema(JObject operation)
+    private static JsonNode? GetPrimarySuccessResponseSchema(JsonObject operation)
     {
-        if (operation["responses"] is not JObject responses)
+        if (operation["responses"] is not JsonObject responses)
         {
             return null;
         }
 
-        var statusCodeKey = responses.Properties()
-            .Select(p => p.Name)
+        var statusCodeKey = responses
+            .Select(p => p.Key)
             .FirstOrDefault(name => name.StartsWith("2", StringComparison.Ordinal));
 
         if (statusCodeKey == null)
@@ -400,38 +412,58 @@ public class HsdsComplianceService : IHsdsComplianceService
             return null;
         }
 
-        if (responses[statusCodeKey] is not JObject responseObject ||
-            responseObject["content"] is not JObject contentObject)
+        if (responses[statusCodeKey] is not JsonObject responseObject ||
+            responseObject["content"] is not JsonObject contentObject)
         {
             return null;
         }
 
-        var jsonContent = contentObject.Properties()
-            .FirstOrDefault(p => p.Name.Contains("application/json", StringComparison.OrdinalIgnoreCase));
+        foreach (var contentEntry in contentObject)
+        {
+            if (contentEntry.Key.Contains("application/json", StringComparison.OrdinalIgnoreCase))
+            {
+                return contentEntry.Value?["schema"];
+            }
+        }
 
-        return jsonContent?.Value?["schema"];
+        return null;
     }
 
-    private static JToken? GetRequestBodySchema(JObject operation)
+    private static JsonNode? GetRequestBodySchema(JsonObject operation)
     {
-        if (operation["requestBody"] is not JObject requestBodyObject ||
-            requestBodyObject["content"] is not JObject contentObject)
+        if (operation["requestBody"] is not JsonObject requestBodyObject ||
+            requestBodyObject["content"] is not JsonObject contentObject)
         {
             return null;
         }
 
-        var jsonContent = contentObject.Properties()
-            .FirstOrDefault(p => p.Name.Contains("application/json", StringComparison.OrdinalIgnoreCase));
+        foreach (var contentEntry in contentObject)
+        {
+            if (contentEntry.Key.Contains("application/json", StringComparison.OrdinalIgnoreCase))
+            {
+                return contentEntry.Value?["schema"];
+            }
+        }
 
-        return jsonContent?.Value?["schema"];
+        return null;
+    }
+
+    private static JsonObject? ToJsonObject(JsonNode? token)
+    {
+        if (token is null)
+        {
+            return null;
+        }
+
+        return token as JsonObject;
     }
 
     private static void CompareSchemaFields(
         List<ValidationError> findings,
         string operationKey,
         string scope,
-        JToken? feedSchema,
-        JToken? hsdsSchema,
+        JsonNode? feedSchema,
+        JsonNode? hsdsSchema,
         string missingFieldCode,
         string additionalFieldCode,
         string missingFieldMessagePrefix,
@@ -498,14 +530,14 @@ public class HsdsComplianceService : IHsdsComplianceService
         }
     }
 
-    private static void ExtractRequiredFieldPaths(JToken schemaToken, string prefix, ISet<string> result)
+    private static void ExtractRequiredFieldPaths(JsonNode schemaToken, string prefix, ISet<string> result)
     {
-        if (schemaToken is not JObject schemaObject)
+        if (schemaToken is not JsonObject schemaObject)
         {
             return;
         }
 
-        if (schemaObject["required"] is JArray requiredArray && schemaObject["properties"] is JObject properties)
+        if (schemaObject["required"] is JsonArray requiredArray && schemaObject["properties"] is JsonObject properties)
         {
             foreach (var requiredToken in requiredArray)
             {
@@ -518,7 +550,7 @@ public class HsdsComplianceService : IHsdsComplianceService
                 var fullPath = string.IsNullOrEmpty(prefix) ? requiredName : $"{prefix}.{requiredName}";
                 _ = result.Add(fullPath);
 
-                if (properties[requiredName] != null)
+                if (properties[requiredName] is not null)
                 {
                     ExtractRequiredFieldPaths(properties[requiredName]!, fullPath, result);
                 }
@@ -531,29 +563,35 @@ public class HsdsComplianceService : IHsdsComplianceService
             ExtractRequiredFieldPaths(schemaObject["items"]!, arrayPrefix, result);
         }
 
-        if (schemaObject["allOf"] is JArray allOf)
+        if (schemaObject["allOf"] is JsonArray allOf)
         {
             foreach (var subSchema in allOf)
             {
-                ExtractRequiredFieldPaths(subSchema, prefix, result);
+                if (subSchema is not null)
+                {
+                    ExtractRequiredFieldPaths(subSchema, prefix, result);
+                }
             }
         }
     }
 
-    private static void ExtractAllFieldPaths(JToken schemaToken, string prefix, ISet<string> result)
+    private static void ExtractAllFieldPaths(JsonNode schemaToken, string prefix, ISet<string> result)
     {
-        if (schemaToken is not JObject schemaObject)
+        if (schemaToken is not JsonObject schemaObject)
         {
             return;
         }
 
-        if (schemaObject["properties"] is JObject properties)
+        if (schemaObject["properties"] is JsonObject properties)
         {
-            foreach (var property in properties.Properties())
+            foreach (var property in properties)
             {
-                var fullPath = string.IsNullOrEmpty(prefix) ? property.Name : $"{prefix}.{property.Name}";
+                var fullPath = string.IsNullOrEmpty(prefix) ? property.Key : $"{prefix}.{property.Key}";
                 _ = result.Add(fullPath);
-                ExtractAllFieldPaths(property.Value, fullPath, result);
+                if (property.Value is not null)
+                {
+                    ExtractAllFieldPaths(property.Value, fullPath, result);
+                }
             }
         }
 
@@ -563,11 +601,14 @@ public class HsdsComplianceService : IHsdsComplianceService
             ExtractAllFieldPaths(schemaObject["items"]!, arrayPrefix, result);
         }
 
-        if (schemaObject["allOf"] is JArray allOf)
+        if (schemaObject["allOf"] is JsonArray allOf)
         {
             foreach (var subSchema in allOf)
             {
-                ExtractAllFieldPaths(subSchema, prefix, result);
+                if (subSchema is not null)
+                {
+                    ExtractAllFieldPaths(subSchema, prefix, result);
+                }
             }
         }
     }

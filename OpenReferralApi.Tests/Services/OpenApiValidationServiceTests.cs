@@ -1,11 +1,12 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Json.Schema;
 using Moq;
 using Newtonsoft.Json.Linq;
-using Newtonsoft.Json.Schema;
 using OpenReferralApi.Core.Models.Validation;
 using OpenReferralApi.Core.Services;
+using System.Text.Json.Nodes;
 
 namespace OpenReferralApi.Tests.Services;
 
@@ -99,11 +100,11 @@ public class OpenApiValidationServiceTests
 
         _schemaResolverServiceMock
             .Setup(service => service.CreateSchemaFromJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string schemaJson, string documentUri, DataSourceAuthentication auth, CancellationToken ct) => JSchema.Parse(schemaJson));
+            .ReturnsAsync((string schemaJson, string documentUri, DataSourceAuthentication auth, CancellationToken ct) => JsonSchema.FromText(schemaJson));
 
         _schemaResolverServiceMock
             .Setup(service => service.CreateSchemaFromJsonAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string schemaJson, CancellationToken ct) => JSchema.Parse(schemaJson));
+            .ReturnsAsync((string schemaJson, CancellationToken ct) => JsonSchema.FromText(schemaJson));
 
         // Mock ResolveAsync method for OpenAPI document resolution
         _schemaResolverServiceMock
@@ -569,7 +570,7 @@ public class OpenApiValidationServiceTests
         hsdsComplianceMock.Setup(s => s.ExtractClaimedProfileVersion(It.IsAny<string>(), It.IsAny<string>())).Returns((string?)"HSDS-30");
         string? unused;
         hsdsComplianceMock.Setup(s => s.TryGetKnownHsdsSchemaUrl(It.IsAny<string>(), out unused)).Returns(false);
-        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>())).Returns(new List<Core.Models.Validation.ValidationError>());
+        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>())).Returns(new List<Core.Models.Validation.ValidationError>());
         _service = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
@@ -641,7 +642,7 @@ public class OpenApiValidationServiceTests
         hsdsComplianceMock.Setup(s => s.ExtractClaimedProfileVersion(It.IsAny<string>(), It.IsAny<string>())).Returns((string?)"HSDS-30");
         string? unused;
         hsdsComplianceMock.Setup(s => s.TryGetKnownHsdsSchemaUrl(It.IsAny<string>(), out unused)).Returns(true);
-        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>())).Returns(new List<Core.Models.Validation.ValidationError>());
+        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>())).Returns(new List<Core.Models.Validation.ValidationError>());
         _service = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
@@ -1602,16 +1603,16 @@ _openApiSpecificationService,
             .Returns(true);
 
         hsdsComplianceServiceMock
-            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>()))
+            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>()))
             .Returns(new List<Core.Models.Validation.ValidationError>());
 
         hsdsComplianceServiceMock
             .Setup(s => s.ValidateEndpointResponsesAgainstHsdsProfileAsync(
                 It.IsAny<List<EndpointTestResult>>(),
-                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<JsonNode>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<List<EndpointTestResult>, Newtonsoft.Json.Linq.JObject, OpenApiValidationOptions, CancellationToken>((tests, _, _, _) =>
+            .Callback<List<EndpointTestResult>, JsonNode, OpenApiValidationOptions, CancellationToken>((tests, _, _, _) =>
             {
                 if (tests.Count == 0)
                 {
@@ -1642,11 +1643,10 @@ _openApiSpecificationService,
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<JObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<DataSourceAuthentication>(),
-                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<EndpointTestResult>
             {
@@ -1755,7 +1755,7 @@ _openApiSpecificationService,
             string.Equals(e.ErrorCode, "HSDS_RUNTIME_VALIDATION_ERROR", StringComparison.OrdinalIgnoreCase)), Is.True);
         hsdsComplianceServiceMock.Verify(s => s.ValidateEndpointResponsesAgainstHsdsProfileAsync(
             It.IsAny<List<EndpointTestResult>>(),
-            It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+            It.IsAny<JsonNode>(),
             It.IsAny<OpenApiValidationOptions>(),
             It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -1777,17 +1777,16 @@ _openApiSpecificationService,
             .Returns(true);
 
         hsdsComplianceServiceMock
-            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>()))
+            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>()))
             .Returns(new List<Core.Models.Validation.ValidationError>());
 
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<JObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<DataSourceAuthentication>(),
-                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<EndpointTestResult>
             {
@@ -1890,7 +1889,7 @@ _openApiSpecificationService,
         // because TestEndpointsAsync already ran against the HSDS profile spec (the fallback).
         hsdsComplianceServiceMock.Verify(s => s.ValidateEndpointResponsesAgainstHsdsProfileAsync(
             It.IsAny<List<EndpointTestResult>>(),
-            It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+            It.IsAny<JsonNode>(),
             It.IsAny<OpenApiValidationOptions>(),
             It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -2003,7 +2002,7 @@ _openApiSpecificationService,
         // Arrange
         var feedSpecUrl = "https://feed.example.com/openapi.json";
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
-        Newtonsoft.Json.Linq.JObject? capturedSpec = null;
+        JObject? capturedSpec = null;
 
         var hsdsComplianceServiceMock = new Mock<IHsdsComplianceService>();
         hsdsComplianceServiceMock
@@ -2013,20 +2012,19 @@ _openApiSpecificationService,
             .Setup(s => s.TryGetKnownHsdsSchemaUrl("3.0", out hsdsSpecUrl))
             .Returns(true);
         hsdsComplianceServiceMock
-            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>()))
+            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>()))
             .Returns(new List<Core.Models.Validation.ValidationError>());
 
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<JObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<DataSourceAuthentication>(),
-                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<Newtonsoft.Json.Linq.JObject, string, OpenApiValidationOptions, DataSourceAuthentication, string, CancellationToken>(
-                (spec, _, _, _, _, _) => capturedSpec = spec)
+            .Callback<JObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>(
+                (spec, _, _, _, _) => capturedSpec = spec)
             .ReturnsAsync(new List<EndpointTestResult>());
 
         var request = new OpenApiValidationRequest
@@ -2091,7 +2089,7 @@ _openApiSpecificationService,
         // Arrange
         var feedSpecUrl = "https://feed.example.com/openapi.json";
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
-        Newtonsoft.Json.Linq.JObject? capturedSpec = null;
+        JObject? capturedSpec = null;
 
         var hsdsComplianceServiceMock = new Mock<IHsdsComplianceService>();
         hsdsComplianceServiceMock
@@ -2101,20 +2099,19 @@ _openApiSpecificationService,
             .Setup(s => s.TryGetKnownHsdsSchemaUrl("3.0", out hsdsSpecUrl))
             .Returns(true);
         hsdsComplianceServiceMock
-            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>()))
+            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>()))
             .Returns(new List<Core.Models.Validation.ValidationError>());
 
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<JObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<DataSourceAuthentication>(),
-                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<Newtonsoft.Json.Linq.JObject, string, OpenApiValidationOptions, DataSourceAuthentication, string, CancellationToken>(
-                (spec, _, _, _, _, _) => capturedSpec = spec)
+            .Callback<JObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>(
+                (spec, _, _, _, _) => capturedSpec = spec)
             .ReturnsAsync(new List<EndpointTestResult>());
 
         var request = new OpenApiValidationRequest
@@ -2176,7 +2173,7 @@ _openApiSpecificationService,
     {
         // Arrange
         var feedSpecUrl = "https://unknown-version.example.com/openapi.json";
-        Newtonsoft.Json.Linq.JObject? capturedSpec = null;
+        JObject? capturedSpec = null;
 
         var hsdsComplianceServiceMock = new Mock<IHsdsComplianceService>();
         hsdsComplianceServiceMock
@@ -2190,14 +2187,13 @@ _openApiSpecificationService,
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<JObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<DataSourceAuthentication>(),
-                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<Newtonsoft.Json.Linq.JObject, string, OpenApiValidationOptions, DataSourceAuthentication, string, CancellationToken>(
-                (spec, _, _, _, _, _) => capturedSpec = spec)
+            .Callback<JObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>(
+                (spec, _, _, _, _) => capturedSpec = spec)
             .ReturnsAsync(new List<EndpointTestResult>());
 
         var request = new OpenApiValidationRequest
@@ -2259,17 +2255,16 @@ _openApiSpecificationService,
             .Setup(s => s.TryGetKnownHsdsSchemaUrl("3.0", out hsdsSpecUrl))
             .Returns(true);
         hsdsComplianceServiceMock
-            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>()))
+            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>()))
             .Returns(new List<Core.Models.Validation.ValidationError>());
 
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<JObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<DataSourceAuthentication>(),
-                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<EndpointTestResult>());
 
@@ -2325,7 +2320,7 @@ _openApiSpecificationService,
         // Assert – second pass must not be invoked when OwnSchemaValidation is None
         hsdsComplianceServiceMock.Verify(s => s.ValidateEndpointResponsesAgainstHsdsProfileAsync(
             It.IsAny<List<EndpointTestResult>>(),
-            It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+            It.IsAny<JsonNode>(),
             It.IsAny<OpenApiValidationOptions>(),
             It.IsAny<CancellationToken>()), Times.Never);
         Assert.That(result.Notifications, Has.Some.Contains("Full HSDS runtime validation was skipped"));
@@ -2888,7 +2883,7 @@ _openApiSpecificationService,
 
         var specServiceMock = new Mock<IOpenApiSpecificationService>();
         specServiceMock
-            .Setup(s => s.ValidateAsync(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.ValidateAsync(It.IsAny<JObject>(), It.IsAny<CancellationToken>()))
             .Callback(() => callOrder.Add("spec"))
             .ReturnsAsync(new OpenApiSpecificationValidation
             {
@@ -2915,7 +2910,7 @@ _openApiSpecificationService,
             .Returns(true);
 
         hsdsServiceMock
-            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>()))
+            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>()))
             .Callback(() => callOrder.Add("hsds"))
             .Returns(new List<Core.Models.Validation.ValidationError>
             {
@@ -2931,7 +2926,7 @@ _openApiSpecificationService,
         hsdsServiceMock
             .Setup(s => s.ValidateEndpointResponsesAgainstHsdsProfileAsync(
                 It.IsAny<List<EndpointTestResult>>(),
-                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<JsonNode>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -2939,11 +2934,10 @@ _openApiSpecificationService,
         var endpointTestingMock = new Mock<IEndpointTestingService>();
         endpointTestingMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<JObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<DataSourceAuthentication>(),
-                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
             .Callback(() => callOrder.Add("endpoints"))
             .ReturnsAsync(new List<EndpointTestResult>
@@ -3098,20 +3092,19 @@ _openApiSpecificationService,
         // Arrange
         const string specUrl = "https://example.com/api/v1/openapi.json";
         const string baseUrl = "https://example.com/api/v1";
-        Newtonsoft.Json.Linq.JObject? capturedOpenApi = null;
+        JObject? capturedOpenApi = null;
 
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<JObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<DataSourceAuthentication>(),
-                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<Newtonsoft.Json.Linq.JObject, string, OpenApiValidationOptions, DataSourceAuthentication?, string?, CancellationToken>((spec, _, _, _, _, _) =>
+            .Callback<JObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>((spec, _, _, _, _) =>
             {
-                capturedOpenApi = (Newtonsoft.Json.Linq.JObject)spec.DeepClone();
+                capturedOpenApi = (JObject)spec.DeepClone();
             })
             .ReturnsAsync(new List<EndpointTestResult>());
 
@@ -3160,7 +3153,7 @@ _openApiSpecificationService,
 
             // Assert
             Assert.That(capturedOpenApi, Is.Not.Null);
-            var paths = capturedOpenApi!["paths"] as Newtonsoft.Json.Linq.JObject;
+            var paths = capturedOpenApi!["paths"] as JObject;
             Assert.That(paths, Is.Not.Null);
             Assert.That(paths!.ContainsKey("/health"), Is.True);
             Assert.That(paths.ContainsKey("/services"), Is.True);
@@ -3180,20 +3173,19 @@ _openApiSpecificationService,
         // Arrange
         const string specUrl = "https://example.com/api/v1/openapi.json";
         const string baseUrl = "https://example.com/api/v1";
-        Newtonsoft.Json.Linq.JObject? capturedOpenApi = null;
+        JObject? capturedOpenApi = null;
 
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<JObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<DataSourceAuthentication>(),
-                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<Newtonsoft.Json.Linq.JObject, string, OpenApiValidationOptions, DataSourceAuthentication?, string?, CancellationToken>((spec, _, _, _, _, _) =>
+            .Callback<JObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>((spec, _, _, _, _) =>
             {
-                capturedOpenApi = (Newtonsoft.Json.Linq.JObject)spec.DeepClone();
+                capturedOpenApi = (JObject)spec.DeepClone();
             })
             .ReturnsAsync(new List<EndpointTestResult>());
 
@@ -3241,7 +3233,7 @@ _openApiSpecificationService,
 
             // Assert
             Assert.That(capturedOpenApi, Is.Not.Null);
-            var paths = capturedOpenApi!["paths"] as Newtonsoft.Json.Linq.JObject;
+            var paths = capturedOpenApi!["paths"] as JObject;
             Assert.That(paths, Is.Not.Null);
             Assert.That(paths!.ContainsKey("/health"), Is.True);
             Assert.That(paths.ContainsKey("/api/v1/health"), Is.True);
@@ -3491,7 +3483,7 @@ _openApiSpecificationService,
         hsdsComplianceMock.Setup(s => s.ExtractClaimedProfileVersion(It.IsAny<string>(), It.IsAny<string>())).Returns((string?)"HSDS-30");
         string? unused;
         hsdsComplianceMock.Setup(s => s.TryGetKnownHsdsSchemaUrl(It.IsAny<string>(), out unused)).Returns(true);
-        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>())).Returns(new List<Core.Models.Validation.ValidationError>());
+        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>())).Returns(new List<Core.Models.Validation.ValidationError>());
         _service = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),

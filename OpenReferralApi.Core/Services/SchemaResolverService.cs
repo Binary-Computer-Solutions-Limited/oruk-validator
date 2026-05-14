@@ -5,11 +5,10 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Json.Schema;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Schema;
 using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Logging;
 
@@ -17,7 +16,7 @@ namespace OpenReferralApi.Core.Services;
 
 /// <summary>
 /// Service for resolving JSON Schema references ($ref) and creating schemas with proper resolution.
-/// Uses System.Text.Json for reference resolution and Newtonsoft.Json.Schema for JSchema creation.
+/// Uses System.Text.Json for reference resolution and Json.Schema for schema creation.
 /// Handles both external URL references and internal JSON pointer references.
 /// </summary>
 public interface ISchemaResolverService
@@ -41,16 +40,16 @@ public interface ISchemaResolverService
     /// <returns>The fully resolved schema as a JsonNode.</returns>
     Task<JsonNode?> ResolveAsync(JsonNode schema, string? baseUri = null, DataSourceAuthentication? auth = null);
 
-    // Newtonsoft.Json.Schema based schema creation methods
+    // Json.Schema based schema creation methods
     /// <summary>
     /// Creates a JSON schema from JSON string with proper reference resolution
     /// </summary>
-    Task<JSchema> CreateSchemaFromJsonAsync(string schemaJson, CancellationToken cancellationToken = default);
+    Task<JsonSchema> CreateSchemaFromJsonAsync(string schemaJson, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Creates a JSON schema from JSON string with proper reference resolution and base URI
     /// </summary>
-    Task<JSchema> CreateSchemaFromJsonAsync(string schemaJson, string? documentUri, DataSourceAuthentication? auth = null, CancellationToken cancellationToken = default);
+    Task<JsonSchema> CreateSchemaFromJsonAsync(string schemaJson, string? documentUri, DataSourceAuthentication? auth = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Returns non-fatal issues discovered during the most recent reference resolution call.
@@ -173,16 +172,16 @@ public class SchemaResolverService : ISchemaResolverService
     /// <summary>
     /// Creates a JSON schema from JSON string with proper reference resolution
     /// </summary>
-    public async Task<JSchema> CreateSchemaFromJsonAsync(string schemaJson, CancellationToken cancellationToken = default)
+    public async Task<JsonSchema> CreateSchemaFromJsonAsync(string schemaJson, CancellationToken cancellationToken = default)
     {
         return await CreateSchemaFromJsonAsync(schemaJson, null, null, cancellationToken);
     }
 
     /// <summary>
     /// Creates a JSON schema from JSON string with proper reference resolution and base URI
-    /// Uses System.Text.Json based resolution to pre-resolve all $ref before creating JSchema
+    /// Uses System.Text.Json based resolution to pre-resolve all $ref before creating JsonSchema
     /// </summary>
-    public async Task<JSchema> CreateSchemaFromJsonAsync(string schemaJson, string? documentUri, DataSourceAuthentication? auth = null, CancellationToken cancellationToken = default)
+    public async Task<JsonSchema> CreateSchemaFromJsonAsync(string schemaJson, string? documentUri, DataSourceAuthentication? auth = null, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -203,44 +202,22 @@ public class SchemaResolverService : ISchemaResolverService
                 resolvedSchemaJson = schemaJson;
             }
 
-            // Create JSchema with the fully resolved schema (no more $ref to resolve)
-            var resolver = new JSchemaUrlResolver();
-
-            // Parse the schema with resolver settings
-            using var reader = new JsonTextReader(new StringReader(resolvedSchemaJson));
-
-            var settings = new JSchemaReaderSettings
-            {
-                Resolver = resolver,
-                // References are pre-resolved by our resolver; disable a second pass in Newtonsoft to avoid
-                // runtime remote resolution and failures on remaining informational refs.
-                ResolveSchemaReferences = false,
-                // Draft-specific meta-schema validation can reject otherwise parseable schemas when newer
-                // vocabularies are present. We validate payloads against the parsed schema downstream.
-                ValidateVersion = false
-            };
-
-            // Set base URI for any remaining reference resolution if provided
-            if (!string.IsNullOrEmpty(documentUri))
-            {
-                _logger.LoadingSchemaWithBaseUri(TextSanitizer.SanitizeUrlForLogging(documentUri));
-                settings.BaseUri = new Uri(documentUri);
-            }
-
-            JSchema schema;
+            // Create JsonSchema with the fully resolved schema (no more $ref to resolve)
             try
             {
-                schema = await Task.Run(() => JSchema.Parse(resolvedSchemaJson, settings), cancellationToken);
+                var schema = await Task.Run(() => JsonSchema.FromText(resolvedSchemaJson), cancellationToken);
                 _logger.SuccessfullyCreatedSchemaWithReferenceResolution();
+                return schema;
             }
             catch (Exception ex)
             {
                 _logger.FailedToParseSchemaWithResolver(ex, documentUri != null ? TextSanitizer.SanitizeUrlForLogging(documentUri) : "none");
                 try
                 {
-                    // Fallback: parse original schema with the same relaxed settings.
-                    schema = await Task.Run(() => JSchema.Parse(schemaJson, settings), cancellationToken);
+                    // Fallback: parse original schema if resolution produced a schema that JsonSchema cannot parse.
+                    var schema = await Task.Run(() => JsonSchema.FromText(schemaJson), cancellationToken);
                     _logger.SuccessfullyCreatedSchemaWithoutResolver();
+                    return schema;
                 }
                 catch (Exception fallbackEx)
                 {
@@ -261,8 +238,6 @@ public class SchemaResolverService : ISchemaResolverService
                     throw new InvalidOperationException("Unable to parse schema with or without resolver", fallbackEx);
                 }
             }
-
-            return schema;
         }
         catch (Exception ex)
         {

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -364,7 +365,14 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
     {
         if (hsdsProfileSchemaContent != null)
         {
-            var profileComplianceFindings = _hsdsComplianceService.CompareFeedSpecAgainstHsdsProfile(openApiSchemaContent, hsdsProfileSchemaContent);
+            var openApiSchemaNode = ToJsonNode(openApiSchemaContent);
+            var hsdsProfileSchemaNode = ToJsonNode(hsdsProfileSchemaContent);
+            if (openApiSchemaNode == null || hsdsProfileSchemaNode == null)
+            {
+                return;
+            }
+
+            var profileComplianceFindings = _hsdsComplianceService.CompareFeedSpecAgainstHsdsProfile(openApiSchemaNode, hsdsProfileSchemaNode);
             if (!request.Options!.ReportAdditionalFields)
             {
                 profileComplianceFindings = profileComplianceFindings
@@ -504,9 +512,16 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         }
         else if (resolvedHsdsProfileSpec != null)
         {
+            var resolvedHsdsProfileNode = ToJsonNode(resolvedHsdsProfileSpec);
+            if (resolvedHsdsProfileNode == null)
+            {
+                result.Notifications.Add("Full HSDS runtime mode requested, but the resolved HSDS profile schema could not be parsed.");
+                return;
+            }
+
             await _hsdsComplianceService.ValidateEndpointResponsesAgainstHsdsProfileAsync(
                 endpointTests,
-                resolvedHsdsProfileSpec,
+                resolvedHsdsProfileNode,
                 request.Options!,
                 cancellationToken);
         }
@@ -651,6 +666,11 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         {
             return null;
         }
+    }
+
+    private static JsonNode? ToJsonNode(JObject? value)
+    {
+        return value is null ? null : JsonNode.Parse(value.ToString());
     }
 
     private static string? RemoveDuplicatedBasePathFromOpenApiPaths(JObject openApiSpec, string? baseUrl)
