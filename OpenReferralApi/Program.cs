@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
@@ -9,13 +10,11 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using OpenReferralApi.Core.Services;
 using OpenReferralApi.Extensions;
 using OpenReferralApi.HealthChecks;
+using OpenReferralApi.Logging;
 using OpenReferralApi.Middleware;
 using OpenReferralApi.Services;
 using OpenReferralApi.Swagger;
 using Serilog;
-
-using OpenReferralApi.Logging;
-using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 

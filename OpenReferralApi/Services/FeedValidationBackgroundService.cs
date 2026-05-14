@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Options;
-using OpenReferralApi.Core.Services;
 using OpenReferralApi.Core.Logging;
+using OpenReferralApi.Core.Services;
 using OpenReferralApi.Logging;
 
 namespace OpenReferralApi.Services;

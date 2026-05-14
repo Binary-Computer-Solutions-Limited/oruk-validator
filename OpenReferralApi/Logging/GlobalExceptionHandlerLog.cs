@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Logging;
-
 namespace OpenReferralApi.Logging
 {
     internal static partial class GlobalExceptionHandlerLog

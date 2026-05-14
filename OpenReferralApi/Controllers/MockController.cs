@@ -2,8 +2,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OutputCaching;
-using OpenReferralApi.Models;
 using OpenReferralApi.Core.Logging;
+using OpenReferralApi.Models;
 
 namespace OpenReferralApi.Controllers;
 

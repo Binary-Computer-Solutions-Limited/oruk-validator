@@ -239,6 +239,14 @@
           "JsonPointer.Net": "7.0.1"
         }
       },
+      "JsonSchema.Net.OpenApi": {
+        "type": "Transitive",
+        "resolved": "5.0.1",
+        "contentHash": "dUihZQdvBD1Ye0mALENHkH/ZeRxhEFnEPRg4Wt9dDt6nvbWEEZR3Mr6+EqWcvjCO4I8CkfM4jN1UC2/lcz5UQA==",
+        "dependencies": {
+          "JsonSchema.Net": "9.1.3"
+        }
+      },
       "Microsoft.ApplicationInsights": {
         "type": "Transitive",
         "resolved": "2.23.0",
@@ -931,6 +939,7 @@
           "FluentResults": "[4.0.0, )",
           "GitHubJwt": "[0.0.6, )",
           "JsonSchema.Net": "[9.2.0, )",
+          "JsonSchema.Net.OpenApi": "[5.0.1, )",
           "Microsoft.AspNetCore.OpenApi": "[10.0.8, )",
           "MongoDB.Driver": "[3.8.1, )",
           "Octokit": "[14.0.0, )",

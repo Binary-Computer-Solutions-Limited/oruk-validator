@@ -435,6 +435,7 @@ Telemetry/Instrumentation.cs
  jose-jwt/4.1.0/lib/netstandard2.1/jose-jwt.dll
  json.more.net/3.0.1/lib/net10.0/Json.More.dll
  jsonpointer.net/7.0.1/lib/net10.0/JsonPointer.Net.dll
+ jsonschema.net.openapi/5.0.1/lib/net10.0/JsonSchema.Net.OpenApi.dll
  jsonschema.net/9.2.0/lib/net9.0/JsonSchema.Net.dll
  microsoft.aspnetcore.openapi/10.0.8/lib/net10.0/Microsoft.AspNetCore.OpenApi.dll
  microsoft.extensions.dependencymodel/10.0.0/lib/net10.0/Microsoft.Extensions.DependencyModel.dll

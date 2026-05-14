@@ -1,16 +1,9 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
-using System.Linq;
-using System.Net.Http;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using OpenReferralApi.Core.Services;
-using OpenReferralApi.Core.Logging;
+using Json.Schema.OpenApi;
 using OpenReferralApi.Core.Helpers;
+using OpenReferralApi.Core.Logging;
+using OpenReferralApi.Core.Services;
 
 namespace OpenReferralApi.Services
 {
@@ -65,6 +58,10 @@ namespace OpenReferralApi.Services
             ILogger logger,
             CancellationToken cancellationToken)
         {
+            // Register OpenAPI vocabulary keywords (e.g. 'name', 'example') so they
+            // are recognised when resolving and validating ORUK/HSDS OpenAPI schemas.
+            MetaSchemas.Register();
+
             var urls = (options.Urls ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase))
                 .Values
                 .Where(url => !string.IsNullOrWhiteSpace(url))
