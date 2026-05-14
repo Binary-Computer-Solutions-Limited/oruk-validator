@@ -85,15 +85,6 @@
           "ZstdSharp.Port": "0.7.3"
         }
       },
-      "Newtonsoft.Json.Schema": {
-        "type": "Direct",
-        "requested": "[4.0.1, )",
-        "resolved": "4.0.1",
-        "contentHash": "rbHUKp5WTIbqmLEeJ21nTTDGcfR0LA7bVMzm0bYc3yx6NFKiCIHzzvYbwA4Sqgs7+wNldc5nBlkbithWj8IZig==",
-        "dependencies": {
-          "Newtonsoft.Json": "13.0.3"
-        }
-      },
       "Octokit": {
         "type": "Direct",
         "requested": "[14.0.0, )",
@@ -342,11 +333,6 @@
         "resolved": "3.8.1",
         "contentHash": "b4jm2QxBQcB3zBBM+l0Jdjmn8TYBB+J0QDNaJypkmR1qDC6v5w8IMeYaFPvn/kqo0PvCUGVSQkXm0nVCBjjNYg=="
       },
-      "Newtonsoft.Json": {
-        "type": "Transitive",
-        "resolved": "13.0.4",
-        "contentHash": "pdgNNMai3zv51W5aq268sujXUyx7SNdE2bj1wZcWjAQrKMFZV260lbqYop1d2GM67JI1huLRwxo9ZqnfF/lC6A=="
-      },
       "OpenTelemetry": {
         "type": "Transitive",
         "resolved": "1.15.3",
@@ -470,8 +456,6 @@
           "HtmlAgilityPack": "[1.12.4, )",
           "JsonSchema.Net": "[9.2.0, )",
           "MongoDB.Driver": "[3.8.1, )",
-          "Newtonsoft.Json": "[13.0.4, )",
-          "Newtonsoft.Json.Schema": "[4.0.1, )",
           "SharpCompress": "[1.0.0, )",
           "YamlDotNet": "[17.1.0, )"
         }
