@@ -2,8 +2,8 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
-using Newtonsoft.Json.Linq;
 using OpenReferralApi.Core.Services;
+using System.Text.Json.Nodes;
 
 namespace OpenReferralApi.Tests.Services;
 
@@ -437,7 +437,7 @@ public class OpenApiSpecFetcherTests
 
         // Assert
         Assert.That(result, Is.Not.Null);
-        Assert.That(result, Is.InstanceOf<JObject>());
+        Assert.That(result, Is.InstanceOf<JsonObject>());
     }
 
     #endregion

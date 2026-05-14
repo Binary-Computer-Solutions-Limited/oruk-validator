@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Nodes;
 using OpenReferralApi.Core.Helpers;
 
 namespace OpenReferralApi.Core.Services;
@@ -58,7 +58,7 @@ public abstract class OpenApiValidationServiceBase
         unit: "By",
         description: "Process working set delta between validation memory checkpoints");
 
-    protected sealed record CachedResolvedSpec(string ResolvedSpecJson, JObject ResolvedSpecDocument, DateTime ExpiresAtUtc);
+    protected sealed record CachedResolvedSpec(string ResolvedSpecJson, JsonObject ResolvedSpecDocument, DateTime ExpiresAtUtc);
 
     protected static int CountExpiredCacheEntries()
     {
@@ -112,7 +112,7 @@ public abstract class OpenApiValidationServiceBase
         };
     }
 
-    protected static bool IsLikelyOpenApiDocument(JObject candidate)
+    protected static bool IsLikelyOpenApiDocument(JsonObject candidate)
     {
         return candidate.ContainsKey("openapi")
             || candidate.ContainsKey("swagger")

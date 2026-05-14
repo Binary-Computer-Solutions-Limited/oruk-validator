@@ -1,7 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json.Linq;
 using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Logging;
 using YamlDotNet.Serialization;
@@ -76,8 +76,8 @@ public class OpenApiSpecFetcher
     /// <param name="auth">Optional authentication credentials</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <param name="resolveReferences">Whether to resolve $ref references (true by default)</param>
-    /// <returns>The parsed OpenAPI specification as JObject</returns>
-    public async Task<JObject> FetchOpenApiSpecFromUrlAsync(
+    /// <returns>The parsed OpenAPI specification as JsonObject</returns>
+    public async Task<JsonObject> FetchOpenApiSpecFromUrlAsync(
         string specUrl,
         DataSourceAuthentication? auth,
         CancellationToken cancellationToken,
@@ -137,11 +137,11 @@ public class OpenApiSpecFetcher
             if (resolveReferences)
             {
                 var resolvedContent = await _schemaResolverService.ResolveAsync(normalizedContent, specUrl, validatedAuth);
-                return JObject.Parse(EnsureJson(resolvedContent));
+                return ParseJsonObject(EnsureJson(resolvedContent));
             }
 
             // Return unresolved document for spec validation or later lazy resolution
-            return JObject.Parse(normalizedContent);
+            return ParseJsonObject(normalizedContent);
         }
         catch (Exception ex)
         {
@@ -282,6 +282,16 @@ public class OpenApiSpecFetcher
         {
             throw new FormatException("OpenAPI spec content was neither valid JSON nor valid YAML.", ex);
         }
+    }
+
+    private static JsonObject ParseJsonObject(string json)
+    {
+        if (JsonNode.Parse(json) is not JsonObject obj)
+        {
+            throw new FormatException("OpenAPI spec content must be a JSON object.");
+        }
+
+        return obj;
     }
 
     /// <summary>

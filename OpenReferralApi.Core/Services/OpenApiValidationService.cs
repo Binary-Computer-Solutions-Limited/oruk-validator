@@ -190,6 +190,8 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         // Step 1: Discovery and preparation of OpenAPI schema content, HSDS profile schemas, and related metadata.
         var discovery = await PrepareValidationDiscoveryAsync(request, result, schemaResolutionIssues, cancellationToken);
         logMemoryCheckpoint("schema-url-discovery");
+        var ownSchema = discovery.OwnSchema
+            ?? throw new InvalidOperationException("Own OpenAPI schema content was not available after discovery.");
 
         // Step 2: Specification validation, including comparison against any discovered HSDS profile schema to produce profile compliance findings.
         var specificationStage = await ExecuteSpecificationStageAsync(
@@ -197,7 +199,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             result,
             discovery.HsdsProfileVersion,
             discovery.HsdsProfileSchema,
-            discovery.OwnSchema,
+            ownSchema,
             discovery.HsdsProfileReason,
             cancellationToken);
         logMemoryCheckpoint("specification-validation");
@@ -207,7 +209,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             request,
             result,
             discovery.DataSourceRequestAuth,
-            discovery.OwnSchema,
+            ownSchema,
             discovery.HsdsProfileSchema,
             specificationStage.SpecValidation,
             specificationStage.SpecValidationErrors,
@@ -257,8 +259,8 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             dataSourceRequestAuth,
             cancellationToken);
 
-        var ownSchema = TryParseJObject(bootstrap.OpenApiSchemaContent);
-        var resolvedHsdsProfileSpec = TryParseJObject(bootstrap.HsdsProfileSchemaContent);
+        var ownSchema = TryParseJsonObject(bootstrap.OpenApiSchemaContent);
+        var resolvedHsdsProfileSpec = TryParseJsonObject(bootstrap.HsdsProfileSchemaContent);
 
         var feedSpecFellBackToHsdsProfile = false;
         if (ownSchema == null && resolvedHsdsProfileSpec != null)
@@ -310,8 +312,8 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         OpenApiValidationRequest request,
         OpenApiValidationResult result,
         string? hsdsProfileVersion,
-        JObject? hsdsProfileSchemaContent,
-        JObject openApiSchemaContent,
+        JsonObject? hsdsProfileSchemaContent,
+        JsonObject openApiSchemaContent,
         string? profileReason,
         CancellationToken cancellationToken)
     {
@@ -320,7 +322,9 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         List<ValidationError>? specValidationErrors = null;
         if (_openApiValidationOptions.ValidateSpecification)
         {
-            specValidation = await _openApiSpecificationService.ValidateAsync(openApiSchemaContent, cancellationToken);
+            var openApiSchemaJObject = ToJObject(openApiSchemaContent)
+                ?? throw new InvalidOperationException("OpenAPI schema content could not be converted to a JSON object.");
+            specValidation = await _openApiSpecificationService.ValidateAsync(openApiSchemaJObject, cancellationToken);
             specValidationErrors = new List<ValidationError>(specValidation.Errors);
 
             if (isMisplacedVersionWarning)
@@ -358,21 +362,14 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
 
     private void ApplySpecificationComparisonAgainstProfile(
         OpenApiValidationRequest request,
-        JObject openApiSchemaContent,
-        JObject? hsdsProfileSchemaContent,
+        JsonObject openApiSchemaContent,
+        JsonObject? hsdsProfileSchemaContent,
         List<ValidationError> specValidationErrors,
         string? profileVersion)
     {
         if (hsdsProfileSchemaContent != null)
         {
-            var openApiSchemaNode = ToJsonNode(openApiSchemaContent);
-            var hsdsProfileSchemaNode = ToJsonNode(hsdsProfileSchemaContent);
-            if (openApiSchemaNode == null || hsdsProfileSchemaNode == null)
-            {
-                return;
-            }
-
-            var profileComplianceFindings = _hsdsComplianceService.CompareFeedSpecAgainstHsdsProfile(openApiSchemaNode, hsdsProfileSchemaNode);
+            var profileComplianceFindings = _hsdsComplianceService.CompareFeedSpecAgainstHsdsProfile(openApiSchemaContent, hsdsProfileSchemaContent);
             if (!request.Options!.ReportAdditionalFields)
             {
                 profileComplianceFindings = profileComplianceFindings
@@ -407,8 +404,8 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         OpenApiValidationRequest request,
         OpenApiValidationResult result,
         DataSourceAuthentication? dataSourceRequestAuth,
-        JObject openApiSchemaContent,
-        JObject? resolvedHsdsProfileSpec,
+        JsonObject openApiSchemaContent,
+        JsonObject? resolvedHsdsProfileSpec,
         OpenApiSpecificationValidation? specValidation,
         List<ValidationError>? specValidationErrors,
         CancellationToken cancellationToken)
@@ -420,7 +417,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         }
 
         var useOwnSchemaValidation = _openApiValidationOptions.OwnSchemaValidation != OwnSchemaValidationMode.None;
-        JObject endpointValidationSpec;
+        JsonObject endpointValidationSpec;
         if (!useOwnSchemaValidation)
         {
             if (resolvedHsdsProfileSpec != null)
@@ -461,7 +458,8 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         }
 
         endpointTests = await _endpointTestingService.TestEndpointsAsync(
-            endpointValidationSpec,
+            ToJObject(endpointValidationSpec)
+                ?? throw new InvalidOperationException("Endpoint validation schema could not be converted to a JSON object."),
             request.BaseUrl,
             request.Options!,
             dataSourceRequestAuth,
@@ -493,7 +491,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         OpenApiValidationResult result,
         List<EndpointTestResult> endpointTests,
         bool feedSpecFellBackToHsdsProfile,
-        JObject? resolvedHsdsProfileSpec,
+        JsonObject? resolvedHsdsProfileSpec,
         CancellationToken cancellationToken)
     {
         if (_openApiValidationOptions.HsdsValidationMode != HsdsValidationMode.FullHsdsRuntime)
@@ -512,16 +510,9 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         }
         else if (resolvedHsdsProfileSpec != null)
         {
-            var resolvedHsdsProfileNode = ToJsonNode(resolvedHsdsProfileSpec);
-            if (resolvedHsdsProfileNode == null)
-            {
-                result.Notifications.Add("Full HSDS runtime mode requested, but the resolved HSDS profile schema could not be parsed.");
-                return;
-            }
-
             await _hsdsComplianceService.ValidateEndpointResponsesAgainstHsdsProfileAsync(
                 endpointTests,
-                resolvedHsdsProfileNode,
+                resolvedHsdsProfileSpec,
                 request.Options!,
                 cancellationToken);
         }
@@ -584,13 +575,13 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
     private sealed class DiscoveryPreparation
     {
         public string? HsdsProfileVersion { get; init; }
-        public JObject? HsdsProfileSchema { get; init; }
-        public required JObject? OwnSchema { get; init; }
+        public JsonObject? HsdsProfileSchema { get; init; }
+        public required JsonObject? OwnSchema { get; init; }
         public bool FellBackToHsdsProfile { get; init; }
         public string? OwnSchemaUrl { get; init; }
         public bool HasConfiguredDefaultProfile { get; init; }
         public DataSourceAuthentication? DataSourceRequestAuth { get; init; }
-                public string? HsdsProfileReason { get; init; }
+        public string? HsdsProfileReason { get; init; }
     }
 
     private sealed class SpecificationStageResult
@@ -651,7 +642,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         return !error.ErrorCode.StartsWith("HSDS_ADDITIONAL_", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static JObject? TryParseJObject(string? json)
+    private static JsonObject? TryParseJsonObject(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
         {
@@ -660,7 +651,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
 
         try
         {
-            return JObject.Parse(json);
+            return ParseJsonObject(json);
         }
         catch
         {
@@ -668,15 +659,25 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         }
     }
 
-    private static JsonNode? ToJsonNode(JObject? value)
+    private static JsonObject ParseJsonObject(string json)
     {
-        return value is null ? null : JsonNode.Parse(value.ToString());
+        if (JsonNode.Parse(json) is not JsonObject obj)
+        {
+            throw new FormatException("OpenAPI content must be a JSON object.");
+        }
+
+        return obj;
     }
 
-    private static string? RemoveDuplicatedBasePathFromOpenApiPaths(JObject openApiSpec, string? baseUrl)
+    private static JObject? ToJObject(JsonNode? value)
+    {
+        return value is null ? null : JObject.Parse(value.ToJsonString());
+    }
+
+    private static string? RemoveDuplicatedBasePathFromOpenApiPaths(JsonObject openApiSpec, string? baseUrl)
     {
         if (string.IsNullOrWhiteSpace(baseUrl)
-            || openApiSpec["paths"] is not JObject pathsObject
+            || openApiSpec["paths"] is not JsonObject pathsObject
             || pathsObject.Count == 0)
         {
             return null;
@@ -694,13 +695,13 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             return null;
         }
 
-        var updatedPaths = new JObject();
+        var updatedPaths = new JsonObject();
         var duplicatedEntries = new List<string>();
         var duplicateCollisions = new List<string>();
 
-        foreach (var property in pathsObject.Properties())
+        foreach (var property in pathsObject)
         {
-            var originalPath = NormalizePath(property.Name);
+            var originalPath = NormalizePath(property.Key);
             var deduplicatedPath = TryStripDuplicateBasePath(originalPath, basePath) ?? originalPath;
 
             if (!string.Equals(deduplicatedPath, originalPath, StringComparison.Ordinal))
@@ -708,18 +709,18 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
                 duplicatedEntries.Add(originalPath);
             }
 
-            if (updatedPaths.TryGetValue(deduplicatedPath, out _))
+            if (updatedPaths.ContainsKey(deduplicatedPath))
             {
                 duplicateCollisions.Add(deduplicatedPath);
-                if (!updatedPaths.TryGetValue(originalPath, out _))
+                if (!updatedPaths.ContainsKey(originalPath))
                 {
-                    updatedPaths[originalPath] = property.Value;
+                    updatedPaths[originalPath] = property.Value?.DeepClone();
                 }
 
                 continue;
             }
 
-            updatedPaths[deduplicatedPath] = property.Value;
+            updatedPaths[deduplicatedPath] = property.Value?.DeepClone();
         }
 
         if (duplicatedEntries.Count == 0)
@@ -733,16 +734,16 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             return $"Warning: OpenAPI endpoint paths duplicate the base URL prefix '{basePath}', but automatic de-duplication was skipped for colliding paths: {uniqueCollisions}.";
         }
 
-        pathsObject.RemoveAll();
-        foreach (var updatedProperty in updatedPaths.Properties())
+        pathsObject.Clear();
+        foreach (var updatedProperty in updatedPaths)
         {
-            pathsObject.Add(updatedProperty.Name, updatedProperty.Value);
+            pathsObject[updatedProperty.Key] = updatedProperty.Value;
         }
 
         return $"Warning: Removed duplicated base URL prefix '{basePath}' from {duplicatedEntries.Count} OpenAPI endpoint path(s) before endpoint testing.";
     }
 
-    private static JObject PrepareEndpointValidationSpecForEndpointTesting(JObject openApiSpec, string? baseUrl, out string? pathDeduplicationWarning)
+    private static JsonObject PrepareEndpointValidationSpecForEndpointTesting(JsonObject openApiSpec, string? baseUrl, out string? pathDeduplicationWarning)
     {
         pathDeduplicationWarning = null;
 
@@ -751,15 +752,15 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             return openApiSpec;
         }
 
-        var clonedSpec = (JObject)openApiSpec.DeepClone();
+        var clonedSpec = openApiSpec.DeepClone() as JsonObject ?? ParseJsonObject(openApiSpec.ToJsonString());
         pathDeduplicationWarning = RemoveDuplicatedBasePathFromOpenApiPaths(clonedSpec, baseUrl);
         return clonedSpec;
     }
 
-    private static bool WouldDuplicateBasePathRequireMutation(JObject openApiSpec, string? baseUrl)
+    private static bool WouldDuplicateBasePathRequireMutation(JsonObject openApiSpec, string? baseUrl)
     {
         if (string.IsNullOrWhiteSpace(baseUrl)
-            || openApiSpec["paths"] is not JObject pathsObject
+            || openApiSpec["paths"] is not JsonObject pathsObject
             || pathsObject.Count == 0)
         {
             return false;
@@ -777,9 +778,9 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             return false;
         }
 
-        foreach (var property in pathsObject.Properties())
+        foreach (var property in pathsObject)
         {
-            var originalPath = NormalizePath(property.Name);
+            var originalPath = NormalizePath(property.Key);
             var deduplicatedPath = TryStripDuplicateBasePath(originalPath, basePath) ?? originalPath;
             if (!string.Equals(deduplicatedPath, originalPath, StringComparison.Ordinal))
             {
@@ -893,7 +894,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         }
     }
 
-    private async Task<JObject> GetCachedResolvedOpenApiSpecAsync(
+    private async Task<JsonObject> GetCachedResolvedOpenApiSpecAsync(
         string specUrl,
         DataSourceAuthentication? auth,
         CancellationToken cancellationToken,
@@ -952,7 +953,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             {
                 var resolvedFromWarmup = await _schemaResolverService.ResolveAsync(warmupSchemaRef, specUrl, auth: null);
                 CollectSchemaResolutionIssues(collectedIssues);
-                var resolvedFromWarmupObject = JObject.Parse(resolvedFromWarmup);
+                var resolvedFromWarmupObject = ParseJsonObject(resolvedFromWarmup);
 
                 if (!IsLikelyOpenApiDocument(resolvedFromWarmupObject))
                 {
@@ -997,7 +998,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         if (_cacheOptions.Enabled)
         {
             PurgeExpiredCacheEntries();
-            var resolvedSpecObject = JObject.Parse(resolvedSpecContent);
+            var resolvedSpecObject = ParseJsonObject(resolvedSpecContent);
             cache[cacheKey] = new CachedResolvedSpec(
                 resolvedSpecContent,
                 resolvedSpecObject,
@@ -1007,7 +1008,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         }
 
         LogLookupCheckpoint("cache-disabled-direct");
-        return JObject.Parse(resolvedSpecContent);
+        return ParseJsonObject(resolvedSpecContent);
     }
 
     private TimeSpan GetProfileSchemaCacheTtl()
