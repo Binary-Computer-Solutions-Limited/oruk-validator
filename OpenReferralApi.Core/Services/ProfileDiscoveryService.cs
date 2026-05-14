@@ -90,12 +90,6 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
 
             foreach (var path in probePaths)
             {
-                // 1. Check if we already have everything we need to stop
-                if (discoveredVersion != null && (!needsSchema || discoveredSchema != null))
-                {
-                    break;
-                }
-
                 var discoveryUrl = BuildAbsoluteUrl(normalizedBaseUrl, path);
                 try
                 {
@@ -119,7 +113,8 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                         discoveredVersion = TryExtractPotentialHsdsProfileVersion(content);
                         if (discoveredVersion != null)
                         {
-                            discoveryReason = $"HSDS version {discoveredVersion} discovered from base URL at {path}";
+                            var reasonPath = string.IsNullOrEmpty(path) ? "root" : path;
+                            discoveryReason = $"HSDS version {discoveredVersion} discovered from base URL at {reasonPath}";
                         }
                     }
 
@@ -136,6 +131,12 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                             discoveredSchema = await TryFetchIndirectSchemaAsync(client, content, normalizedBaseUrl, cancellationToken);
                         }
                     }
+
+                // 4. Check if we already have everything we need to stop
+                if (discoveredVersion != null && (!needsSchema || discoveredSchema != null))
+                {
+                    break;
+                }
                 }
                 catch (Exception ex)
                 {
@@ -209,13 +210,18 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                 $"Can only validate against known profile versions. Schema for profile '{discoveredVersion}' is not available in cache.");
         }
 
+        discoveryReason ??= "Discovery completed with available information.";
+        discoveredVersion ??= "unknown version";  // should never be null/empty here due to fallback logic, but just in case
+
+        _logger.ProfileDiscoveryResolved(TextSanitizer.SanitizeUrlForLogging(hsdsProfileSchemaUrl), discoveredVersion, discoveryReason);
+
         return new ProfileDiscoveryResult
         {
             HsdsProfileVersion = discoveredVersion,
             HsdsProfileSchemaUrl = hsdsProfileSchemaUrl,
             OpenApiSchemaContent = discoveredSchema,
             HsdsProfileSchemaContent = hsdsProfileSchemaContent,
-            HsdsProfileReason = discoveryReason ?? "Discovery completed with available information.",
+            HsdsProfileReason = discoveryReason,
             UsedDefaultProfile = usedDefaultProfile
         };
     }

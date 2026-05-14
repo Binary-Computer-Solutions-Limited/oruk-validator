@@ -24,5 +24,9 @@ namespace OpenReferralApi.Core.Logging
 
         [LoggerMessage(EventId = 12006, Level = LogLevel.Warning, Message = "Error requesting BaseUrl to discover openapi_url; unable to determine HSDS schema version")]
         public static partial void ErrorRequestingBaseUrl(this ILogger logger, Exception exception);
+
+       [LoggerMessage(EventId = 7000, Level = LogLevel.Information, Message = "Profile discovery resolved: DiscoverytUrl '{discoveryUrl}'; with profile context '{discoveredVersion}':{ProfileReason}")]
+        public static partial void ProfileDiscoveryResolved(this ILogger logger, string discoveryUrl, string discoveredVersion,  string profileReason);
+ 
     }
 }
