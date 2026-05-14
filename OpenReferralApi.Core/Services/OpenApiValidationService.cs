@@ -263,8 +263,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         if (ownSchema == null && resolvedHsdsProfileSpec != null)
         {
             feedSpecFellBackToHsdsProfile = true;
-            ownSchema = resolvedHsdsProfileSpec;
-
+            
             if (!string.IsNullOrWhiteSpace(request.OwnSchemaUrl))
             {
                 result.Notifications.Add(
@@ -275,16 +274,11 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
                 result.Notifications.Add(
                     "Unable to discover feed OpenAPI specification from the base URL. Falling back to the configured default HSDS profile OpenAPI specification.");
             }
-
-            if (!string.IsNullOrWhiteSpace(bootstrap.HsdsProfileSchemaUrl))
-            {
-                request.OwnSchemaUrl = bootstrap.HsdsProfileSchemaUrl;
-            }
         }
 
-        if (ownSchema == null)
+        if (ownSchema == null && bootstrap.HsdsProfileVersion == null)
         {
-            throw new ArgumentException("Failed to discover OpenAPI schema URL or schema content from base URL");
+            throw new ArgumentException("Failed to discover Own OpenAPI schema URL or HSDS profile version from base URL");
         }
 
         var discoveredProfileVersion = bootstrap.HsdsProfileVersion;
