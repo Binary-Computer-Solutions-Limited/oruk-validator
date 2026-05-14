@@ -75,13 +75,14 @@ The Open Referral UK API provides:
 - **Framework**: .NET 10.0 with ASP.NET Core
 - **Language**: C# 13+
 - **Database**: MongoDB (optional)
-- **Validation**: JSON Schema (Newtonsoft.Json.Schema, JsonSchema.Net)
+- **Validation**: JSON Schema with JsonSchema.Net and System.Text.Json-based processing
 - **Observability**: OpenTelemetry with OTLP export
 - **Containerization**: Docker with Heroku deployment
 
 ## 📖 Key Features
 
 ### Validation & Testing
+
 - Multi-version HSDS-UK schema support (1.0, 3.0, 3.1)
 - Intelligent endpoint dependency ordering
 - Real ID extraction and substitution
@@ -89,6 +90,7 @@ The Open Referral UK API provides:
 - Optional vs. required endpoint differentiation
 
 ### Developer Experience
+
 - Interactive Swagger UI documentation
 - Comprehensive health check endpoints
 - Rate limiting protection
@@ -97,6 +99,7 @@ The Open Referral UK API provides:
 - Correlation ID support via `X-Correlation-ID`
 
 ### Current State (March 2026)
+
 - Validation routes: `POST /openreferraluk/validate`, `POST /openreferral/validate`, and legacy alias `POST /api/openapi/validate`
 - Feed validation operations: `GET /api/feedvalidation/feeds`, `POST /api/feedvalidation/validate-all`, `POST /api/feedvalidation/validate/{feedId}`
 - Liveness endpoint `GET /health-check/live` includes schema warmup status data under `schemaWarmup`
@@ -104,6 +107,7 @@ The Open Referral UK API provides:
 - Global environment variable prefix for overrides is `ORUK_API_`
 
 ### Production Ready
+
 - Docker containerization
 - Heroku deployment configuration
 - OpenTelemetry observability

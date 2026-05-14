@@ -48,8 +48,7 @@ The project uses the following key dependencies (automatically restored when bui
 
 - **ASP.NET Core 10.0** - Web framework
 - **MongoDB.Driver 3.5.2** - MongoDB database driver
-- **Newtonsoft.Json.Schema 4.0.1** - JSON Schema validation
-- **JsonSchema.Net 8.0.5** - Additional JSON Schema validation
+- **JsonSchema.Net 9.2.0** - JSON Schema validation and meta-schema support
 - **Octokit 14.0.0** - GitHub API integration
 - **Swashbuckle 10.1.0** - OpenAPI/Swagger documentation
 - **AspNetCore.HealthChecks.MongoDb 9.0.0** - Health check endpoints

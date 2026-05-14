@@ -45,7 +45,7 @@ This solution is built as a modern, cloud-native application with the following 
 - **API Documentation**: Swagger/OpenAPI with XML documentation comments
 - **Database**: MongoDB (optional) for storing service registrations and validation history
 - **Validation Engine**:
-  - JSON Schema validation using Newtonsoft.Json.Schema (v4.0.1) and JsonSchema.Net (v8.0.5)
+  - JSON Schema validation using JsonSchema.Net with System.Text.Json node processing
   - OpenAPI specification parsing and validation
   - Automated endpoint discovery and testing
   - Response schema validation against HSDS-UK standards
@@ -64,7 +64,7 @@ This solution is built as a modern, cloud-native application with the following 
 - **OpenApiValidationService**: Orchestrates OpenAPI spec validation and endpoint testing
 - **ProfileDiscoveryService**: Discovers and parses OpenAPI specifications from URLs
 - **JsonValidatorService**: Validates JSON responses against HSDS-UK schemas
-- **SchemaResolverService**: Resolves JSON Schema definitions and creates JSchema objects
+- **SchemaResolverService**: Resolves JSON Schema definitions and pre-resolves `$ref` references for runtime validation
 - **RequestProcessingService**: HTTP client management with caching and timeout handling
 - **PathParsingService**: URL and path parameter parsing utilities
 - **OpenApiToValidationResponseMapper**: Maps validation results to response formats

@@ -1,6 +1,7 @@
 # Technical Architecture - Open Referral UK API
 
 ## Table of Contents
+
 - [Overview](#overview)
 - [Technology Stack](#technology-stack)
 - [System Architecture](#system-architecture)
@@ -27,6 +28,7 @@
 The Open Referral UK (ORUK) API is a .NET-based validation service designed to verify that service directory APIs conform to the Human Services Data Specification UK (HSDS-UK) standard. The system validates both individual service endpoints and bulk dashboard services against JSON schemas, ensuring compliance with Open Referral UK standards.
 
 ### Purpose
+
 - Validate service directory APIs against HSDS-UK specifications (versions 1.0, 3.0)
 - Provide detailed validation reports with schema compliance issues
 - Support batch validation of multiple registered services
@@ -34,6 +36,7 @@ The Open Referral UK (ORUK) API is a .NET-based validation service designed to v
 - Offer a public API for third-party validation requests
 
 ### Key Features
+
 - **Multi-version Support**: Validates against HSDS-UK v1.0 and v3.0
 - **Flexible Validation**: Single service or bulk dashboard validation
 - **Pagination Testing**: Comprehensive validation of paginated endpoints
@@ -47,31 +50,36 @@ The Open Referral UK (ORUK) API is a .NET-based validation service designed to v
 ## Technology Stack
 
 ### Runtime & Framework
+
 - **.NET 10.0**: Core runtime and framework
 - **ASP.NET Core**: Web API framework
 - **C# 13+**: Programming language with nullable reference types
 
 ### Core Libraries
+
 ```xml
 MongoDB.Driver (3.6.0)           - MongoDB data access
-Newtonsoft.Json.Schema (4.0.1)   - JSON Schema validation
+JsonSchema.Net (9.2.0)           - JSON Schema validation
 FluentResults (4.0.0)            - Result pattern implementation
 Swashbuckle.AspNetCore (10.1.0)  - OpenAPI/Swagger documentation
 ```
 
 ### Health & Monitoring
+
 ```xml
 AspNetCore.HealthChecks.MongoDb (9.0.0)
 AspNetCore.HealthChecks.UI.Client (9.0.0)
 ```
 
 ### GitHub Integration
+
 ```xml
 Octokit (14.0.0)                 - GitHub API client
 GitHubJwt (0.0.6)                - GitHub JWT authentication
 ```
 
 ### Additional Dependencies
+
 ```xml
 JsonSchema.Net (8.0.5)           - Additional JSON schema support
 System.IdentityModel.Tokens.Jwt (8.15.0) - JWT handling
@@ -84,6 +92,7 @@ AspNetCore.HealthChecks.Uris (9.0.0) - URL health checks
 ```
 
 ### Infrastructure
+
 - **MongoDB**: NoSQL database for service metadata storage
 - **Docker**: Containerization (multi-stage builds)
 - **Heroku**: Cloud deployment platform
@@ -95,7 +104,7 @@ AspNetCore.HealthChecks.Uris (9.0.0) - URL health checks
 
 ### High-Level Architecture
 
-```
+``` ''
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Client Layer                             │
 │  ┌────────────────┐  ┌────────────────┐  ┌──────────────────┐  │
@@ -158,7 +167,7 @@ AspNetCore.HealthChecks.Uris (9.0.0) - URL health checks
 
 ### Project Structure
 
-```
+``` ''
 OpenReferralApi/
 ├── OpenReferralApi/              # Main API project
 │   ├── Controllers/              # HTTP endpoints
@@ -191,6 +200,7 @@ OpenReferralApi/
 ### 1. Controllers Layer
 
 #### OpenApiController
+
 **Path**: `/api/validate`  
 **Responsibility**: Handles OpenAPI validation requests
 
@@ -203,16 +213,19 @@ public async Task<IActionResult> ValidateOpenApi(
 ```
 
 **Functionality**:
+
 - Accepts OpenAPI URL and optional parameters
 - Delegates to `IOpenApiValidationService` and `IProfileDiscoveryService`
 - Returns validation results with detailed error information
 - Supports rate limiting and correlation ID tracking
 
 #### MockController
+
 **Path**: `/api/mock`  
 **Responsibility**: Serves mock HSDS-UK data for testing
 
 **Functionality**:
+
 - Provides mock responses for different test scenarios
 - Supports V1.0-UK and V3.0-UK data formats
 - Includes test scenarios: Default, Fail, Test, Warn
@@ -221,15 +234,18 @@ public async Task<IActionResult> ValidateOpenApi(
 ### 2. Services Layer
 
 #### OpenApiValidationService
+
 **Lifetime**: Scoped  
 **Core Responsibility**: OpenAPI schema validation and endpoint testing
 
 **Key Methods**:
+
 - `ValidateAsync(url, version, validateExamples)`: Main validation orchestrator
 - `ValidateEndpoint(endpoint, schema)`: Individual endpoint validation
 - `ValidateExamples(openApiDoc)`: Example validation
 
 **Process Flow**:
+
 1. Discover OpenAPI specification at provided URL
 2. Parse and validate OpenAPI document structure
 3. Validate against HSDS-UK schemas
@@ -237,38 +253,46 @@ public async Task<IActionResult> ValidateOpenApi(
 5. Return comprehensive validation results
 
 **Dependencies**:
+
 - `IJsonValidatorService`: JSON Schema validation
 - `IJsonSchemaResolverService`: Schema resolution
 - `HttpClient`: HTTP communication
 
 #### ProfileDiscoveryService
+
 **Lifetime**: Scoped  
 **Core Responsibility**: OpenAPI specification discovery and parsing
 
 **Key Methods**:
+
 - `DiscoverAsync(url)`: Discover OpenAPI specification
 - `ParseOpenApiDocument(content)`: Parse OpenAPI JSON/YAML
 - `ExtractEndpoints(openApiDoc)`: Extract endpoint information
 
 #### JsonValidatorService
+
 **Lifetime**: Scoped  
 **Core Responsibility**: JSON Schema validation
 
 **Key Methods**:
+
 - `ValidateAsync(jsonData, schema)`: Validate JSON against schema
 - `ParseValidationErrors(errors)`: Convert schema errors to readable format
 
 **Process Flow**:
+
 1. Parse JSON data
 2. Load and resolve schema references
-3. Validate using Newtonsoft.Json.Schema
+3. Validate using JsonSchema.Net and pre-resolved schema context
 4. Format validation errors with paths and messages
 
 #### RequestProcessingService
+
 **Lifetime**: Singleton  
 **Core Responsibility**: HTTP request processing and caching
 
 **Features**:
+
 - 2-minute timeout on requests (configurable)
 - Memory cache support for responses
 - Custom User-Agent header (`OpenReferral-Validator/1.0`)
@@ -277,49 +301,59 @@ public async Task<IActionResult> ValidateOpenApi(
 - Result pattern for error propagation
 
 **Key Method**:
+
 ```csharp
 Task<Result<string>> ProcessRequestAsync(string url)
 ```
 
 #### JsonSchemaResolverService
+
 **Lifetime**: Scoped  
 **Core Responsibility**: JSON Schema resolution and loading
 
 **Key Methods**:
+
 - `ResolveSchema(schemaPath)`: Load schema from file system
 - `ResolveReferences(schema)`: Resolve $ref references in schemas
 
 **Schema Resolution Logic**:
+
 1. Load base schema from Schemas directory
 2. Resolve any $ref references to other schemas
 3. Cache resolved schemas for performance
 4. Return fully resolved schema for validation
 
 #### PathParsingService
+
 **Lifetime**: Scoped  
 **Core Responsibility**: URL and path parsing
 
 **Key Methods**:
+
 - `ParsePath(path)`: Parse URL path components
 - `ExtractParameters(path)`: Extract path parameters
 - `BuildUrl(baseUrl, path, queryParams)`: Construct URLs
 
 **Validation Checks**:
+
 - URL format validation
 - Path parameter extraction
 - Query string parsing
 - URL normalization
 
 #### OpenApiToValidationResponseMapper
+
 **Lifetime**: Scoped  
 **Core Responsibility**: Maps OpenAPI validation results to response DTOs
 
 **Key Methods**:
+
 - `MapToValidationResponse(result)`: Convert validation result to response DTO
 - `MapErrors(errors)`: Format error messages
 - `MapEndpointResults(endpoints)`: Map endpoint validation results
 
 **Functionality**:
+
 - Transforms internal validation results to API responses
 - Formats error messages for readability
 - Groups validation issues by severity
@@ -328,20 +362,24 @@ Task<Result<string>> ProcessRequestAsync(string url)
 ### 3. Middleware Layer
 
 #### CorrelationIdMiddleware
+
 **Lifetime**: Singleton (per request)  
 **Core Responsibility**: Request tracking and correlation
 
 **Functionality**:
+
 - Generates or extracts correlation ID from request headers
 - Adds correlation ID to response headers
 - Logs correlation ID for request tracing
 - Enables distributed tracing across services
 
 #### GlobalExceptionHandler
+
 **Lifetime**: Singleton  
 **Core Responsibility**: Centralized exception handling
 
 **Functionality**:
+
 - Catches unhandled exceptions
 - Formats error responses consistently
 - Logs exceptions with context
@@ -354,7 +392,7 @@ Task<Result<string>> ProcessRequestAsync(string url)
 
 ### Single Service Validation Flow
 
-```
+``` ''
 ┌──────────┐
 │  Client  │
 └────┬─────┘
@@ -403,7 +441,7 @@ Task<Result<string>> ProcessRequestAsync(string url)
          │ 4. For each test case:
          │    ├─ Fetch endpoint response
          │    ├─ Load JSON Schema (Schemas/V3.0-UK/...)
-         │    ├─ Validate with Newtonsoft.Json.Schema
+         │    ├─ Validate with JsonSchema.Net
          │    └─ Run pagination tests
          │ 5. Aggregate Issues
          ▼
@@ -422,7 +460,7 @@ Task<Result<string>> ProcessRequestAsync(string url)
 
 ### Dashboard Validation Flow
 
-```
+``` ''
 ┌──────────┐
 │  Client  │
 └────┬─────┘
@@ -484,21 +522,25 @@ Task<Result<string>> ProcessRequestAsync(string url)
 ## API Endpoints
 
 ### 1. POST /api/validate
+
 **Purpose**: Validate an OpenAPI specification
 
 **Request**:
+
 ```http
 POST /api/validate?url=https://example.com/openapi.json&version=3.0&validateExamples=true
 ```
 
 **Query Parameters**:
+
 | Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
+| --------- | ---- | -------- | ----------- |
 | url | string | Yes | Full URL to the OpenAPI specification |
 | version | string | No | HSDS-UK version (1.0, 3.0). Auto-detected if omitted |
 | validateExamples | bool | No | Whether to validate examples in the specification |
 
 **Response 200 OK**:
+
 ```json
 {
   "url": "https://example.com/openapi.json",
@@ -519,6 +561,7 @@ POST /api/validate?url=https://example.com/openapi.json&version=3.0&validateExam
 ```
 
 **Response 400 Bad Request**:
+
 ```json
 {
   "errors": [
@@ -528,6 +571,7 @@ POST /api/validate?url=https://example.com/openapi.json&version=3.0&validateExam
 ```
 
 **Response 500 Internal Server Error**:
+
 ```json
 {
   "title": "Internal Server Error",
@@ -538,20 +582,24 @@ POST /api/validate?url=https://example.com/openapi.json&version=3.0&validateExam
 ```
 
 ### 2. GET /api/mock/{version}/{scenario}
+
 **Purpose**: Serve mock HSDS-UK data for testing
 
 **Request**:
+
 ```http
 GET /api/mock/v3.0-uk-default/services
 ```
 
 **Path Parameters**:
+
 | Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
+| --------- | ---- | -------- | ----------- |
 | version | string | Yes | Version directory (v1.0-uk-default, v3.0-uk-default, v3.0-uk-fail, v3.0-uk-test, v3.0-uk-warn) |
 | scenario | string | Yes | Endpoint path within the mock data |
 
 **Response 200 OK**:
+
 ```json
 {
   "services": [
@@ -565,15 +613,19 @@ GET /api/mock/v3.0-uk-default/services
 ```
 
 ### 3. GET /
+
 **Purpose**: Serve Swagger/OpenAPI JSON specification
 
 ### 4. GET /swagger
+
 **Purpose**: Interactive Swagger UI for API exploration
 
 ### 5. GET /health-check
+
 **Purpose**: Comprehensive health check endpoint for monitoring
 
 **Response 200 OK**:
+
 ```json
 {
   "status": "Healthy",
@@ -593,14 +645,17 @@ GET /api/mock/v3.0-uk-default/services
 ```
 
 ### 6. GET /health-check/ready
+
 **Purpose**: Readiness probe for container orchestration
 
 **Response 200 OK**: Returns health status for services tagged with "ready"
 
 ### 7. GET /health-check/live
+
 **Purpose**: Liveness probe for container orchestration
 
 **Response 200 OK**:
+
 ```json
 {
   "status": "Healthy",
@@ -619,6 +674,7 @@ Test profiles define the validation test suite for each HSDS-UK version.
 **Location**: `TestProfiles/HSDS-UK-{version}.json`
 
 **Schema**:
+
 ```json
 {
   "profile": "HSDS-UK-3.0",
@@ -654,6 +710,7 @@ Test profiles define the validation test suite for each HSDS-UK version.
 ### Validation Steps
 
 #### 1. Profile Selection
+
 ```csharp
 // Priority order:
 // 1. Explicit profile parameter
@@ -662,11 +719,13 @@ Test profiles define the validation test suite for each HSDS-UK version.
 ```
 
 #### 2. Schema Loading
+
 - Schemas stored in `Schemas/{version}/` directory
-- Loaded using `Newtonsoft.Json.Schema.JSchema`
+- Loaded and pre-resolved into System.Text.Json node graphs for runtime validation
 - Supports JSON Schema Draft 4/6/7
 
 #### 3. Test Execution
+
 ```csharp
 // Parallel execution of test groups
 var testGroupTasks = testProfile.TestGroups
@@ -675,13 +734,20 @@ var results = await Task.WhenAll(testGroupTasks);
 ```
 
 #### 4. Response Validation
+
 ```csharp
 // Parse response and validate against schema
-var responseJToken = JToken.Parse(response.ToString());
-var isValid = responseJToken.IsValid(schema, out IList<ValidationError> errors);
+using System.Text.Json;
+var responseJson = JsonDocument.Parse(response.ToString());
+var validationResult = await _jsonValidatorService.ValidateAsync(new ValidationRequest
+{
+  JsonData = responseJson,
+  Schema = schemaNode
+});
 ```
 
 #### 5. Issue Collection
+
 ```csharp
 // Convert validation errors to Issue objects
 var issues = errors.Select(error => new Issue
@@ -697,6 +763,7 @@ var issues = errors.Select(error => new Issue
 ### Pagination Validation
 
 **Tests Performed**:
+
 1. **First Page Validation**
    - Correct page number (1)
    - Content matches schema
@@ -724,6 +791,7 @@ var issues = errors.Select(error => new Issue
 ### MongoDB Schema
 
 #### Services Collection
+
 ```json
 {
   "_id": "ObjectId",
@@ -743,6 +811,7 @@ var issues = errors.Select(error => new Issue
 ```
 
 #### Columns Collection
+
 ```json
 {
   "_id": "ObjectId",
@@ -754,6 +823,7 @@ var issues = errors.Select(error => new Issue
 ```
 
 #### Views Collection
+
 ```json
 {
   "_id": "ObjectId",
@@ -767,12 +837,14 @@ var issues = errors.Select(error => new Issue
 ### Database Operations
 
 **Read Operations**:
+
 - `GetServices()`: Retrieves all active services
 - `GetServiceById(id)`: Retrieves single service
 - `GetColumns()`: Retrieves column definitions
 - `GetViews()`: Retrieves view configurations
 
 **Write Operations**:
+
 - `UpdateServiceTestStatus()`: Updates validation results
   - Sets `lastTested` timestamp
   - Updates `statusIsUp` (API availability)
@@ -784,28 +856,34 @@ var issues = errors.Select(error => new Issue
 ## External Integrations
 
 ### 1. Service Directory APIs
+
 **Purpose**: APIs being validated for HSDS-UK compliance
 
 **Supported Versions**:
+
 - HSDS-UK 1.0
 - HSDS-UK 3.0
 
 **Expected Endpoints**:
+
 - `GET /`: Root endpoint with version metadata
 - `GET /services`: Paginated service list
 - `GET /services/{id}`: Individual service details
 - Additional endpoints per HSDS-UK specification
 
 **Requirements**:
+
 - Must return valid JSON
 - Must include CORS headers for browser clients
 - Should respond within 30 seconds
 - Must follow HSDS-UK schema specifications
 
 ### 2. MongoDB Atlas
+
 **Purpose**: Service registry and validation history
 
 **Connection**:
+
 ```json
 {
   "Database": {
@@ -819,14 +897,17 @@ var issues = errors.Select(error => new Issue
 ```
 
 **Features Used**:
+
 - Document queries with filters
 - Update operations
 - Connection pooling (singleton repository)
 
 ### 3. GitHub API (Optional)
+
 **Purpose**: Potential integration for issue tracking or schema updates
 
 **Configuration**:
+
 ```json
 {
   "Github": {
@@ -838,6 +919,7 @@ var issues = errors.Select(error => new Issue
 ```
 
 **Dependencies**:
+
 - `Octokit` (14.0.0)
 - `GitHubJwt` (0.0.6)
 
@@ -846,6 +928,7 @@ var issues = errors.Select(error => new Issue
 ## Configuration & Settings
 
 ### Configuration Sources
+
 1. `appsettings.json` (base configuration)
 2. `appsettings.Development.json` (environment-specific)
 3. `appsettings.Production.json` (production-specific)
@@ -855,6 +938,7 @@ var issues = errors.Select(error => new Issue
 ### Settings Structure
 
 #### Database Settings
+
 ```csharp
 public class DatabaseSettings
 {
@@ -864,6 +948,7 @@ public class DatabaseSettings
 ```
 
 #### Security Settings
+
 ```csharp
 public class SecuritySettings
 {
@@ -873,6 +958,7 @@ public class SecuritySettings
 ```
 
 #### Rate Limiting Settings
+
 ```csharp
 public class RateLimitingSettings
 {
@@ -883,6 +969,7 @@ public class RateLimitingSettings
 ```
 
 #### OpenTelemetry Settings
+
 ```csharp
 public class OpenTelemetrySettings
 {
@@ -909,6 +996,7 @@ ORUK_API_FeedValidation__RunAtMidnight="true"
 ```
 
 #### Feed Validation Settings
+
 ```csharp
 public class FeedValidationSettings
 {
@@ -951,7 +1039,7 @@ public class FeedValidationSettings
 **Settings**:
 
 | Setting | Description | Default |
-|---------|-------------|---------|
+| ------- | ----------- | ------- |
 | `Enabled` | Enable/disable the background service | `false` |
 | `IntervalHours` | Hours between validation runs (used if `RunAtMidnight` is false) | `24` |
 | `RunAtMidnight` | Schedule validations at midnight UTC (when true) or use fixed interval | `true` |
@@ -970,7 +1058,7 @@ public class FeedValidationSettings
 
 **Logging Output**:
 
-```
+``` ''
 Feed Validation Background Service started. Interval: 24 hours, RunAtMidnight: True
 Next validation scheduled for 2026-01-30 00:00:00 (in 3.2 hours)
 Starting scheduled feed validation run at 2026-01-30 00:00:00
@@ -1030,26 +1118,31 @@ app.UseRateLimiter();
 **Authorization**: None (public API)
 
 **Rate Limiting**:
+
 - Fixed window rate limiting (100 requests per 60 seconds by default)
 - Configurable permit limit, window, and queue size
 - Returns 429 Too Many Requests when limit exceeded
 
 **Input Validation**:
+
 - URL format validation (HTTP/HTTPS only)
 - URL trimming and sanitization
 - Query parameter validation
 
 **HTTPS**:
+
 - Supported and recommended
 - HSTS enabled in production
 - Configurable SSL certificate validation
 
 **CORS**:
+
 - Configurable allowed origins
 - Supports wildcard (*) for development
 - Credential support for specific origins
 
 **External API Security**:
+
 - 2-minute timeout to prevent long-running requests
 - SSL certificate validation (configurable)
 - No credentials stored or transmitted
@@ -1090,6 +1183,7 @@ app.UseRateLimiter();
 ### Docker Container
 
 **Multi-Stage Build**:
+
 ```dockerfile
 # Stage 1: Base runtime
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
@@ -1107,12 +1201,14 @@ FROM base AS final
 ```
 
 **Port Configuration**:
+
 - Default: 80, 443
 - Heroku: Dynamic via `$PORT` environment variable
 
 ### Heroku Deployment
 
 **Configuration**: `heroku.yml`
+
 ```yaml
 build:
   docker:
@@ -1120,23 +1216,27 @@ build:
 ```
 
 **Process**:
+
 1. Git push to Heroku remote
 2. Heroku builds Docker image
 3. Container starts with dynamic port binding
 4. Health check validates deployment
 
 **Scaling**:
+
 - Horizontal scaling via dyno count
 - MongoDB connection pooling handles concurrent requests
 
 ### Environment Configuration
 
 **Development**:
+
 - Local MongoDB instance
 - `appsettings.Development.json`
 - Debug logging enabled
 
 **Production**:
+
 - MongoDB Atlas (cloud)
 - Environment variables for secrets
 - Information-level logging
@@ -1147,6 +1247,7 @@ build:
 ## Development Setup
 
 ### Prerequisites
+
 - .NET 10.0 SDK
 - MongoDB 3.0+ (local or Atlas) - Optional
 - Docker (optional)
@@ -1155,10 +1256,13 @@ build:
 ### Local Development
 
 1. **Clone Repository**:
+
    ```bash
-  git clone https://github.com/OpenReferralUK/oruk-validator.git
+
+  git clone <https://github.com/OpenReferralUK/oruk-validator.git>
    cd OpenReferralApi
-   ```
+
+   ``` ''
 
 2. **Configure Settings**:
    ```bash
@@ -1171,24 +1275,28 @@ build:
    }
    ```
 
-3. **Restore Dependencies**:
+1. **Restore Dependencies**:
+
    ```bash
    dotnet restore
    ```
 
-4. **Build Solution**:
+2. **Build Solution**:
+
    ```bash
    dotnet build OpenReferralApi.sln
    ```
 
-5. **Run API**:
+3. **Run API**:
+
    ```bash
    cd OpenReferralApi
    dotnet run
    ```
 
-6. **Access Swagger**:
-   ```
+4. **Access Swagger**:
+
+   ``` ''
    http://localhost:5000/swagger
    ```
 
@@ -1210,9 +1318,11 @@ docker run -p 8080:80 \
 ## Testing Strategy
 
 ### Unit Tests
+
 **Location**: `OpenReferralApi.Tests/`
 
 **Test Categories**:
+
 1. **Service Tests**
    - `ValidatorServiceShould.cs`: Validation logic
    - `PaginationTestingServiceShould.cs`: Pagination testing
@@ -1223,10 +1333,12 @@ docker run -p 8080:80 \
    - `TestData/pagination*.json`: Pagination test data
 
 **Test Framework**:
+
 - xUnit
 - Moq (via `RequestServiceMock.cs`)
 
 **Running Tests**:
+
 ```bash
 dotnet test OpenReferralApi.Tests/OpenReferralApi.Tests.csproj
 ```
@@ -1234,6 +1346,7 @@ dotnet test OpenReferralApi.Tests/OpenReferralApi.Tests.csproj
 ### Integration Tests
 
 **Approach**:
+
 - Test against real MongoDB (test database)
 - Mock external service APIs
 - Validate end-to-end flows
@@ -1263,17 +1376,20 @@ dotnet test OpenReferralApi.Tests/OpenReferralApi.Tests.csproj
 ### Caching Strategy
 
 **In-Memory Cache** (`IMemoryCache`):
+
 - **Duration**: 20 seconds absolute expiration
 - **Scope**: Per `RequestService` instance (Scoped lifetime)
 - **Cache Key**: Full request URL
 - **Purpose**: Avoid redundant API calls during validation
 
 **Benefits**:
+
 - Reduces load on external APIs
 - Improves validation speed for repeated endpoints
 - Handles multiple test cases hitting same URL
 
 **Limitations**:
+
 - Not distributed (single instance only)
 - Clears on application restart
 - Memory footprint grows with unique URLs
@@ -1281,6 +1397,7 @@ dotnet test OpenReferralApi.Tests/OpenReferralApi.Tests.csproj
 ### Performance Optimizations
 
 1. **Parallel Execution**:
+
    ```csharp
    // Test groups run in parallel
    var tasks = testGroups.Select(group => TestGroup(group));
@@ -1303,16 +1420,19 @@ dotnet test OpenReferralApi.Tests/OpenReferralApi.Tests.csproj
 ### Scalability Considerations
 
 **Horizontal Scaling**:
+
 - Stateless API design
 - No session state
 - MongoDB handles concurrent access
 
 **Bottlenecks**:
+
 - External API response times
 - MongoDB query performance
 - JSON schema validation CPU usage
 
 **Recommendations**:
+
 - Implement distributed caching (Redis)
 - Add request queuing for bulk operations
 - Consider response streaming for large datasets
@@ -1324,6 +1444,7 @@ dotnet test OpenReferralApi.Tests/OpenReferralApi.Tests.csproj
 ### OpenTelemetry Integration
 
 **Configuration**:
+
 ```json
 {
   "OpenTelemetry": {
@@ -1334,6 +1455,7 @@ dotnet test OpenReferralApi.Tests/OpenReferralApi.Tests.csproj
 ```
 
 **Features**:
+
 - **Distributed Tracing**: Traces HTTP requests and dependencies
 - **Metrics**: Collects ASP.NET Core and HTTP client metrics
 - **Resource Attributes**: Service name, version, environment
@@ -1341,6 +1463,7 @@ dotnet test OpenReferralApi.Tests/OpenReferralApi.Tests.csproj
 - **Console Export**: Development debugging
 
 **Instrumentation**:
+
 - ASP.NET Core requests (with exception recording)
 - HTTP client calls
 - Custom activity source: `OpenReferralApi`
@@ -1351,12 +1474,14 @@ dotnet test OpenReferralApi.Tests/OpenReferralApi.Tests.csproj
 **Framework**: `ILogger<T>` (ASP.NET Core)
 
 **Log Levels**:
+
 - **Information**: Successful operations, timing metrics
 - **Warning**: Retryable errors, deprecated features
 - **Error**: Validation failures, external API errors
 - **Critical**: System failures, configuration errors
 
 **Key Log Points**:
+
 ```csharp
 _logger.LogInformation("Validation completed in {ms} ms", elapsed);
 _logger.LogError(ex, "Error occurred while validating {url}", url);
@@ -1368,12 +1493,14 @@ _logger.LogWarning("Service unavailable: {url}", serviceUrl);
 **Endpoint**: `/health-check`
 
 **Health Check Configuration**:
+
 ```csharp
 builder.Services.AddHealthChecks();
 app.MapHealthChecks("/health-check");
 ```
 
 **Future Enhancements**:
+
 - MongoDB connection health check
 - External API availability checks
 - Disk space monitoring
@@ -1381,11 +1508,13 @@ app.MapHealthChecks("/health-check");
 ### Metrics
 
 **Current Metrics**:
+
 - Validation execution time (logged)
 - Service availability status (stored in DB)
 - Test pass/fail counts
 
 **Available Metrics** (via OpenTelemetry):
+
 - Request rate (requests per minute)
 - Error rate (failures per minute)
 - Request duration
@@ -1393,6 +1522,7 @@ app.MapHealthChecks("/health-check");
 - Response status code distribution
 
 **Custom Metrics** (via Instrumentation class):
+
 ```csharp
 public static class Instrumentation
 {
@@ -1409,6 +1539,7 @@ public static class Instrumentation
 ### Adding New HSDS-UK Versions
 
 1. **Create Schema Directory**:
+
    ```bash
    mkdir OpenReferralApi/Schemas/V4.0-UK
    ```
@@ -1418,6 +1549,7 @@ public static class Instrumentation
    - Follow naming convention: `{entity}-schema.json`
 
 3. **Create Test Profile**:
+
    ```json
    // TestProfiles/HSDS-UK-4.0.json
    {
@@ -1427,12 +1559,14 @@ public static class Instrumentation
    ```
 
 4. **Update Constants**:
+
    ```csharp
    // Constants/HSDSUKVersions.cs
    public const string V4 = "4.0";
    ```
 
 5. **Update Version Detection**:
+
    ```csharp
    // TestProfileService.cs
    return apiResult.Value["version"]!.ToString() switch
@@ -1449,6 +1583,7 @@ public static class Instrumentation
    - Reference appropriate schema
 
 2. **Create Custom Validators**:
+
    ```csharp
    public interface ICustomValidator
    {
@@ -1457,6 +1592,7 @@ public static class Instrumentation
    ```
 
 3. **Register in DI**:
+
    ```csharp
    builder.Services.AddScoped<ICustomValidator, MyValidator>();
    ```
@@ -1464,11 +1600,13 @@ public static class Instrumentation
 ### Adding Authentication
 
 1. **Install Package**:
+
    ```bash
    dotnet add package Microsoft.AspNetCore.Authentication.JwtBearer
    ```
 
 2. **Configure in Program.cs**:
+
    ```csharp
    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
        .AddJwtBearer(options => { ... });
@@ -1478,6 +1616,7 @@ public static class Instrumentation
    ```
 
 3. **Protect Endpoints**:
+
    ```csharp
    [Authorize]
    [ApiController]
