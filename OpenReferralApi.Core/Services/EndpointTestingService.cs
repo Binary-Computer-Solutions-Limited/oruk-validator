@@ -10,9 +10,6 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using Newtonsoft.Json.Schema;
 using OpenReferralApi.Core.Logging;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
 using OpenReferralApi.Core.Helpers;
@@ -55,7 +52,6 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     private readonly IHsdsComplianceService _hsdsComplianceService;
     private readonly OpenApiValidationServerOptions? _openApiValidationOptions;
     private readonly ConcurrentDictionary<string, JsonNode> _validationSchemaCache = new(StringComparer.Ordinal);
-    private static readonly ConcurrentDictionary<string, JSchema> CompiledValidationSchemaCache = new(StringComparer.Ordinal);
 
     public EndpointTestingService(
         ILogger<EndpointTestingService> logger,
@@ -72,14 +68,12 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     }
     public async Task<List<EndpointTestResult>> TestEndpointsAsync(JsonObject openApiSpec, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, CancellationToken cancellationToken = default)
     {
-        var openApiJObject = JObject.Parse(openApiSpec.ToJsonString());
-        return await TestEndpointsInternalAsync(openApiJObject, baseUrl, options, authentication, cancellationToken);
+        return await TestEndpointsInternalAsync(openApiSpec, baseUrl, options, authentication, cancellationToken);
     }
 
-    private async Task<List<EndpointTestResult>> TestEndpointsInternalAsync(JObject openApiSpec, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, CancellationToken cancellationToken = default)
+    private async Task<List<EndpointTestResult>> TestEndpointsInternalAsync(JsonObject openApiSpec, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, CancellationToken cancellationToken = default)
     {
         var results = new List<EndpointTestResult>();
-        var compiledValidationSchemaCache = CompiledValidationSchemaCache;
         var parsedResponseJsonByResult = new ConcurrentDictionary<HttpTestResult, JsonDocument>();
         var extractedIds = new ConcurrentDictionary<string, List<string>>();
         var stopwatch = Stopwatch.StartNew();
@@ -93,7 +87,8 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             }
 
             var snapshot = memoryCheckpointTracker.Capture();
-            var compiledSchemaCacheState = GetCompiledSchemaCacheState(compiledValidationSchemaCache);
+            const int compiledSchemaCacheEntryCount = 0;
+            const long compiledSchemaCacheTotalKeyChars = 0;
             var retentionSnapshot = GetEndpointRetentionSnapshot(
                 results,
                 parsedResponseJsonByResult,
@@ -108,8 +103,8 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                 groupName: TextSanitizer.SanitizeForLogging(groupName),
                 accumulatedEndpointResults: results.Count) with
             {
-                CompiledSchemaCacheEntryCount = compiledSchemaCacheState.EntryCount,
-                CompiledSchemaCacheTotalKeyChars = compiledSchemaCacheState.TotalKeyChars,
+                CompiledSchemaCacheEntryCount = compiledSchemaCacheEntryCount,
+                CompiledSchemaCacheTotalKeyChars = compiledSchemaCacheTotalKeyChars,
                 ParsedJsonDocumentsInFlight = retentionSnapshot.ParsedJsonDocumentsInFlight,
                 RetainedResponseBodies = retentionSnapshot.RetainedResponseBodies,
                 RetainedResponseBodyChars = retentionSnapshot.RetainedResponseBodyChars,
@@ -131,8 +126,8 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
 
             _logger.CompiledEndpointSchemaCacheState(
                 stage,
-                compiledSchemaCacheState.EntryCount,
-                compiledSchemaCacheState.TotalKeyChars);
+                compiledSchemaCacheEntryCount,
+                compiledSchemaCacheTotalKeyChars);
 
             _logger.EndpointTestingRetentionSnapshot(
                 stage,
@@ -150,15 +145,14 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             _logger.TestingEndpointsWithDependencyOrdering();
             LogMemoryCheckpoint("start", "all");
 
-            // We already have a JObject, so use it directly
+            // Guard on paths at the JsonObject boundary first.
             if (!openApiSpec.ContainsKey("paths"))
             {
                 _logger.NoPathsFound();
                 return results;
             }
 
-            var paths = openApiSpec["paths"];
-            if (paths is not JObject pathsObject)
+            if (openApiSpec["paths"] is not JsonObject pathsObject)
             {
                 return results;
             }
@@ -182,7 +176,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                 foreach (var endpoint in group.CollectionEndpoints)
                 {
                     var result = await TestSingleEndpointWithIdExtractionAsync(endpoint.Path, endpoint.Method, endpoint.Operation,
-                        baseUrl, options, authentication, extractedIds, semaphore, openApiSpec, endpoint.PathItem, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+                        baseUrl, options, authentication, extractedIds, semaphore, openApiSpec, endpoint.PathItem, parsedResponseJsonByResult, cancellationToken);
                     results.Add(result);
                 }
 
@@ -194,7 +188,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                 foreach (var endpoint in group.ParameterizedEndpoints)
                 {
                     var task = TestSingleEndpointWithIdSubstitutionAsync(endpoint.Path, endpoint.Method, endpoint.Operation,
-                        baseUrl, options, authentication, extractedIds, semaphore, openApiSpec, endpoint.PathItem, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+                        baseUrl, options, authentication, extractedIds, semaphore, openApiSpec, endpoint.PathItem, parsedResponseJsonByResult, cancellationToken);
                     parameterizedTasks.Add(task);
                 }
 
@@ -218,7 +212,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         return results;
     }
 
-    private async Task<EndpointTestResult> TestSingleEndpointAsync(string path, string method, JObject operation, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, SemaphoreSlim semaphore, JObject openApiDocument, JObject pathItem, ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken, string? testedId = null)
+    private async Task<EndpointTestResult> TestSingleEndpointAsync(string path, string method, JsonObject operation, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, SemaphoreSlim semaphore, JsonObject openApiDocument, JsonObject pathItem, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken, string? testedId = null)
     {
         await semaphore.WaitAsync(cancellationToken);
 
@@ -232,13 +226,13 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             Name = operation["name"]?.ToString(),
             OperationId = operation["operationId"]?.ToString(),
             Summary = operation["summary"]?.ToString(),
-            IsOptional = ToJsonNode(operation).IsOptionalEndpoint(),
+            IsOptional = operation.IsOptionalEndpoint(),
             Status = EndpointTestStatus.NotTested
         };
 
         try
         {
-            bool isOptional = ToJsonNode(operation).IsOptionalEndpoint();
+            bool isOptional = operation.IsOptionalEndpoint();
             bool skipOptional = !(_openApiValidationOptions?.TestOptionalEndpoints ?? true) && isOptional;
             if (skipOptional)
             {
@@ -254,7 +248,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             if (hasPagination)
             {
                 // Test pagination: first page, middle page(s), last page
-                await TestPaginatedEndpointAsync(result, path, method, operation, baseUrl, options, authentication, resolvedParams, openApiDocument, pathItem, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+                await TestPaginatedEndpointAsync(result, path, method, operation, baseUrl, options, authentication, resolvedParams, openApiDocument, pathItem, parsedResponseJsonByResult, cancellationToken);
             }
             else
             {
@@ -268,7 +262,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                 // Check for non-success status codes and handle based on endpoint requirements
                 if (!testResult.IsSuccessStatusCode)
                 {
-                    var isOptionalEndpoint = ToJsonNode(pathItem).IsOptionalEndpoint();
+                    var isOptionalEndpoint = pathItem.IsOptionalEndpoint();
                     var statusCode = testResult.ResponseStatusCode ?? 0;
                     var errorMessage = $"Endpoint returned {statusCode} status code";
 
@@ -321,7 +315,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                 // Validate response if schema is defined
                 if (testResult.IsSuccessStatusCode && HasResponsePayload(testResult, parsedResponseJsonByResult))
                 {
-                    await ValidateResponseAsync(testResult, operation, openApiDocument, options, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+                    await ValidateResponseAsync(testResult, operation, openApiDocument, options, parsedResponseJsonByResult, cancellationToken);
 
                     var validationResult = testResult.ValidationResult;
                     if (validationResult == null || (validationResult.Errors.Count == 0 && !validationResult.IsValid))
@@ -402,14 +396,13 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         EndpointTestResult result,
         string path,
         string method,
-        JObject operation,
+        JsonObject operation,
         string baseUrl,
         OpenApiValidationOptions options,
         DataSourceAuthentication? auth,
-        JArray resolvedParams,
-        JObject openApiDocument,
-        JObject pathItem,
-        ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache,
+        JsonArray resolvedParams,
+        JsonObject openApiDocument,
+        JsonObject pathItem,
         ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult,
         CancellationToken cancellationToken)
     {
@@ -425,7 +418,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
 
         if (!firstPageResult.IsSuccessStatusCode)
         {
-            var isOptionalEndpoint = ToJsonNode(pathItem).IsOptionalEndpoint();
+            var isOptionalEndpoint = pathItem.IsOptionalEndpoint();
             var statusCode = firstPageResult.ResponseStatusCode ?? 0;
 
             if (isOptionalEndpoint)
@@ -458,7 +451,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         // Validate first page response schema
         if (HasResponsePayload(firstPageResult, parsedResponseJsonByResult))
         {
-            await ValidateResponseAsync(firstPageResult, operation, openApiDocument, options, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+            await ValidateResponseAsync(firstPageResult, operation, openApiDocument, options, parsedResponseJsonByResult, cancellationToken);
         }
 
         // Try to determine total pages and check for empty feed
@@ -500,7 +493,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
 
                 if (middlePageResult.IsSuccessStatusCode && HasResponsePayload(middlePageResult, parsedResponseJsonByResult))
                 {
-                    await ValidateResponseAsync(middlePageResult, operation, openApiDocument, options, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+                    await ValidateResponseAsync(middlePageResult, operation, openApiDocument, options, parsedResponseJsonByResult, cancellationToken);
                 }
 
                 // Release the middle page's parsed JSON document after validation is complete.
@@ -515,7 +508,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
 
             if (lastPageResult.IsSuccessStatusCode && HasResponsePayload(lastPageResult, parsedResponseJsonByResult))
             {
-                await ValidateResponseAsync(lastPageResult, operation, openApiDocument, options, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+                await ValidateResponseAsync(lastPageResult, operation, openApiDocument, options, parsedResponseJsonByResult, cancellationToken);
             }
 
             // Release the last page's parsed JSON document after validation is complete.
@@ -645,7 +638,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         return (totalPages, itemCount);
     }
 
-    private string BuildFullUrl(string baseUrl, string path, JArray resolvedParams, OpenApiValidationOptions options, int? pageNumber = null)
+    private string BuildFullUrl(string baseUrl, string path, JsonArray resolvedParams, OpenApiValidationOptions options, int? pageNumber = null)
     {
         var url = $"{baseUrl.TrimEnd('/')}{path}";
 
@@ -663,12 +656,12 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     /// Checks if the resolved parameters array contains a 'page' query parameter.
     /// Parameters should already be resolved (references expanded, path and operation params merged).
     /// </summary>
-    private bool HasPageParameter(JArray resolvedParams)
+    private bool HasPageParameter(JsonArray resolvedParams)
     {
         _logger.CheckingPageParameter(resolvedParams.Count);
         foreach (var param in resolvedParams)
         {
-            if (param is JObject paramObj)
+            if (param is JsonObject paramObj)
             {
                 var name = paramObj["name"]?.ToString();
                 var inLocation = paramObj["in"]?.ToString();
@@ -688,20 +681,20 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
 
     /// <summary>
     /// Merges path-level and operation-level parameters.
-    /// Returns a JArray of parameter objects (references already resolved upstream).
+    /// Returns a JsonArray of parameter objects (references already resolved upstream).
     /// </summary>
-    private JArray ResolveOperationParameters(JObject operation, JObject pathItem, JObject openApiDocument)
+    private JsonArray ResolveOperationParameters(JsonObject operation, JsonObject pathItem, JsonObject openApiDocument)
     {
-        var resolvedParams = new JArray();
+        var resolvedParams = new JsonArray();
 
         // Add path-level parameters first (these are inherited by all operations)
-        if (pathItem["parameters"] is JArray pathParams)
+        if (pathItem["parameters"] is JsonArray pathParams)
         {
             _logger.FoundPathLevelParameters(pathParams.Count);
             foreach (var param in pathParams)
             {
-                resolvedParams.Add(param);
-                if (param is JObject paramObj)
+                resolvedParams.Add(param?.DeepClone());
+                if (param is JsonObject paramObj)
                 {
                     var paramName = paramObj["name"]?.ToString();
                     _logger.PathLevelParam(TextSanitizer.SanitizeStringForLogging(paramName ?? string.Empty));
@@ -710,13 +703,13 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         }
 
         // Add operation-level parameters (these can override path-level params)
-        if (operation["parameters"] is JArray operationParams)
+        if (operation["parameters"] is JsonArray operationParams)
         {
             _logger.FoundOperationLevelParameters(operationParams.Count);
             foreach (var param in operationParams)
             {
-                resolvedParams.Add(param);
-                if (param is JObject paramObj)
+                resolvedParams.Add(param?.DeepClone());
+                if (param is JsonObject paramObj)
                 {
                     var paramName = paramObj["name"]?.ToString();
                     _logger.OperationLevelParam(TextSanitizer.SanitizeStringForLogging(paramName ?? string.Empty));
@@ -728,7 +721,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         return resolvedParams;
     }
 
-    private async Task<HttpTestResult> ExecuteHttpRequestAsync(string url, string method, JObject operation, OpenApiValidationOptions options, DataSourceAuthentication? authentication, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken, string? testedId = null)
+    private async Task<HttpTestResult> ExecuteHttpRequestAsync(string url, string method, JsonObject operation, OpenApiValidationOptions options, DataSourceAuthentication? authentication, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken, string? testedId = null)
     {
         var testResult = new HttpTestResult
         {
@@ -846,18 +839,11 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         return testResult;
     }
 
-    private async Task ValidateResponseAsync(HttpTestResult testResult, JObject operation, JObject openApiDocument, OpenApiValidationOptions options, ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken)
+    private async Task ValidateResponseAsync(HttpTestResult testResult, JsonObject operation, JsonObject openApiDocument, OpenApiValidationOptions options, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken)
     {
         try
         {
-            var operationNode = ToJsonObject(operation);
-            var openApiDocumentNode = ToJsonObject(openApiDocument);
-            if (operationNode == null || openApiDocumentNode == null)
-            {
-                return;
-            }
-
-            if (operationNode["responses"] is JsonObject responsesObject)
+            if (operation["responses"] is JsonObject responsesObject)
             {
                 var statusCode = testResult.ResponseStatusCode?.ToString() ?? "default";
                 var responseSchema = responsesObject[statusCode] ?? responsesObject["default"];
@@ -878,7 +864,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
 
                     if (jsonContentObject? ["schema"] is JsonNode schema)
                     {
-                        var schemaForValidation = GetValidationSchemaForResponse(schema, openApiDocumentNode);
+                        var schemaForValidation = GetValidationSchemaForResponse(schema, openApiDocument);
 
                         // Build schema in full OpenAPI context so internal refs like
                         // #/components/schemas/* can be pre-resolved before JSchema creation.
@@ -920,35 +906,11 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             _ => BuildValidationSchemaWithComponentsContext(schemaNode, openApiDocument));
     }
 
-    private JSchema GetCompiledValidationSchemaForResponse(
-        JToken schemaForValidation,
-        string? documentUri,
-        string schemaPath,
-        ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache)
-    {
-        var schemaJson = schemaForValidation.ToString(Formatting.None);
-        var schemaHash = ComputeSha256Hex(schemaJson);
-        var cacheKey = string.IsNullOrWhiteSpace(documentUri)
-            ? $"{schemaPath}::{schemaHash}"
-            : $"{documentUri}::{schemaPath}::{schemaHash}";
-
-        return compiledValidationSchemaCache.GetOrAdd(
-            cacheKey,
-            _ => JSchema.Parse(schemaJson));
-    }
-
     private static string ComputeSha256Hex(string value)
     {
         var bytes = Encoding.UTF8.GetBytes(value);
         var hashBytes = SHA256.HashData(bytes);
         return Convert.ToHexString(hashBytes);
-    }
-
-    private static (int EntryCount, long TotalKeyChars) GetCompiledSchemaCacheState(ConcurrentDictionary<string, JSchema> cache)
-    {
-        return (
-            cache.Count,
-            cache.Keys.Sum(static key => (long)key.Length));
     }
 
     private static (
@@ -1187,22 +1149,22 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             : 100;
     }
 
-    private List<EndpointGroup> GroupEndpointsByDependencies(JObject pathsObject, OpenApiValidationOptions options)
+    private List<EndpointGroup> GroupEndpointsByDependencies(JsonObject pathsObject, OpenApiValidationOptions options)
     {
         var endpoints = new List<EndpointInfo>();
         var validHttpMethods = new HashSet<string> { "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TRACE" };
 
         // Extract all endpoints
-        foreach (var pathProperty in pathsObject.Properties())
+        foreach (var pathProperty in pathsObject)
         {
-            var path = pathProperty.Name;
+            var path = pathProperty.Key;
             var pathItem = pathProperty.Value;
 
-            if (pathItem is JObject pathItemObject)
+            if (pathItem is JsonObject pathItemObject)
             {
-                foreach (var methodProperty in pathItemObject.Properties())
+                foreach (var methodProperty in pathItemObject)
                 {
-                    var method = methodProperty.Name.ToUpperInvariant();
+                    var method = methodProperty.Key.ToUpperInvariant();
 
                     // Skip non-HTTP method properties like "parameters", "summary", "$ref", "servers", etc.
                     if (!validHttpMethods.Contains(method))
@@ -1211,14 +1173,14 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                     }
 
                     var operation = methodProperty.Value;
-                    if (operation is JObject operationObject)
+                    if (operation is JsonObject operationObject)
                     {
                         endpoints.Add(new EndpointInfo
                         {
                             Path = path,
                             Method = method,
-                            Operation = operationObject,
-                            PathItem = pathItemObject  // Add path item for optional endpoint checking
+                            Operation = (JsonObject)operationObject.DeepClone(),
+                            PathItem = (JsonObject)pathItemObject.DeepClone()  // Add path item for optional endpoint checking
                         });
                     }
                 }
@@ -1255,12 +1217,12 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The endpoint test result with extracted IDs stored in the shared dictionary</returns>
     private async Task<EndpointTestResult> TestSingleEndpointWithIdExtractionAsync(
-        string path, string method, JObject operation, string baseUrl,
+        string path, string method, JsonObject operation, string baseUrl,
         OpenApiValidationOptions options, DataSourceAuthentication? authentication,
         ConcurrentDictionary<string, List<string>> extractedIds, SemaphoreSlim semaphore,
-        JObject openApiDocument, JObject pathItem, ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken)
+        JsonObject openApiDocument, JsonObject pathItem, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken)
     {
-        var result = await TestSingleEndpointAsync(path, method, operation, baseUrl, options, authentication, semaphore, openApiDocument, pathItem, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+        var result = await TestSingleEndpointAsync(path, method, operation, baseUrl, options, authentication, semaphore, openApiDocument, pathItem, parsedResponseJsonByResult, cancellationToken);
 
         // Extract IDs from successful GET responses for dependency testing
         if (method == "GET" && result.TestResults.Any(r => r.IsSuccessStatusCode && HasResponsePayload(r, parsedResponseJsonByResult)))
@@ -1329,10 +1291,10 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The endpoint test result using extracted IDs for parameters</returns>
     private async Task<EndpointTestResult> TestSingleEndpointWithIdSubstitutionAsync(
-        string path, string method, JObject operation, string baseUrl,
+        string path, string method, JsonObject operation, string baseUrl,
         OpenApiValidationOptions options, DataSourceAuthentication? authentication,
         ConcurrentDictionary<string, List<string>> extractedIds, SemaphoreSlim semaphore,
-        JObject openApiDocument, JObject pathItem, ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken)
+        JsonObject openApiDocument, JsonObject pathItem, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken)
     {
         var rootPath = EndpointInfo.GetRootPath(path);
 
@@ -1360,7 +1322,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                 Name = operation["name"]?.ToString(),
                 OperationId = operation["operationId"]?.ToString(),
                 Summary = operation["summary"]?.ToString(),
-                IsOptional = ToJsonNode(operation).IsOptionalEndpoint(),
+                IsOptional = operation.IsOptionalEndpoint(),
                 Status = EndpointTestStatus.NotTested,
                 IsTested = false
             };
@@ -1373,7 +1335,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                 var substitutedPath = SubstitutePathParametersWithSpecificId(path, id);
                 _logger.TestingEndpointWithExtractedId();
 
-                var singleResult = await TestSingleEndpointAsync(substitutedPath, method, operation, baseUrl, options, authentication, semaphore, openApiDocument, pathItem, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken, testedId: id);
+                var singleResult = await TestSingleEndpointAsync(substitutedPath, method, operation, baseUrl, options, authentication, semaphore, openApiDocument, pathItem, parsedResponseJsonByResult, cancellationToken, testedId: id);
 
                 // Aggregate the results
                 compositeResult.TestResults.AddRange(singleResult.TestResults);
@@ -1446,7 +1408,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                 Name = operation["name"]?.ToString(),
                 OperationId = operation["operationId"]?.ToString(),
                 Summary = operation["summary"]?.ToString(),
-                IsOptional = ToJsonNode(operation).IsOptionalEndpoint(),
+                IsOptional = operation.IsOptionalEndpoint(),
                 Status = EndpointTestStatus.NotTested,
                 IsTested = false,
                 TestResults = new List<HttpTestResult>(){
@@ -1480,7 +1442,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     /// <summary>
     /// Extracts IDs from a JSON response using OpenAPI schema information to identify ID field locations
     /// </summary>
-    private List<string> ExtractIdsFromResponse(HttpTestResult response, string rootPath, JObject operation, JObject openApiDocument, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult)
+    private List<string> ExtractIdsFromResponse(HttpTestResult response, string rootPath, JsonObject operation, JsonObject openApiDocument, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult)
     {
         var ids = new List<string>();
 
@@ -1513,7 +1475,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         return ids.Distinct().ToList();
     }
 
-    private void ExtractIdsFromJsonElement(JsonElement json, List<string> schemaIdFields, JObject operation, JObject openApiDocument, List<string> ids)
+    private void ExtractIdsFromJsonElement(JsonElement json, List<string> schemaIdFields, JsonObject operation, JsonObject openApiDocument, List<string> ids)
     {
         if (json.ValueKind == JsonValueKind.Array)
         {
@@ -1634,7 +1596,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     /// <summary>
     /// Extracts ID field names from the OpenAPI response schema
     /// </summary>
-    private List<string> ExtractIdFieldsFromSchema(JObject operation, JObject openApiDocument)
+    private List<string> ExtractIdFieldsFromSchema(JsonObject operation, JsonObject openApiDocument)
     {
         var idFields = new List<string>();
 
@@ -1642,10 +1604,9 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         {
             // Get the 200 response schema
             var responseSchema = operation["responses"]?["200"]?["content"]?["application/json"]?["schema"];
-            var responseSchemaNode = ToJsonNode(responseSchema);
-            if (responseSchemaNode != null)
+            if (responseSchema != null)
             {
-                ExtractIdFieldsFromSchemaRecursive(responseSchemaNode, idFields);
+                ExtractIdFieldsFromSchemaRecursive(responseSchema, idFields);
             }
         }
         catch (Exception ex)
@@ -1659,7 +1620,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     /// <summary>
     /// Extracts collection property names from the OpenAPI response schema
     /// </summary>
-    private List<string> ExtractCollectionPropertiesFromSchema(JObject operation, JObject openApiDocument)
+    private List<string> ExtractCollectionPropertiesFromSchema(JsonObject operation, JsonObject openApiDocument)
     {
         var collectionProps = new List<string>();
 
@@ -1667,10 +1628,9 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         {
             // Get the 200 response schema
             var responseSchema = operation["responses"]?["200"]?["content"]?["application/json"]?["schema"];
-            var responseSchemaNode = ToJsonNode(responseSchema);
-            if (responseSchemaNode != null)
+            if (responseSchema != null)
             {
-                ExtractCollectionPropertiesFromSchemaRecursive(responseSchemaNode, collectionProps);
+                ExtractCollectionPropertiesFromSchemaRecursive(responseSchema, collectionProps);
             }
         }
         catch (Exception ex)
@@ -1814,34 +1774,6 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     }
 
     /// <summary>
-    /// Helper method to extract a schema from a given path in the OpenAPI document
-    /// This is used by parameter resolution to resolve parameter references
-    /// </summary>
-    private static JToken? GetSchemaFromPath(JObject document, string path)
-    {
-        var parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        JToken? current = document;
-
-        foreach (var part in parts)
-        {
-            if (current is JObject obj && obj.ContainsKey(part))
-            {
-                current = obj[part];
-            }
-            else if (current is JArray array && int.TryParse(part, out var index) && index >= 0 && index < array.Count)
-            {
-                current = array[index];
-            }
-            else
-            {
-                return null; // Path not found
-            }
-        }
-
-        return current;
-    }
-
-    /// <summary>
     /// Substitutes path parameters with a specific ID value
     /// </summary>
     private string SubstitutePathParametersWithSpecificId(string path, string id)
@@ -1903,21 +1835,6 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         }
 
         return true;
-    }
-
-    private static JsonNode? ToJsonNode(JToken? token)
-    {
-        return token is null ? null : JsonNode.Parse(token.ToString());
-    }
-
-    private static JsonObject? ToJsonObject(JToken? token)
-    {
-        return ToJsonNode(token) as JsonObject;
-    }
-
-    private static JsonObject? ToJsonObject(JsonNode? node)
-    {
-        return node as JsonObject;
     }
 
     /// <summary>
