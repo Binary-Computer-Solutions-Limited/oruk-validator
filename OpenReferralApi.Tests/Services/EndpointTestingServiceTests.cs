@@ -1,9 +1,9 @@
+using Json.Schema;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
-using Newtonsoft.Json.Linq;
 using OpenReferralApi.Core.Services;
-using JSchema = Newtonsoft.Json.Schema.JSchema;
+using System.Text.Json.Nodes;
 
 namespace OpenReferralApi.Tests.Services;
 
@@ -208,9 +208,9 @@ public class EndpointTestingServiceTests
 
     Assert.That(results, Has.Count.EqualTo(1));
     Assert.That(capturedValidationRequest, Is.Not.Null);
-    Assert.That(capturedValidationRequest!.Schema, Is.TypeOf<JSchema>());
+    Assert.That(capturedValidationRequest!.Schema, Is.TypeOf<JsonSchema>());
 
-    var schema = (JSchema)capturedValidationRequest.Schema!;
+    var schema = (JsonSchema)capturedValidationRequest.Schema!;
     var schemaJson = schema.ToString();
     Assert.That(schemaJson, Does.Contain("\"components\""));
     Assert.That(schemaJson, Does.Not.Contain("x-validation-schema"));
@@ -444,12 +444,12 @@ public class EndpointTestingServiceTests
   [Test]
   public async Task TestEndpointsAsync_WhenPathsMissing_ReturnsEmptyResults()
   {
-    var spec = JObject.Parse("""
-        {
-          "openapi": "3.0.0",
-          "info": { "title": "Test API", "version": "1.0.0" }
-        }
-        """);
+    var spec = JsonNode.Parse("""
+    {
+      "openapi": "3.0.0",
+      "info": { "title": "Test API", "version": "1.0.0" }
+    }
+    """)!.AsObject();
 
     var results = await _service.TestEndpointsAsync(
       spec,
@@ -510,30 +510,30 @@ public class EndpointTestingServiceTests
       && invocation.Arguments[2]?.ToString()?.Contains(expectedText, StringComparison.Ordinal) == true);
   }
 
-  private static JObject CreateRequiredEndpointSpec()
+  private static JsonObject CreateRequiredEndpointSpec()
   {
-    return JObject.Parse("""
-        {
-          "openapi": "3.0.0",
-          "info": { "title": "Test API", "version": "1.0.0" },
-          "paths": {
-            "/required": {
-              "get": {
-                "responses": {
-                  "200": {
-                    "description": "ok"
-                  }
-                }
+    return JsonNode.Parse("""
+    {
+      "openapi": "3.0.0",
+      "info": { "title": "Test API", "version": "1.0.0" },
+      "paths": {
+        "/required": {
+          "get": {
+            "responses": {
+              "200": {
+                "description": "ok"
               }
             }
           }
         }
-        """);
+      }
+    }
+    """)!.AsObject();
   }
 
-  private static JObject CreateOptionalEndpointSpec()
+  private static JsonObject CreateOptionalEndpointSpec()
   {
-    return JObject.Parse("""
+    return JsonNode.Parse("""
         {
           "openapi": "3.0.0",
           "info": { "title": "Test API", "version": "1.0.0" },
@@ -550,12 +550,12 @@ public class EndpointTestingServiceTests
             }
           }
         }
-        """);
+        """)!.AsObject();
   }
 
-  private static JObject CreatePaginatedCollectionSpec()
+  private static JsonObject CreatePaginatedCollectionSpec()
   {
-    return JObject.Parse("""
+    return JsonNode.Parse("""
         {
           "openapi": "3.0.0",
           "info": { "title": "Test API", "version": "1.0.0" },
@@ -592,12 +592,12 @@ public class EndpointTestingServiceTests
             }
           }
         }
-        """);
+        """)!.AsObject();
   }
 
-  private static JObject CreateParameterizedOnlySpec()
+  private static JsonObject CreateParameterizedOnlySpec()
   {
-    return JObject.Parse("""
+    return JsonNode.Parse("""
         {
           "openapi": "3.0.0",
           "info": { "title": "Test API", "version": "1.0.0" },
@@ -616,12 +616,12 @@ public class EndpointTestingServiceTests
             }
           }
         }
-        """);
+        """)!.AsObject();
   }
 
-  private static JObject CreateCollectionAndParameterizedSpec()
+  private static JsonObject CreateCollectionAndParameterizedSpec()
   {
-    return JObject.Parse("""
+    return JsonNode.Parse("""
         {
           "openapi": "3.0.0",
           "info": { "title": "Test API", "version": "1.0.0" },
@@ -667,12 +667,12 @@ public class EndpointTestingServiceTests
             }
           }
         }
-        """);
+        """)!.AsObject();
   }
 
-  private static JObject CreateCollectionAndOptionalParameterizedSpec()
+  private static JsonObject CreateCollectionAndOptionalParameterizedSpec()
   {
-    return JObject.Parse("""
+    return JsonNode.Parse("""
         {
           "openapi": "3.0.0",
           "info": { "title": "Test API", "version": "1.0.0" },
@@ -719,52 +719,52 @@ public class EndpointTestingServiceTests
             }
           }
         }
-        """);
+        """)!.AsObject();
   }
 
-  private static JObject CreateSpecWithComponentRefResponseSchema()
+  private static JsonObject CreateSpecWithComponentRefResponseSchema()
   {
-    return JObject.Parse("""
-        {
-          "openapi": "3.0.0",
-          "info": { "title": "Test API", "version": "1.0.0" },
-          "paths": {
-            "/services": {
-              "get": {
-                "responses": {
-                  "200": {
-                    "description": "ok",
-                    "content": {
-                      "application/json": {
-                        "schema": {
-                          "$ref": "#/components/schemas/Service"
-                        }
-                      }
+    return JsonNode.Parse("""
+    {
+      "openapi": "3.0.0",
+      "info": { "title": "Test API", "version": "1.0.0" },
+      "paths": {
+        "/services": {
+          "get": {
+            "responses": {
+              "200": {
+                "description": "ok",
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "$ref": "#/components/schemas/Service"
                     }
                   }
                 }
               }
             }
+          }
+        }
+      },
+      "components": {
+        "schemas": {
+          "Service": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "contact": { "$ref": "#/components/schemas/Contact" }
+            }
           },
-          "components": {
-            "schemas": {
-              "Service": {
-                "type": "object",
-                "properties": {
-                  "id": { "type": "string" },
-                  "contact": { "$ref": "#/components/schemas/Contact" }
-                }
-              },
-              "Contact": {
-                "type": "object",
-                "properties": {
-                  "name": { "type": "string" }
-                }
-              }
+          "Contact": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" }
             }
           }
         }
-        """);
+      }
+    }
+    """)!.AsObject();
   }
 
   private sealed class DelegateHttpMessageHandler : HttpMessageHandler

@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
-using Newtonsoft.Json.Linq;
 using OpenReferralApi.Core.Services;
+using System.Text.Json.Nodes;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
 
 namespace OpenReferralApi.Tests.Services;
@@ -49,7 +49,7 @@ public class OpenApiSpecificationServiceTests
   [Test]
   public async Task ValidateAsync_WithMissingRequiredFields_ReturnsExpectedErrors()
   {
-    var result = await _service.ValidateAsync(JObject.Parse("{}"), CancellationToken.None);
+    var result = await _service.ValidateAsync(JsonNode.Parse("{}")!.AsObject(), CancellationToken.None);
 
     Assert.That(result.IsValid, Is.False);
     Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "MISSING_OPENAPI_VERSION"));
@@ -67,7 +67,7 @@ public class OpenApiSpecificationServiceTests
         .Callback<ValidationRequest, CancellationToken>((req, _) => capturedRequest = req)
         .ReturnsAsync(new ValidationResult { IsValid = true, Errors = new List<ValidationError>() });
 
-    var spec = JObject.Parse("""
+    var spec = JsonNode.Parse("""
         {
           "openapi": "3.1.0",
           "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
@@ -82,7 +82,7 @@ public class OpenApiSpecificationServiceTests
             }
           }
         }
-        """);
+        """)!.AsObject();
 
     var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
@@ -101,7 +101,7 @@ public class OpenApiSpecificationServiceTests
         .Callback<ValidationRequest, CancellationToken>((req, _) => capturedRequest = req)
         .ReturnsAsync(new ValidationResult { IsValid = true, Errors = new List<ValidationError>() });
 
-    var spec = JObject.Parse("""
+    var spec = JsonNode.Parse("""
         {
           "openapi": "3.0.3",
           "info": { "title": "Test", "version": "1.0.0" },
@@ -115,7 +115,7 @@ public class OpenApiSpecificationServiceTests
             }
           }
         }
-        """);
+        """)!.AsObject();
 
     var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
@@ -131,7 +131,7 @@ public class OpenApiSpecificationServiceTests
         .Setup(x => x.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
         .ThrowsAsync(new InvalidOperationException("schema boom"));
 
-    var spec = JObject.Parse("""
+    var spec = JsonNode.Parse("""
         {
           "openapi": "3.0.0",
           "info": { "title": "Test", "version": "1.0.0" },
@@ -145,7 +145,7 @@ public class OpenApiSpecificationServiceTests
             }
           }
         }
-        """);
+        """)!.AsObject();
 
     var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
@@ -157,7 +157,7 @@ public class OpenApiSpecificationServiceTests
   [Test]
   public async Task ValidateAsync_WithUnsupportedJsonSchemaDialect_AddsUnsupportedSchemaVersionError()
   {
-    var spec = JObject.Parse("""
+    var spec = JsonNode.Parse("""
         {
           "openapi": "3.1.0",
           "jsonSchemaDialect": "https://example.com/unknown-schema",
@@ -172,7 +172,7 @@ public class OpenApiSpecificationServiceTests
             }
           }
         }
-        """);
+        """)!.AsObject();
 
     var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
@@ -195,7 +195,7 @@ public class OpenApiSpecificationServiceTests
             }
         });
 
-    var spec = JObject.Parse("""
+    var spec = JsonNode.Parse("""
         {
           "openapi": "3.0.0",
           "info": { "title": "Test", "version": "1.0.0" },
@@ -209,7 +209,7 @@ public class OpenApiSpecificationServiceTests
             }
           }
         }
-        """);
+        """)!.AsObject();
 
     var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
@@ -220,7 +220,7 @@ public class OpenApiSpecificationServiceTests
   [Test]
   public async Task ValidateAsync_GeneratesInfoRecommendations_WhenDescriptionContactLicenseMissing()
   {
-    var spec = JObject.Parse("""
+    var spec = JsonNode.Parse("""
         {
           "openapi": "3.0.0",
           "info": { "title": "Test", "version": "1.0.0" },
@@ -234,7 +234,7 @@ public class OpenApiSpecificationServiceTests
             }
           }
         }
-        """);
+        """)!.AsObject();
 
     var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
@@ -246,7 +246,7 @@ public class OpenApiSpecificationServiceTests
   [Test]
   public async Task ValidateAsync_SwaggerDefinitions_AppliesSchemaAnalysisCounts()
   {
-    var spec = JObject.Parse("""
+    var spec = JsonNode.Parse("""
         {
           "swagger": "2.0",
           "info": { "title": "Test", "version": "1.0.0" },
@@ -264,7 +264,7 @@ public class OpenApiSpecificationServiceTests
             "Location": { "type": "object", "description": "location" }
           }
         }
-        """);
+        """)!.AsObject();
 
     var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
@@ -275,7 +275,7 @@ public class OpenApiSpecificationServiceTests
   [Test]
   public async Task ValidateAsync_ComponentsAndExamples_ComputesQualityAndStructureMetrics()
   {
-    var spec = JObject.Parse("""
+    var spec = JsonNode.Parse("""
         {
           "openapi": "3.1.0",
           "info": {
@@ -312,7 +312,7 @@ public class OpenApiSpecificationServiceTests
             }
           }
         }
-        """);
+        """)!.AsObject();
 
     var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
@@ -329,7 +329,7 @@ public class OpenApiSpecificationServiceTests
   [Test]
   public async Task ValidateAsync_AddsEndpointTestingRecommendations_WhenOperationMetadataIsIncomplete()
   {
-    var spec = JObject.Parse("""
+    var spec = JsonNode.Parse("""
         {
           "openapi": "3.1.0",
           "info": {
@@ -351,7 +351,7 @@ public class OpenApiSpecificationServiceTests
             }
           }
         }
-        """);
+        """)!.AsObject();
 
     var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
@@ -364,7 +364,7 @@ public class OpenApiSpecificationServiceTests
   [Test]
   public async Task ValidateAsync_DoesNotAddEndpointTestingRecommendations_WhenOperationMetadataIsComplete()
   {
-    var spec = JObject.Parse("""
+    var spec = JsonNode.Parse("""
         {
           "openapi": "3.1.0",
           "servers": [
@@ -403,7 +403,7 @@ public class OpenApiSpecificationServiceTests
             }
           }
         }
-        """);
+        """)!.AsObject();
 
     var result = await _service.ValidateAsync(spec, CancellationToken.None);
 

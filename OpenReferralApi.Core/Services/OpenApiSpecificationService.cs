@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
@@ -11,7 +12,7 @@ namespace OpenReferralApi.Core.Services;
 
 public interface IOpenApiSpecificationService
 {
-    Task<OpenApiSpecificationValidation> ValidateAsync(JObject openApiSpec, CancellationToken cancellationToken = default);
+    Task<OpenApiSpecificationValidation> ValidateAsync(JsonObject openApiSpec, CancellationToken cancellationToken = default);
 }
 
 public class OpenApiSpecificationService : IOpenApiSpecificationService
@@ -30,8 +31,9 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         _schemaResolutionOptions = schemaResolutionOptions ?? Options.Create(new SchemaResolutionOptions());
     }
 
-    public async Task<OpenApiSpecificationValidation> ValidateAsync(JObject openApiSpec, CancellationToken cancellationToken = default)
+    public async Task<OpenApiSpecificationValidation> ValidateAsync(JsonObject openApiSpec, CancellationToken cancellationToken = default)
     {
+        var openApiJObject = JObject.Parse(openApiSpec.ToJsonString());
         var validation = new OpenApiSpecificationValidation();
         var errors = new List<ValidationError>();
 
@@ -39,11 +41,11 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         {
             _logger.ValidatingOpenApiSpecification();
 
-            await ValidateOpenApiSpecObjectAsync(openApiSpec, validation, errors, null, cancellationToken);
+            await ValidateOpenApiSpecObjectAsync(openApiJObject, validation, errors, null, cancellationToken);
 
-            validation.SchemaAnalysis = AnalyzeSchemaStructure(openApiSpec);
-            validation.QualityMetrics = AnalyzeQualityMetrics(openApiSpec);
-            validation.Recommendations = GenerateRecommendations(openApiSpec, errors);
+            validation.SchemaAnalysis = AnalyzeSchemaStructure(openApiJObject);
+            validation.QualityMetrics = AnalyzeQualityMetrics(openApiJObject);
+            validation.Recommendations = GenerateRecommendations(openApiJObject, errors);
 
             return validation;
         }

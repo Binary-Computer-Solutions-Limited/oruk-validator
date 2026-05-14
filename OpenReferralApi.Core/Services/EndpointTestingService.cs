@@ -22,7 +22,7 @@ namespace OpenReferralApi.Core.Services;
 public interface IEndpointTestingService
 {
     Task<List<EndpointTestResult>> TestEndpointsAsync(
-    JObject openApiSpec,
+    JsonObject openApiSpec,
         string baseUrl,
         OpenApiValidationOptions options,
         DataSourceAuthentication? authentication,
@@ -70,7 +70,13 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         _hsdsComplianceService = hsdsComplianceService;
         _openApiValidationOptions = openApiValidationOptions?.Value;
     }
-    public async Task<List<EndpointTestResult>> TestEndpointsAsync(JObject openApiSpec, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, CancellationToken cancellationToken = default)
+    public async Task<List<EndpointTestResult>> TestEndpointsAsync(JsonObject openApiSpec, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, CancellationToken cancellationToken = default)
+    {
+        var openApiJObject = JObject.Parse(openApiSpec.ToJsonString());
+        return await TestEndpointsInternalAsync(openApiJObject, baseUrl, options, authentication, cancellationToken);
+    }
+
+    private async Task<List<EndpointTestResult>> TestEndpointsInternalAsync(JObject openApiSpec, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, CancellationToken cancellationToken = default)
     {
         var results = new List<EndpointTestResult>();
         var compiledValidationSchemaCache = CompiledValidationSchemaCache;

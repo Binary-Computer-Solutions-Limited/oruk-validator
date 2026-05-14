@@ -3,8 +3,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Json.Schema;
 using Moq;
-using Newtonsoft.Json.Linq;
-using OpenReferralApi.Core.Models.Validation;
 using OpenReferralApi.Core.Services;
 using System.Text.Json.Nodes;
 
@@ -1643,7 +1641,7 @@ _openApiSpecificationService,
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<JObject>(),
+                It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<DataSourceAuthentication>(),
@@ -1783,7 +1781,7 @@ _openApiSpecificationService,
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<JObject>(),
+                It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<DataSourceAuthentication>(),
@@ -2002,7 +2000,7 @@ _openApiSpecificationService,
         // Arrange
         var feedSpecUrl = "https://feed.example.com/openapi.json";
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
-        JObject? capturedSpec = null;
+        JsonObject? capturedSpec = null;
 
         var hsdsComplianceServiceMock = new Mock<IHsdsComplianceService>();
         hsdsComplianceServiceMock
@@ -2018,12 +2016,12 @@ _openApiSpecificationService,
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<JObject>(),
+                It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<DataSourceAuthentication>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<JObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>(
+            .Callback<JsonObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>(
                 (spec, _, _, _, _) => capturedSpec = spec)
             .ReturnsAsync(new List<EndpointTestResult>());
 
@@ -2089,7 +2087,7 @@ _openApiSpecificationService,
         // Arrange
         var feedSpecUrl = "https://feed.example.com/openapi.json";
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
-        JObject? capturedSpec = null;
+        JsonObject? capturedSpec = null;
 
         var hsdsComplianceServiceMock = new Mock<IHsdsComplianceService>();
         hsdsComplianceServiceMock
@@ -2105,12 +2103,12 @@ _openApiSpecificationService,
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<JObject>(),
+                It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<DataSourceAuthentication>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<JObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>(
+            .Callback<JsonObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>(
                 (spec, _, _, _, _) => capturedSpec = spec)
             .ReturnsAsync(new List<EndpointTestResult>());
 
@@ -2173,7 +2171,7 @@ _openApiSpecificationService,
     {
         // Arrange
         var feedSpecUrl = "https://unknown-version.example.com/openapi.json";
-        JObject? capturedSpec = null;
+        JsonObject? capturedSpec = null;
 
         var hsdsComplianceServiceMock = new Mock<IHsdsComplianceService>();
         hsdsComplianceServiceMock
@@ -2187,12 +2185,12 @@ _openApiSpecificationService,
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<JObject>(),
+                It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<DataSourceAuthentication>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<JObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>(
+            .Callback<JsonObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>(
                 (spec, _, _, _, _) => capturedSpec = spec)
             .ReturnsAsync(new List<EndpointTestResult>());
 
@@ -2261,7 +2259,7 @@ _openApiSpecificationService,
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<JObject>(),
+                It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<DataSourceAuthentication>(),
@@ -2883,7 +2881,7 @@ _openApiSpecificationService,
 
         var specServiceMock = new Mock<IOpenApiSpecificationService>();
         specServiceMock
-            .Setup(s => s.ValidateAsync(It.IsAny<JObject>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.ValidateAsync(It.IsAny<JsonObject>(), It.IsAny<CancellationToken>()))
             .Callback(() => callOrder.Add("spec"))
             .ReturnsAsync(new OpenApiSpecificationValidation
             {
@@ -2934,7 +2932,7 @@ _openApiSpecificationService,
         var endpointTestingMock = new Mock<IEndpointTestingService>();
         endpointTestingMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<JObject>(),
+                It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<DataSourceAuthentication>(),
@@ -3092,19 +3090,19 @@ _openApiSpecificationService,
         // Arrange
         const string specUrl = "https://example.com/api/v1/openapi.json";
         const string baseUrl = "https://example.com/api/v1";
-        JObject? capturedOpenApi = null;
+        JsonObject? capturedOpenApi = null;
 
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<JObject>(),
+                It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<DataSourceAuthentication>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<JObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>((spec, _, _, _, _) =>
+            .Callback<JsonObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>((spec, _, _, _, _) =>
             {
-                capturedOpenApi = (JObject)spec.DeepClone();
+                capturedOpenApi = (JsonObject)spec.DeepClone();
             })
             .ReturnsAsync(new List<EndpointTestResult>());
 
@@ -3153,7 +3151,7 @@ _openApiSpecificationService,
 
             // Assert
             Assert.That(capturedOpenApi, Is.Not.Null);
-            var paths = capturedOpenApi!["paths"] as JObject;
+            var paths = capturedOpenApi!["paths"] as JsonObject;
             Assert.That(paths, Is.Not.Null);
             Assert.That(paths!.ContainsKey("/health"), Is.True);
             Assert.That(paths.ContainsKey("/services"), Is.True);
@@ -3173,19 +3171,19 @@ _openApiSpecificationService,
         // Arrange
         const string specUrl = "https://example.com/api/v1/openapi.json";
         const string baseUrl = "https://example.com/api/v1";
-        JObject? capturedOpenApi = null;
+        JsonObject? capturedOpenApi = null;
 
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<JObject>(),
+                It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<DataSourceAuthentication>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<JObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>((spec, _, _, _, _) =>
+            .Callback<JsonObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>((spec, _, _, _, _) =>
             {
-                capturedOpenApi = (JObject)spec.DeepClone();
+                capturedOpenApi = (JsonObject)spec.DeepClone();
             })
             .ReturnsAsync(new List<EndpointTestResult>());
 
@@ -3233,7 +3231,7 @@ _openApiSpecificationService,
 
             // Assert
             Assert.That(capturedOpenApi, Is.Not.Null);
-            var paths = capturedOpenApi!["paths"] as JObject;
+            var paths = capturedOpenApi!["paths"] as JsonObject;
             Assert.That(paths, Is.Not.Null);
             Assert.That(paths!.ContainsKey("/health"), Is.True);
             Assert.That(paths.ContainsKey("/api/v1/health"), Is.True);

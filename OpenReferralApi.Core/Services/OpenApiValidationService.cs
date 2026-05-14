@@ -1,10 +1,8 @@
 using System.Diagnostics;
-using System.Diagnostics.Metrics;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Newtonsoft.Json.Linq;
 using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Logging;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
@@ -322,9 +320,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         List<ValidationError>? specValidationErrors = null;
         if (_openApiValidationOptions.ValidateSpecification)
         {
-            var openApiSchemaJObject = ToJObject(openApiSchemaContent)
-                ?? throw new InvalidOperationException("OpenAPI schema content could not be converted to a JSON object.");
-            specValidation = await _openApiSpecificationService.ValidateAsync(openApiSchemaJObject, cancellationToken);
+            specValidation = await _openApiSpecificationService.ValidateAsync(openApiSchemaContent, cancellationToken);
             specValidationErrors = new List<ValidationError>(specValidation.Errors);
 
             if (isMisplacedVersionWarning)
@@ -458,8 +454,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         }
 
         endpointTests = await _endpointTestingService.TestEndpointsAsync(
-            ToJObject(endpointValidationSpec)
-                ?? throw new InvalidOperationException("Endpoint validation schema could not be converted to a JSON object."),
+            endpointValidationSpec,
             request.BaseUrl,
             request.Options!,
             dataSourceRequestAuth,
@@ -667,11 +662,6 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         }
 
         return obj;
-    }
-
-    private static JObject? ToJObject(JsonNode? value)
-    {
-        return value is null ? null : JObject.Parse(value.ToJsonString());
     }
 
     private static string? RemoveDuplicatedBasePathFromOpenApiPaths(JsonObject openApiSpec, string? baseUrl)
