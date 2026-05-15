@@ -205,7 +205,7 @@ public class SchemaResolverService : ISchemaResolverService
             // Create JsonSchema with the fully resolved schema (no more $ref to resolve)
             try
             {
-                var schema = await Task.Run(() => JsonSchema.FromText(resolvedSchemaJson), cancellationToken);
+                var schema = await Task.Run(() => JsonSchemaBuild.FromText(resolvedSchemaJson), cancellationToken);
                 _logger.SuccessfullyCreatedSchemaWithReferenceResolution();
                 return schema;
             }
@@ -215,7 +215,7 @@ public class SchemaResolverService : ISchemaResolverService
                 try
                 {
                     // Fallback: parse original schema if resolution produced a schema that JsonSchema cannot parse.
-                    var schema = await Task.Run(() => JsonSchema.FromText(schemaJson), cancellationToken);
+                    var schema = await Task.Run(() => JsonSchemaBuild.FromText(schemaJson), cancellationToken);
                     _logger.SuccessfullyCreatedSchemaWithoutResolver();
                     return schema;
                 }

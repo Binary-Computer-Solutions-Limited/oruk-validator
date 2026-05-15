@@ -464,6 +464,7 @@
         "dependencies": {
           "HtmlAgilityPack": "[1.12.4, )",
           "JsonSchema.Net": "[9.2.0, )",
+          "JsonSchema.Net.OpenApi": "[5.0.1, )",
           "MongoDB.Driver": "[3.8.1, )",
           "SharpCompress": "[1.0.0, )",
           "YamlDotNet": "[17.1.0, )"

@@ -58,6 +58,7 @@ Extensions/JsonElementExtensions.cs
 GlobalUsings.cs
 Helpers/
  Constants.cs
+ JsonSchemaBuild.cs
  MemoryCheckpointLogPayload.cs
  MemoryCheckpointTracker.cs
  TextSanitizer.cs
@@ -327,6 +328,7 @@ Services/
  humanizer.core/3.0.10/lib/net10.0/Humanizer.dll
  json.more.net/3.0.1/lib/net10.0/Json.More.dll
  jsonpointer.net/7.0.1/lib/net10.0/JsonPointer.Net.dll
+ jsonschema.net.openapi/5.0.1/lib/net10.0/JsonSchema.Net.OpenApi.dll
  jsonschema.net/9.2.0/lib/net9.0/JsonSchema.Net.dll
  microsoft.extensions.caching.abstractions/10.0.8/lib/net10.0/Microsoft.Extensions.Caching.Abstractions.dll
  microsoft.extensions.configuration.abstractions/10.0.8/lib/net10.0/Microsoft.Extensions.Configuration.Abstractions.dll

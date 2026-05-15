@@ -775,6 +775,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             // on the fast path we stream directly into a JsonDocument with no string allocation.
             string? responseBody = null;
             JsonDocument? parsedResponseJson = null;
+            var contentReadCanceled = false;
             var contentTransferStopwatch = System.Diagnostics.Stopwatch.StartNew();
             try
             {
@@ -782,11 +783,15 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                 {
                     // Retain path: buffer via ArrayPool to avoid MemoryStream doubling,
                     // then decode to string for ResponseBody output.
-                    var (rentedBuffer, bufferLength) = await CopyToRentedBufferAsync(response.Content, cts.Token);
+                    var (rentedBuffer, bufferLength, wasCanceled) = await CopyToRentedBufferAsync(response.Content, cts.Token);
+                    contentReadCanceled = wasCanceled;
                     try
                     {
-                        parsedResponseJson = TryParseJsonDocumentFromBuffer(rentedBuffer, bufferLength);
-                        responseBody = Encoding.UTF8.GetString(rentedBuffer, 0, bufferLength);
+                        if (!wasCanceled)
+                        {
+                            parsedResponseJson = TryParseJsonDocumentFromBuffer(rentedBuffer, bufferLength);
+                            responseBody = Encoding.UTF8.GetString(rentedBuffer, 0, bufferLength);
+                        }
                     }
                     finally
                     {
@@ -802,7 +807,27 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             }
             catch (OperationCanceledException)
             {
+                contentReadCanceled = true;
                 contentTransferStopwatch.Stop();
+            }
+
+            if (contentReadCanceled)
+            {
+                sendStart.Stop();
+                testResult.ResponseTime = timeToHeaders + contentTransferStopwatch.Elapsed;
+                testResult.ResponseStatusCode = 408;
+                testResult.IsSuccessStatusCode = false;
+                testResult.ErrorMessage = "Response body read timed out or was canceled before completion.";
+                testResult.PerformanceMetrics = new EndpointPerformanceMetrics
+                {
+                    DnsLookup = dnsLookup,
+                    TcpConnection = tcpConnection,
+                    TlsHandshake = tlsHandshake,
+                    ServerProcessing = timeToHeaders,
+                    ContentTransfer = contentTransferStopwatch.Elapsed
+                };
+
+                return testResult;
             }
 
             // Stop the overall timers
@@ -866,13 +891,26 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                     {
                         var schemaForValidation = GetValidationSchemaForResponse(schema, openApiDocument);
 
+                        object? jsonDataForValidation = null;
+                        if (parsedResponseJsonByResult.TryGetValue(testResult, out var parsedJson))
+                        {
+                            jsonDataForValidation = parsedJson;
+                        }
+                        else if (!string.IsNullOrWhiteSpace(testResult.ResponseBody))
+                        {
+                            jsonDataForValidation = testResult.ResponseBody;
+                        }
+
+                        if (jsonDataForValidation is null)
+                        {
+                            return;
+                        }
+
                         // Build schema in full OpenAPI context so internal refs like
                         // #/components/schemas/* are pre-resolved before runtime validation.
                         var validationRequest = new ValidationRequest
                         {
-                            JsonData = parsedResponseJsonByResult.TryGetValue(testResult, out var parsedJson)
-                                ? (object)parsedJson
-                                : (testResult.ResponseBody ?? "{}"),
+                            JsonData = jsonDataForValidation,
                             Schema = schemaForValidation,
                             Options = new ValidationOptions
                             {
@@ -979,26 +1017,34 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     /// Copies HTTP content to a pooled byte array, growing it as needed.
     /// The caller is responsible for returning the rented buffer to <see cref="ArrayPool{T}.Shared"/>.
     /// </summary>
-    private static async Task<(byte[] RentedBuffer, int Length)> CopyToRentedBufferAsync(
+    private static async Task<(byte[] RentedBuffer, int Length, bool WasCanceled)> CopyToRentedBufferAsync(
         HttpContent content, CancellationToken cancellationToken)
     {
         const int InitialCapacity = 16 * 1024;
         var buffer = ArrayPool<byte>.Shared.Rent(InitialCapacity);
         int total = 0;
-        await using var stream = await content.ReadAsStreamAsync(cancellationToken);
-        int read;
-        while ((read = await stream.ReadAsync(buffer.AsMemory(total), cancellationToken)) > 0)
+        try
         {
-            total += read;
-            if (total + 4096 > buffer.Length)
+            await using var stream = await content.ReadAsStreamAsync(cancellationToken);
+            int read;
+            while ((read = await stream.ReadAsync(buffer.AsMemory(total), cancellationToken)) > 0)
             {
-                var larger = ArrayPool<byte>.Shared.Rent(buffer.Length * 2);
-                buffer.AsSpan(0, total).CopyTo(larger);
-                ArrayPool<byte>.Shared.Return(buffer);
-                buffer = larger;
+                total += read;
+                if (total + 4096 > buffer.Length)
+                {
+                    var larger = ArrayPool<byte>.Shared.Rent(buffer.Length * 2);
+                    buffer.AsSpan(0, total).CopyTo(larger);
+                    ArrayPool<byte>.Shared.Return(buffer);
+                    buffer = larger;
+                }
             }
+
+            return (buffer, total, false);
         }
-        return (buffer, total);
+        catch (OperationCanceledException)
+        {
+            return (buffer, total, true);
+        }
     }
 
     private static bool TryGetPropertyIgnoreCase(JsonElement element, string propertyName, out JsonElement value)

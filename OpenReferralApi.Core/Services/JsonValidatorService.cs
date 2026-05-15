@@ -497,7 +497,7 @@ public class JsonValidatorService : IJsonValidatorService
         NormalizeSchemaNodeForDialect(schemaNode);
 
         var normalizedSchemaJson = schemaNode.ToJsonString();
-        var builtSchema = JsonSchema.FromText(normalizedSchemaJson);
+        var builtSchema = JsonSchemaBuild.FromText(normalizedSchemaJson);
         var title = TryReadSchemaStringField(schemaNode, "title");
         var description = TryReadSchemaStringField(schemaNode, "description");
         return new ResolvedSchemaDetails(builtSchema, schemaNode, title, description);

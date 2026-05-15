@@ -961,6 +961,7 @@
         "dependencies": {
           "HtmlAgilityPack": "[1.12.4, )",
           "JsonSchema.Net": "[9.2.0, )",
+          "JsonSchema.Net.OpenApi": "[5.0.1, )",
           "Microsoft.Extensions.Caching.Abstractions": "[10.0.8, )",
           "Microsoft.Extensions.Http": "[10.0.8, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.8, )",

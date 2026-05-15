@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
-using Json.Schema.OpenApi;
 using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Logging;
 using OpenReferralApi.Core.Services;
@@ -58,10 +57,6 @@ namespace OpenReferralApi.Services
             ILogger logger,
             CancellationToken cancellationToken)
         {
-            // Register OpenAPI vocabulary keywords (e.g. 'name', 'example') so they
-            // are recognised when resolving and validating ORUK/HSDS OpenAPI schemas.
-            MetaSchemas.Register();
-
             var urls = (options.Urls ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase))
                 .Values
                 .Where(url => !string.IsNullOrWhiteSpace(url))
