@@ -316,7 +316,7 @@ public class JsonValidatorService : IJsonValidatorService
         }
         else if (request.Schema is JsonSchema compiledSchema)
         {
-            return BuildSchemaDetails(compiledSchema.ToString() ?? "{}");
+            return BuildSchemaDetails(System.Text.Json.JsonSerializer.Serialize(compiledSchema));
         }
         else if (request.Schema is System.Text.Json.Nodes.JsonNode schemaNode)
         {

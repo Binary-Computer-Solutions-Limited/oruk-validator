@@ -211,7 +211,7 @@ public class EndpointTestingServiceTests
     Assert.That(capturedValidationRequest!.Schema, Is.TypeOf<JsonSchema>());
 
     var schema = (JsonSchema)capturedValidationRequest.Schema!;
-    var schemaJson = schema.ToString();
+    var schemaJson = System.Text.Json.JsonSerializer.Serialize(schema);
     Assert.That(schemaJson, Does.Contain("\"components\""));
     Assert.That(schemaJson, Does.Not.Contain("x-validation-schema"));
     Assert.That(schemaJson, Does.Contain("#/components/schemas/Service"));

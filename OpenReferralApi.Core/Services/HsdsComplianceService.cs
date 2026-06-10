@@ -1,6 +1,8 @@
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using Json.Schema;
 using Microsoft.Extensions.Options;
+using OpenReferralApi.Core.Helpers;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
 
 namespace OpenReferralApi.Core.Services;
@@ -217,12 +219,14 @@ public class HsdsComplianceService : IHsdsComplianceService
                 continue;
             }
 
+            var compiledHsdsSchema = BuildHsdsValidationSchema(hsdsResponseSchema, hsdsSpecObject);
+
             foreach (var testResult in endpoint.TestResults.Where(t => t.IsSuccessStatusCode && !string.IsNullOrWhiteSpace(t.ResponseBody)))
             {
                 var validationRequest = new ValidationRequest
                 {
                     JsonData = testResult.ResponseBody ?? "{}",
-                    Schema = hsdsResponseSchema,
+                    Schema = compiledHsdsSchema,
                     Options = new ValidationOptions
                     {
                         MaxErrors = ResolveMaxValidationErrorsPerResponse(),
@@ -427,6 +431,27 @@ public class HsdsComplianceService : IHsdsComplianceService
         }
 
         return null;
+    }
+
+    private static JsonSchema BuildHsdsValidationSchema(JsonNode hsdsResponseSchema, JsonObject hsdsSpecObject)
+    {
+        JsonNode schemaToCompile = hsdsResponseSchema.DeepClone();
+
+        if (hsdsSpecObject["components"] is JsonObject components
+            && hsdsResponseSchema is JsonObject schemaObject)
+        {
+            // Embed components so that refs like #/components/schemas/* are resolvable
+            // when JsonSchema.Net evaluates the compiled schema.
+            var schemaWithComponents = (JsonObject)schemaObject.DeepClone();
+            if (!schemaWithComponents.ContainsKey("components"))
+            {
+                schemaWithComponents["components"] = components.DeepClone();
+            }
+
+            schemaToCompile = schemaWithComponents;
+        }
+
+        return JsonSchemaBuild.FromText(schemaToCompile.ToJsonString());
     }
 
     private static JsonNode? GetRequestBodySchema(JsonObject operation)
