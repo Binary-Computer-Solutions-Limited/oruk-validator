@@ -34,27 +34,8 @@ public class OpenApiValidationServiceTests
                 It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
             .Returns<string?, string, DataSourceAuthentication?, CancellationToken>(
-                async (ownSchemaUrl, baseUrl, _, ct) =>
+                (ownSchemaUrl, baseUrl, _, ct) =>
                 {
-                    // Fetch the feed's own OpenAPI spec via the mock HTTP client so that
-                    // specification-comparison tests get a populated ownSchemaContent.
-                    string? openApiSchemaContent = null;
-                    if (!string.IsNullOrWhiteSpace(ownSchemaUrl))
-                    {
-                        try
-                        {
-                            using var response = await _httpClient.GetAsync(ownSchemaUrl, ct);
-                            if (response.IsSuccessStatusCode)
-                            {
-                                openApiSchemaContent = await response.Content.ReadAsStringAsync(ct);
-                            }
-                        }
-                        catch
-                        {
-                            // Swallow – some tests do not configure an HTTP mock for the spec URL.
-                        }
-                    }
-
                     string? profileVersion = null;
 
                     if (string.IsNullOrWhiteSpace(profileVersion) && !string.IsNullOrWhiteSpace(ownSchemaUrl))
@@ -91,16 +72,16 @@ public class OpenApiValidationServiceTests
                         _ => null
                     };
 
-                    return new ProfileDiscoveryResult
+                    return Task.FromResult(new ProfileDiscoveryResult
                     {
                         HsdsProfileVersion = profileVersion,
                         HsdsProfileSchemaUrl = schemaUrl,
                         HsdsProfileSchemaContent = schemaUrl == null ? null : CreateHsdsProfileSpecWithRequestBody(),
-                        OpenApiSchemaContent = openApiSchemaContent,
+                        OpenApiSchemaContent = null,
                         HsdsProfileReason = schemaUrl == null
                             ? "No version or openapi_url found in '/' response"
                             : $"Standard version [user: {profileVersion}] discovered from profile context"
-                    };
+                    });
                 });
 
         _openApiSpecificationService = new OpenApiSpecificationService(

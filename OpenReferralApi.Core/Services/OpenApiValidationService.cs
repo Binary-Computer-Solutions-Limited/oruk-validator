@@ -260,6 +260,21 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         var ownSchema = TryParseJsonObject(bootstrap.OpenApiSchemaContent);
         var resolvedHsdsProfileSpec = TryParseJsonObject(bootstrap.HsdsProfileSchemaContent);
 
+        // When the bootstrap service did not provide schema content and a direct URL is known,
+        // fetch and cache the spec here so that caching, schema auth, and circular-ref collection work correctly.
+        if (ownSchema == null && !string.IsNullOrWhiteSpace(request.OwnSchemaUrl))
+        {
+            var schemaAuth = _authenticationValidationService.TryGetValidatedRequestAuthentication("schema", request.DataSourceAuth);
+            try
+            {
+                ownSchema = await GetCachedResolvedOpenApiSpecAsync(request.OwnSchemaUrl, schemaAuth, cancellationToken, "feed", schemaResolutionIssues);
+            }
+            catch
+            {
+                // Spec fetch failed; fall back to HSDS profile below if available.
+            }
+        }
+
         var feedSpecFellBackToHsdsProfile = false;
         if (ownSchema == null && resolvedHsdsProfileSpec != null)
         {
@@ -275,11 +290,14 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
                 result.Notifications.Add(
                     "Unable to discover feed OpenAPI specification from the base URL. Falling back to the configured default HSDS profile OpenAPI specification.");
             }
+
+            request.OwnSchemaUrl = bootstrap.HsdsProfileSchemaUrl;
+            ownSchema = resolvedHsdsProfileSpec;
         }
 
         if (ownSchema == null && bootstrap.HsdsProfileVersion == null)
         {
-            throw new ArgumentException("Failed to discover Own OpenAPI schema URL or HSDS profile version from base URL");
+            throw new ArgumentException("Failed to discover OpenAPI schema URL or schema content from base URL");
         }
 
         var discoveredProfileVersion = bootstrap.HsdsProfileVersion;
@@ -342,6 +360,18 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
                         hsdsProfileSchemaContent,
                         specValidationErrors!,
                         hsdsProfileVersion);
+
+                    if (!string.IsNullOrWhiteSpace(profileReason) &&
+                        profileReason.Contains("incorrectly defined in the 'openapi' field", StringComparison.OrdinalIgnoreCase))
+                    {
+                        specValidationErrors!.Add(new ValidationError
+                        {
+                            Path = "openapi",
+                            Message = profileReason,
+                            ErrorCode = "HSDS_SCHEMA_VERSION_MISPLACED",
+                            Severity = "Warning"
+                        });
+                    }
                 }
             }
         }
