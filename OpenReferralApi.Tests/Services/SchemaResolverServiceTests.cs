@@ -140,9 +140,9 @@ public class SchemaResolverServiceTests
 
         // Assert
         Assert.That(result, Is.Not.Null);
-        Assert.That(result.ToString(), Does.Contain("object"));
-        Assert.That(result.ToString(), Does.Contain("name"));
-        Assert.That(result.ToString(), Does.Contain("age"));
+        Assert.That(System.Text.Json.JsonSerializer.Serialize(result), Does.Contain("object"));
+        Assert.That(System.Text.Json.JsonSerializer.Serialize(result), Does.Contain("name"));
+        Assert.That(System.Text.Json.JsonSerializer.Serialize(result), Does.Contain("age"));
     }
 
     [Test]
@@ -163,7 +163,7 @@ public class SchemaResolverServiceTests
 
         // Assert
         Assert.That(result, Is.Not.Null);
-        Assert.That(result.ToString(), Does.Contain("object"));
+        Assert.That(System.Text.Json.JsonSerializer.Serialize(result), Does.Contain("object"));
     }
 
     [Test]

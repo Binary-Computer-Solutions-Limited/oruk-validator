@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Text.Json.Nodes;
 using System.Text.Json;
 using System.Collections.Concurrent;
+using Json.Schema;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Net.Http.Headers;
@@ -51,7 +52,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     private readonly IJsonValidatorService _jsonValidatorService;
     private readonly IHsdsComplianceService _hsdsComplianceService;
     private readonly OpenApiValidationServerOptions? _openApiValidationOptions;
-    private readonly ConcurrentDictionary<string, JsonNode> _validationSchemaCache = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, JsonSchema> _validationSchemaCache = new(StringComparer.Ordinal);
 
     public EndpointTestingService(
         ILogger<EndpointTestingService> logger,
@@ -935,7 +936,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         }
     }
 
-    private JsonNode GetValidationSchemaForResponse(JsonNode schema, JsonObject openApiDocument)
+    private JsonSchema GetValidationSchemaForResponse(JsonNode schema, JsonObject openApiDocument)
     {
         var schemaNode = schema.DeepClone();
         var cacheKey = ComputeSha256Hex(schemaNode.ToJsonString());
@@ -961,7 +962,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             IEnumerable<EndpointTestResult> endpointResults,
             ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult,
             ConcurrentDictionary<string, List<string>> extractedIds,
-            ConcurrentDictionary<string, JsonNode> validationSchemaCache)
+            ConcurrentDictionary<string, JsonSchema> validationSchemaCache)
     {
         int retainedResponseBodies = 0;
         long retainedResponseBodyChars = 0;
@@ -1113,28 +1114,26 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         }
     }
 
-    private static JsonNode BuildValidationSchemaWithComponentsContext(JsonNode schema, JsonObject openApiDocument)
+    private static JsonSchema BuildValidationSchemaWithComponentsContext(JsonNode schema, JsonObject openApiDocument)
     {
-        if (!RequiresComponentsContext(schema)
-            || openApiDocument["components"] is not JsonObject components)
-        {
-            return schema.DeepClone();
-        }
+        JsonNode schemaToCompile = schema.DeepClone();
 
-        // Keep the response schema at document root and attach components so refs like
-        // #/components/schemas/* remain resolvable without introducing synthetic wrapper refs.
-        if (schema is JsonObject schemaObject)
+        if (RequiresComponentsContext(schema)
+            && openApiDocument["components"] is JsonObject components
+            && schema is JsonObject schemaObject)
         {
+            // Keep the response schema at document root and attach components so refs like
+            // #/components/schemas/* remain resolvable without introducing synthetic wrapper refs.
             var schemaWithComponents = (JsonObject)schemaObject.DeepClone();
             if (!schemaWithComponents.ContainsKey("components"))
             {
                 schemaWithComponents["components"] = components.DeepClone();
             }
 
-            return schemaWithComponents;
+            schemaToCompile = schemaWithComponents;
         }
 
-        return schema.DeepClone();
+        return JsonSchemaBuild.FromText(schemaToCompile.ToJsonString());
     }
 
     private static bool RequiresComponentsContext(JsonNode schema)

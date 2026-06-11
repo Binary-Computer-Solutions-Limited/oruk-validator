@@ -33,54 +33,56 @@ public class OpenApiValidationServiceTests
                 It.IsAny<string>(),
                 It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string? ownSchemaUrl, string? baseUrl, DataSourceAuthentication? _, CancellationToken _) =>
-            {
-                string? profileVersion = null;
-
-                if (string.IsNullOrWhiteSpace(profileVersion) && !string.IsNullOrWhiteSpace(ownSchemaUrl))
+            .Returns<string?, string, DataSourceAuthentication?, CancellationToken>(
+                (ownSchemaUrl, baseUrl, _, ct) =>
                 {
-                    if (ownSchemaUrl.Contains("/specifications/3.0/", StringComparison.OrdinalIgnoreCase))
-                    {
-                        profileVersion = "HSDS-UK-3.0";
-                    }
-                    else if (ownSchemaUrl.Contains("/specifications/1.0/", StringComparison.OrdinalIgnoreCase))
-                    {
-                        profileVersion = "HSDS-UK-1.0";
-                    }
-                    else if (ownSchemaUrl.Contains("/3.2/", StringComparison.OrdinalIgnoreCase))
-                    {
-                        profileVersion = "HSDS-3.2";
-                    }
-                }
+                    string? profileVersion = null;
 
-                // Fallback: For standard test URLs, default to HSDS-UK-3.0
-                // But only if not using baseUrl that explicitly expects no profile discovery
-                if (string.IsNullOrWhiteSpace(profileVersion) && !string.IsNullOrWhiteSpace(baseUrl))
-                {
-                    if (baseUrl.Contains("feed.example.com", StringComparison.OrdinalIgnoreCase))
+                    if (string.IsNullOrWhiteSpace(profileVersion) && !string.IsNullOrWhiteSpace(ownSchemaUrl))
                     {
-                        profileVersion = "HSDS-UK-3.0";
+                        if (ownSchemaUrl.Contains("/specifications/3.0/", StringComparison.OrdinalIgnoreCase))
+                        {
+                            profileVersion = "HSDS-UK-3.0";
+                        }
+                        else if (ownSchemaUrl.Contains("/specifications/1.0/", StringComparison.OrdinalIgnoreCase))
+                        {
+                            profileVersion = "HSDS-UK-1.0";
+                        }
+                        else if (ownSchemaUrl.Contains("/3.2/", StringComparison.OrdinalIgnoreCase))
+                        {
+                            profileVersion = "HSDS-3.2";
+                        }
                     }
-                }
 
-                var schemaUrl = profileVersion switch
-                {
-                    "HSDS-UK-3.0" => "https://openreferraluk.org/specifications/3.0/openapi.json",
-                    "HSDS-UK-1.0" => "https://openreferraluk.org/specifications/1.0/openapi.json",
-                    "HSDS-3.2" => ownSchemaUrl, // Return the ownSchemaUrl for custom profiles
-                    _ => null
-                };
+                    // Fallback: For standard test URLs, default to HSDS-UK-3.0
+                    // But only if not using baseUrl that explicitly expects no profile discovery
+                    if (string.IsNullOrWhiteSpace(profileVersion) && !string.IsNullOrWhiteSpace(baseUrl))
+                    {
+                        if (baseUrl.Contains("feed.example.com", StringComparison.OrdinalIgnoreCase))
+                        {
+                            profileVersion = "HSDS-UK-3.0";
+                        }
+                    }
 
-                return new ProfileDiscoveryResult
-                {
-                    HsdsProfileVersion = profileVersion,
-                    HsdsProfileSchemaUrl = schemaUrl,
-                    HsdsProfileSchemaContent = schemaUrl == null ? null : CreateHsdsProfileSpecWithRequestBody(),
-                    HsdsProfileReason = schemaUrl == null
-                        ? "No version or openapi_url found in '/' response"
-                        : $"Standard version [user: {profileVersion}] discovered from profile context"
-                };
-            });
+                    var schemaUrl = profileVersion switch
+                    {
+                        "HSDS-UK-3.0" => "https://openreferraluk.org/specifications/3.0/openapi.json",
+                        "HSDS-UK-1.0" => "https://openreferraluk.org/specifications/1.0/openapi.json",
+                        "HSDS-3.2" => ownSchemaUrl, // Return the ownSchemaUrl for custom profiles
+                        _ => null
+                    };
+
+                    return Task.FromResult(new ProfileDiscoveryResult
+                    {
+                        HsdsProfileVersion = profileVersion,
+                        HsdsProfileSchemaUrl = schemaUrl,
+                        HsdsProfileSchemaContent = schemaUrl == null ? null : CreateHsdsProfileSpecWithRequestBody(),
+                        OpenApiSchemaContent = null,
+                        HsdsProfileReason = schemaUrl == null
+                            ? "No version or openapi_url found in '/' response"
+                            : $"Standard version [user: {profileVersion}] discovered from profile context"
+                    });
+                });
 
         _openApiSpecificationService = new OpenApiSpecificationService(
             NullLogger<OpenApiSpecificationService>.Instance,
