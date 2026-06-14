@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
@@ -28,6 +29,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
     private readonly OpenApiValidationServerOptions _openApiValidationOptions;
     private readonly CacheOptions _cacheOptions;
     private readonly SpecificationOptions _specificationOptions;
+    internal static readonly ReadOnlyMemory<byte>TruncatedPlaceholder = System.Text.Encoding.UTF8.GetBytes("\"[Response body omitted by server configuration]\"");
 
     public OpenApiValidationService(
         ILogger<OpenApiValidationService> logger,
@@ -154,7 +156,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             if (IsSpecFetchOrResolveFailure(ex))
             {
                 var safeSpecUrl = TextSanitizer.SanitizeUrlForLogging(request.OwnSchemaUrl ?? string.Empty);
-                var rootMessage = TextSanitizer.SanitizeExceptionMessage(GetInnermostException(ex).Message);
+                var rootMessage = TextSanitizer.SanitizeExceptionMessage(ex.GetBaseException().Message);
                 var notification = string.IsNullOrEmpty(safeSpecUrl)
                     ? $"Unable to get or resolve the OpenAPI specification. {rootMessage}"
                     : $"Unable to get or resolve the OpenAPI specification from {safeSpecUrl}. {rootMessage}";
@@ -712,7 +714,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             return null;
         }
 
-        var updatedPaths = new Dictionary<string, JsonNode?>();
+        var updatedPaths = new JsonObject();
         var duplicatedEntries = new List<string>();
         var duplicateCollisions = new List<string>();
 
@@ -754,7 +756,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         pathsObject.Clear();
         foreach (var updatedProperty in updatedPaths)
         {
-            pathsObject[updatedProperty.Key] = updatedProperty.Value;
+            pathsObject[updatedProperty.Key] = updatedProperty.Value?.DeepClone();
         }
 
         return $"Warning: Removed duplicated base URL prefix '{basePath}' from {duplicatedEntries.Count} OpenAPI endpoint path(s) before endpoint testing.";
@@ -893,13 +895,13 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
 
             foreach (var testResult in endpoint.TestResults)
             {
-                if (testResult.ResponseBody == null || testResult.ResponseBody.Length == 0
-                    || testResult.ResponseBody.Length <= cap)
+                if (testResult.ResponseBody == null || testResult.ResponseBody.Length <= cap)
                 {
                     continue;
                 }
 
-                testResult.ResponseBody = testResult.ResponseBody[..cap];
+                // Replace the oversized response with a valid JSON string placeholder
+                testResult.ResponseBody = TruncatedPlaceholder.ToArray();
                 truncatedCount++;
             }
         }
@@ -907,7 +909,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         if (truncatedCount > 0)
         {
             notifications.Add(
-                $"Response bodies were truncated to {_openApiValidationOptions.MaxRetainedResponseBodyCharacters} characters for {truncatedCount} test result(s) by server configuration.");
+                $"Response bodies were omitted for {truncatedCount} test result(s) because they exceeded the maximum retention size of {cap} bytes.");
         }
     }
 
@@ -1107,17 +1109,6 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
                 ProfileVersionNormalizer.NormalizeVersionNumber(key),
                 versionNumber,
                 StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static Exception GetInnermostException(Exception exception)
-    {
-        var current = exception;
-        while (current.InnerException != null)
-        {
-            current = current.InnerException;
-        }
-
-        return current;
     }
 
     private static bool IsSpecFetchOrResolveFailure(Exception ex)

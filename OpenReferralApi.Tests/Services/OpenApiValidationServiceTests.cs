@@ -29,11 +29,11 @@ public class OpenApiValidationServiceTests
         _openApiBootstrapServiceMock = new Mock<IProfileDiscoveryService>();
         _openApiBootstrapServiceMock
             .Setup(s => s.DiscoverFromBaseUrlAsync(
-                It.IsAny<string>(),
-                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
                 It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
-            .Returns<string?, string, DataSourceAuthentication?, CancellationToken>(
+            .Returns<string?, string?, DataSourceAuthentication?, CancellationToken>(
                 (ownSchemaUrl, baseUrl, _, ct) =>
                 {
                     string? profileVersion = null;
@@ -99,8 +99,8 @@ public class OpenApiValidationServiceTests
             });
 
         _schemaResolverServiceMock
-            .Setup(service => service.CreateSchemaFromJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string schemaJson, string documentUri, DataSourceAuthentication auth, CancellationToken ct) => JsonSchema.FromText(schemaJson));
+            .Setup(service => service.CreateSchemaFromJsonAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string schemaJson, string? documentUri, DataSourceAuthentication? auth, CancellationToken ct) => JsonSchema.FromText(schemaJson));
 
         _schemaResolverServiceMock
             .Setup(service => service.CreateSchemaFromJsonAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -108,8 +108,8 @@ public class OpenApiValidationServiceTests
 
         // Mock ResolveAsync method for OpenAPI document resolution
         _schemaResolverServiceMock
-            .Setup(service => service.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>()))
-            .ReturnsAsync((string schema, string baseUri, DataSourceAuthentication? auth) => schema);
+            .Setup(service => service.ResolveAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DataSourceAuthentication?>()))
+            .ReturnsAsync((string schema, string? baseUri, DataSourceAuthentication? auth) => schema);
 
         _schemaResolverServiceMock
             .Setup(service => service.GetResolutionIssues())
@@ -210,8 +210,8 @@ public class OpenApiValidationServiceTests
         var discoveryMock = new Mock<IProfileDiscoveryService>();
         discoveryMock
             .Setup(s => s.DiscoverFromBaseUrlAsync(
-                It.IsAny<string>(),
-                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
                 It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProfileDiscoveryResult
@@ -991,8 +991,8 @@ public class OpenApiValidationServiceTests
         var defaultDiscoveryMock = new Mock<IProfileDiscoveryService>();
         defaultDiscoveryMock
             .Setup(s => s.DiscoverFromBaseUrlAsync(
-                It.IsAny<string>(),
-                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
                 It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProfileDiscoveryResult
@@ -1074,8 +1074,8 @@ public class OpenApiValidationServiceTests
         var defaultDiscoveryMock = new Mock<IProfileDiscoveryService>();
         defaultDiscoveryMock
             .Setup(s => s.DiscoverFromBaseUrlAsync(
-                It.IsAny<string>(),
-                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
                 It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProfileDiscoveryResult
@@ -1183,7 +1183,7 @@ _openApiSpecificationService,
 
         var bootstrapServiceMock = new Mock<IProfileDiscoveryService>();
         bootstrapServiceMock
-            .Setup(s => s.DiscoverFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.DiscoverFromBaseUrlAsync(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProfileDiscoveryResult
             {
                 OpenApiSchemaContent = discoveredSchemaContent
@@ -1292,7 +1292,7 @@ _openApiSpecificationService,
             s => s.TryGetValidatedRequestAuthentication("schema", It.IsAny<DataSourceAuthentication?>()),
             Times.Once);
         bootstrapServiceMock.Verify(
-            s => s.DiscoverFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()),
+            s => s.DiscoverFromBaseUrlAsync(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -1684,7 +1684,8 @@ _openApiSpecificationService,
 
         var fullModeServerOptions = Options.Create(new OpenApiValidationServerOptions
         {
-            HsdsValidationMode = HsdsValidationMode.FullHsdsRuntime
+            HsdsValidationMode = HsdsValidationMode.FullHsdsRuntime,
+            TestEndpoints = true
         });
 
         var fullModeHttpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>
@@ -1786,7 +1787,7 @@ _openApiSpecificationService,
                 It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
-                It.IsAny<DataSourceAuthentication>(),
+                It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<EndpointTestResult>
             {
@@ -1824,7 +1825,8 @@ _openApiSpecificationService,
 
         var fullModeServerOptions = Options.Create(new OpenApiValidationServerOptions
         {
-            HsdsValidationMode = HsdsValidationMode.FullHsdsRuntime
+            HsdsValidationMode = HsdsValidationMode.FullHsdsRuntime,
+            TestEndpoints = true
         });
 
         // Feed spec URL returns a network error; HSDS profile URL succeeds.
@@ -1930,8 +1932,21 @@ _openApiSpecificationService,
 
         SetupHttpMock(CreateOpenApi30SpecWithResponseSchema(), endpointResponseBody: "[{\"name\":\"ok\",\"extra\":\"x\"}]");
 
+        var strictValidationOptions = Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.StrictOwnSchemaValidation, ValidateSpecification = false, TestEndpoints = true });
+        var serviceWithStrictPolicy = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(_httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
+            _openApiBootstrapServiceMock.Object,
+            openApiValidationServerOptions: strictValidationOptions);
+
         // Act — default server setting OwnSchemaValidation = StrictOwnSchemaValidation causes errors
-        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+        var result = await serviceWithStrictPolicy.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
         Assert.That(result.IsValid, Is.False);
@@ -1974,7 +1989,7 @@ _openApiSpecificationService,
 
         SetupHttpMock(CreateOpenApi30SpecWithResponseSchema(), endpointResponseBody: "[{\"name\":\"ok\",\"extra\":\"x\"}]");
 
-        var lenientValidationOptions = Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.AllowAdditionalProperties, ValidateSpecification = false });
+        var lenientValidationOptions = Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.AllowAdditionalProperties, ValidateSpecification = false, TestEndpoints = true });
         var serviceWithLenientPolicy = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
@@ -2021,7 +2036,7 @@ _openApiSpecificationService,
                 It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
-                It.IsAny<DataSourceAuthentication>(),
+                It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
             .Callback<JsonObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>(
                 (spec, _, _, _, _) => capturedSpec = spec)
@@ -2037,7 +2052,8 @@ _openApiSpecificationService,
         var serverOptions = Options.Create(new OpenApiValidationServerOptions
         {
             OwnSchemaValidation = OwnSchemaValidationMode.StrictOwnSchemaValidation,
-            ValidateSpecification = false
+            ValidateSpecification = false,
+            TestEndpoints = true
         });
 
         var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>
@@ -2108,7 +2124,7 @@ _openApiSpecificationService,
                 It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
-                It.IsAny<DataSourceAuthentication>(),
+                It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
             .Callback<JsonObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>(
                 (spec, _, _, _, _) => capturedSpec = spec)
@@ -2124,7 +2140,8 @@ _openApiSpecificationService,
         var serverOptions = Options.Create(new OpenApiValidationServerOptions
         {
             OwnSchemaValidation = OwnSchemaValidationMode.None,
-            ValidateSpecification = false
+            ValidateSpecification = false,
+            TestEndpoints = true
         });
 
         var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>
@@ -2190,7 +2207,7 @@ _openApiSpecificationService,
                 It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
-                It.IsAny<DataSourceAuthentication>(),
+                It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
             .Callback<JsonObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>(
                 (spec, _, _, _, _) => capturedSpec = spec)
@@ -2206,7 +2223,8 @@ _openApiSpecificationService,
         var serverOptions = Options.Create(new OpenApiValidationServerOptions
         {
             OwnSchemaValidation = OwnSchemaValidationMode.None,
-            ValidateSpecification = false
+            ValidateSpecification = false,
+            TestEndpoints = true
         });
 
         var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>
@@ -2264,7 +2282,7 @@ _openApiSpecificationService,
                 It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
-                It.IsAny<DataSourceAuthentication>(),
+                It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<EndpointTestResult>());
 
@@ -2279,7 +2297,8 @@ _openApiSpecificationService,
         {
             OwnSchemaValidation = OwnSchemaValidationMode.None,
             HsdsValidationMode = HsdsValidationMode.FullHsdsRuntime,
-            ValidateSpecification = false
+            ValidateSpecification = false,
+            TestEndpoints = true
         });
 
         var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>
@@ -2752,8 +2771,8 @@ _openApiSpecificationService,
             .ToList();
 
         Assert.That(retainedBodies, Is.Not.Empty);
-        Assert.That(retainedBodies.All(body => body!.Length <= 10), Is.True);
-        Assert.That(result.Notifications.Any(n => n.Contains("Response bodies were truncated", StringComparison.Ordinal)), Is.True);
+        Assert.That(retainedBodies.All(body => body!.Length == OpenApiValidationService.TruncatedPlaceholder.Length), Is.True);
+        Assert.That(result.Notifications.Any(n => n.Contains("Response bodies were omitted", StringComparison.Ordinal)), Is.True);
     }
 
     [Test]
@@ -2937,7 +2956,7 @@ _openApiSpecificationService,
                 It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
-                It.IsAny<DataSourceAuthentication>(),
+                It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
             .Callback(() => callOrder.Add("endpoints"))
             .ReturnsAsync(new List<EndpointTestResult>
@@ -2983,7 +3002,8 @@ _openApiSpecificationService,
             hsdsServiceMock.Object,
             endpointTestingMock.Object,
             null!,
-            _openApiBootstrapServiceMock.Object);
+            _openApiBootstrapServiceMock.Object,
+            openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions { ValidateSpecification = true, TestEndpoints = true }));
 
         var request = new OpenApiValidationRequest
         {
@@ -3100,7 +3120,7 @@ _openApiSpecificationService,
                 It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
-                It.IsAny<DataSourceAuthentication>(),
+                It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
             .Callback<JsonObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>((spec, _, _, _, _) =>
             {
@@ -3136,7 +3156,8 @@ _openApiSpecificationService,
             {
                 HsdsValidationMode = _openApiValidationServerOptions.Value.HsdsValidationMode,
                 AllowUserSuppliedAuth = _openApiValidationServerOptions.Value.AllowUserSuppliedAuth,
-                ValidateSpecification = false
+                ValidateSpecification = false,
+                TestEndpoints = true
             }));
 
         var request = new OpenApiValidationRequest
@@ -3152,6 +3173,9 @@ _openApiSpecificationService,
             var result = await service.ValidateOpenApiSpecificationAsync(request);
 
             // Assert
+            foreach (var n in result.Notifications) {
+                Console.WriteLine("NOTIFICATION: " + n);
+            }
             Assert.That(capturedOpenApi, Is.Not.Null);
             var paths = capturedOpenApi!["paths"] as JsonObject;
             Assert.That(paths, Is.Not.Null);
@@ -3181,7 +3205,7 @@ _openApiSpecificationService,
                 It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
-                It.IsAny<DataSourceAuthentication>(),
+                It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
             .Callback<JsonObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>((spec, _, _, _, _) =>
             {
@@ -3216,7 +3240,8 @@ _openApiSpecificationService,
             {
                 HsdsValidationMode = _openApiValidationServerOptions.Value.HsdsValidationMode,
                 AllowUserSuppliedAuth = _openApiValidationServerOptions.Value.AllowUserSuppliedAuth,
-                ValidateSpecification = false
+                ValidateSpecification = false,
+                TestEndpoints = true
             }));
 
         var request = new OpenApiValidationRequest
@@ -3498,7 +3523,8 @@ _openApiSpecificationService,
             {
                 HsdsValidationMode = _openApiValidationServerOptions.Value.HsdsValidationMode,
                 AllowUserSuppliedAuth = _openApiValidationServerOptions.Value.AllowUserSuppliedAuth,
-                ValidateSpecification = false
+                ValidateSpecification = false,
+                TestEndpoints = true
             }));
 
         // Act
@@ -4190,7 +4216,7 @@ _openApiSpecificationService,
              null!,
              null!,
             _openApiBootstrapServiceMock.Object,
-            openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions { AllowUserSuppliedAuth = false }));
+            openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions { AllowUserSuppliedAuth = false, TestEndpoints = true }));
 
         var request = new OpenApiValidationRequest
         {
