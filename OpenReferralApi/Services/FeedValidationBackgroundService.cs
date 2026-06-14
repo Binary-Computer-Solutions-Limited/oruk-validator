@@ -50,6 +50,7 @@ internal sealed class FeedValidationBackgroundService : BackgroundService
             {
                 _logger.ScheduledValidationStarted(DateTime.UtcNow);
                 await ValidateAllFeedsAsync(stoppingToken).ConfigureAwait(false);
+                stoppingToken.ThrowIfCancellationRequested();
                 _logger.ScheduledValidationCompleted(DateTime.UtcNow);
             }
             catch (OperationCanceledException)
@@ -60,6 +61,11 @@ internal sealed class FeedValidationBackgroundService : BackgroundService
             // Remove catch-all Exception handler to comply with analyzer
             // If you want to log unexpected exceptions, consider rethrowing after logging
 
+            if (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+
             // Wait for next scheduled run
             await WaitForNextScheduledRunAsync(stoppingToken).ConfigureAwait(false);
         }
@@ -67,6 +73,11 @@ internal sealed class FeedValidationBackgroundService : BackgroundService
 
     private async Task WaitForNextScheduledRunAsync(CancellationToken cancellationToken)
     {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
         TimeSpan delay;
 
         if (_runAtMidnight)
@@ -97,6 +108,8 @@ internal sealed class FeedValidationBackgroundService : BackgroundService
 
     private async Task ValidateAllFeedsAsync(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         var stopwatch = Stopwatch.StartNew();
 
         using var scope = _serviceProvider.CreateScope();
@@ -107,6 +120,8 @@ internal sealed class FeedValidationBackgroundService : BackgroundService
             // Get all registered feeds
             var feeds = await feedValidationService.GetAllFeedsAsync(cancellationToken).ConfigureAwait(false);
 
+            cancellationToken.ThrowIfCancellationRequested();
+
             _logger.FoundFeedsToValidate(feeds.Count);
 
             if (feeds.Count == 0)
@@ -115,6 +130,8 @@ internal sealed class FeedValidationBackgroundService : BackgroundService
                 return;
             }
             var results = await feedValidationService.ValidateAndUpdateFeedsAsync(feeds, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            cancellationToken.ThrowIfCancellationRequested();
 
             // Log summary
             var successCount = results.Count(r => r.IsUp);

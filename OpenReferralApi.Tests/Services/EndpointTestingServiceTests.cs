@@ -406,7 +406,7 @@ public class EndpointTestingServiceTests
 
     Assert.That(results, Has.Count.EqualTo(1));
     var endpoint = results[0];
-    Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.FailedValidation));
+    Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.Error));
     Assert.That(endpoint.TestResults, Has.Count.EqualTo(1));
     Assert.That(endpoint.TestResults[0].IsSuccessStatusCode, Is.False);
     Assert.That(endpoint.TestResults[0].ErrorMessage, Does.Contain("boom"));

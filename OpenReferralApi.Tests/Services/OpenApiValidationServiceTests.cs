@@ -1661,7 +1661,7 @@ _openApiSpecificationService,
                         new()
                         {
                             ResponseStatusCode = 200,
-                            ResponseBody = "[{\"id\":\"1\"}]",
+                            ResponseBody = System.Text.Encoding.UTF8.GetBytes("[{\"id\":\"1\"}]"),
                             IsSuccessStatusCode = true,
                             ValidationResult = new ValidationResult
                             {
@@ -1801,7 +1801,7 @@ _openApiSpecificationService,
                         new()
                         {
                             ResponseStatusCode = 200,
-                            ResponseBody = "[{\"id\":\"1\"}]",
+                            ResponseBody = System.Text.Encoding.UTF8.GetBytes("[{\"id\":\"1\"}]"),
                             IsSuccessStatusCode = true,
                             ValidationResult = new ValidationResult
                             {

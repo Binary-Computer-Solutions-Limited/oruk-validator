@@ -136,7 +136,7 @@ public class SchemaResolverServiceTests
         }";
 
         // Act
-        var result = await _service.CreateSchemaFromJsonAsync(schemaJson);
+        var result = await _service.CreateSchemaFromJsonAsync(schemaJson, null);
 
         // Assert
         Assert.That(result, Is.Not.Null);
@@ -200,7 +200,7 @@ public class SchemaResolverServiceTests
         var rootSchemaJson = """
         {
           "$schema": "https://json-schema.org/draft/2020-12/schema",
-          "$id": "https://json-schema.org/draft/2020-12/schema",
+          "$id": "https://example.com/draft/2020-12/schema",
           "$dynamicAnchor": "meta",
           "allOf": [
             { "$ref": "meta/core" }
@@ -212,7 +212,7 @@ public class SchemaResolverServiceTests
         var coreMetaJson = """
         {
           "$schema": "https://json-schema.org/draft/2020-12/schema",
-          "$id": "https://json-schema.org/draft/2020-12/meta/core",
+          "$id": "https://example.com/draft/2020-12/meta/core",
           "$dynamicAnchor": "meta",
           "type": ["object", "boolean"],
           "properties": {
@@ -227,7 +227,7 @@ public class SchemaResolverServiceTests
         var handler = new MockHttpMessageHandler(async request =>
         {
             var uri = request.RequestUri?.GetLeftPart(UriPartial.Path);
-            if (uri == "https://json-schema.org/draft/2020-12/meta/core")
+            if (uri == "https://example.com/draft/2020-12/meta/core")
             {
                 return new HttpResponseMessage
                 {
@@ -243,7 +243,7 @@ public class SchemaResolverServiceTests
         var service = new SchemaResolverService(CreateFactory(httpClient), _loggerMock.Object, _memoryCache, _cacheOptions);
 
         // Act
-        var result = await service.CreateSchemaFromJsonAsync(rootSchemaJson, "https://json-schema.org/draft/2020-12/schema");
+        var result = await service.CreateSchemaFromJsonAsync(rootSchemaJson, "https://example.com/draft/2020-12/schema");
 
         // Assert
         Assert.That(result, Is.Not.Null);

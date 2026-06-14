@@ -79,6 +79,7 @@ public class PathParsingService : IPathParsingService
     private static readonly string[] AllowedSchemes = { "http", "https", "ftp", "ftps" };
     private static readonly string[] DataUrlSchemes = { "http", "https" };
     private static readonly string[] SchemaUriSchemes = { "http", "https", "file" };
+    private static readonly int[] AllowedPorts = { 80, 443, 8080, 8443, 3000, 5000, 8000, 9000 };
 
     public PathParsingService(ILogger<PathParsingService> logger, HttpClient httpClient)
     {
@@ -342,8 +343,7 @@ public class PathParsingService : IPathParsingService
     private static bool IsAllowedPort(int port)
     {
         // Allow standard HTTP/HTTPS ports and common service ports
-        var allowedPorts = new[] { 80, 443, 8080, 8443, 3000, 5000, 8000, 9000 };
-        return allowedPorts.Contains(port) || (port >= 1024 && port <= 65535);
+        return AllowedPorts.Contains(port) || (port >= 1024 && port <= 65535);
     }
 
     private static string GetContentTypeFromExtension(string extension)
@@ -361,4 +361,3 @@ public class PathParsingService : IPathParsingService
     }
 
 }
-

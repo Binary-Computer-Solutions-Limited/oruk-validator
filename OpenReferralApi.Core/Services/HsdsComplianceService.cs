@@ -221,11 +221,11 @@ public class HsdsComplianceService : IHsdsComplianceService
 
             var compiledHsdsSchema = BuildHsdsValidationSchema(hsdsResponseSchema, hsdsSpecObject);
 
-            foreach (var testResult in endpoint.TestResults.Where(t => t.IsSuccessStatusCode && !string.IsNullOrWhiteSpace(t.ResponseBody)))
+            foreach (var testResult in endpoint.TestResults.Where(t => t.IsSuccessStatusCode && t.ResponseBody != null && t.ResponseBody.Length > 0))
             {
                 var validationRequest = new ValidationRequest
                 {
-                    JsonData = testResult.ResponseBody ?? "{}",
+                    JsonData = testResult.ResponseBody,
                     Schema = compiledHsdsSchema,
                     Options = new ValidationOptions
                     {

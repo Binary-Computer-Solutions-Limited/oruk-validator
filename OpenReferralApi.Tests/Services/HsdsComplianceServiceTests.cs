@@ -317,7 +317,7 @@ public class HsdsComplianceServiceTests
                     new()
                     {
                         IsSuccessStatusCode = true,
-                        ResponseBody = "{\"id\":\"1\",\"extra\":\"x\"}",
+                        ResponseBody = System.Text.Encoding.UTF8.GetBytes("[{\"id\":\"1\",\"extra\":\"x\"}]"),
                         ValidationResult = null
                     }
                 }
@@ -394,7 +394,7 @@ public class HsdsComplianceServiceTests
                     new()
                     {
                         IsSuccessStatusCode = true,
-                        ResponseBody = "{\"id\":\"1\",\"extra\":\"x\"}",
+                        ResponseBody = System.Text.Encoding.UTF8.GetBytes("[{\"id\":\"1\",\"extra\":\"x\"}]"),
                         ValidationResult = new ValidationResult
                         {
                             IsValid = true,
@@ -476,7 +476,7 @@ public class HsdsComplianceServiceTests
                     new()
                     {
                         IsSuccessStatusCode = true,
-                        ResponseBody = "{\"id\":\"1\",\"extra\":\"x\"}",
+                        ResponseBody = System.Text.Encoding.UTF8.GetBytes("[{\"id\":\"1\",\"extra\":\"x\"}]"),
                         ValidationResult = new ValidationResult
                         {
                             IsValid = true,

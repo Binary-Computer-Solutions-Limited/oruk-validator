@@ -17,8 +17,16 @@ public class OpenReferralUKValidationResponseMapper : IOpenReferralUKValidationR
         // Map endpoint tests to test groups - separate required and optional endpoints
         if (openApiResult.EndpointTests != null && openApiResult.EndpointTests.Any())
         {
-            var requiredEndpoints = openApiResult.EndpointTests.Where(e => !e.IsOptional).ToList();
-            var optionalEndpoints = openApiResult.EndpointTests.Where(e => e.IsOptional).ToList();
+            var requiredEndpoints = new List<EndpointTestResult>();
+            var optionalEndpoints = new List<EndpointTestResult>();
+
+            foreach (var e in openApiResult.EndpointTests)
+            {
+                if (e.IsOptional)
+                    optionalEndpoints.Add(e);
+                else
+                    requiredEndpoints.Add(e);
+            }
 
             if (requiredEndpoints.Any())
             {
@@ -42,21 +50,30 @@ public class OpenReferralUKValidationResponseMapper : IOpenReferralUKValidationR
         // and optional-endpoint treatment rules.
         bool isValid = openApiResult?.IsValid ?? false;
 
-        var specificationValidation = openApiResult?.SpecificationValidation == null
-            ? null
-            : new
+        object? specificationValidation = null;
+
+        if (openApiResult?.SpecificationValidation != null)
+        {
+            var specErrors = new List<object>(openApiResult.SpecificationValidation.Errors.Count);
+            foreach (var error in openApiResult.SpecificationValidation.Errors)
             {
-                isValid = openApiResult.SpecificationValidation.IsValid,
-                version = openApiResult.SpecificationValidation.Version,
-                errors = openApiResult.SpecificationValidation.Errors.Select(error => new
+                specErrors.Add(new
                 {
                     name = error.ErrorCode,
                     description = error.Severity,
                     message = error.Message,
                     errorIn = BuildErrorIn(error),
                     errorAt = BuildErrorAt(error)
-                }).ToList()
+                });
+            }
+
+            specificationValidation = new
+            {
+                isValid = openApiResult.SpecificationValidation.IsValid,
+                version = openApiResult.SpecificationValidation.Version,
+                errors = specErrors
             };
+        }
 
         return new OpenReferralUKValidationResponse
         {
@@ -65,12 +82,12 @@ public class OpenReferralUKValidationResponseMapper : IOpenReferralUKValidationR
                 Url = openApiResult?.Metadata?.BaseUrl ?? "",
                 IsValid = isValid,
                 Profile = openApiResult?.Metadata?.Profile
-                    ?? $"{openApiResult?.SpecificationValidation?.Version ?? "Unknown"}",
+                    ?? openApiResult?.SpecificationValidation?.Version ?? "Unknown",
                 ProfileReason = openApiResult?.Metadata?.ProfileReason ?? "Unknown"
             },
             TestSuites = testSuites,
             SpecificationValidation = specificationValidation,
-            Notifications = openApiResult?.Notifications?.ToList() ?? new List<string>()
+            Notifications = openApiResult?.Notifications?.ToList() ?? []
         };
     }
 
@@ -98,7 +115,7 @@ public class OpenReferralUKValidationResponseMapper : IOpenReferralUKValidationR
     {
         if (IsJsonStructureViolation(error.ErrorCode) && !string.IsNullOrWhiteSpace(error.SourceIdentifier))
         {
-            return $"source={error.SourceIdentifier} | path={error.Path}";
+            return string.Concat("source=", error.SourceIdentifier, " | path=", error.Path);
         }
 
         return error.Path;
@@ -114,20 +131,24 @@ public class OpenReferralUKValidationResponseMapper : IOpenReferralUKValidationR
     private object MapEndpointTests(List<EndpointTestResult> endpointTests, string baseUrl,
         string name, string description, bool required)
     {
-        var tests = endpointTests.Select(endpoint =>
+        var tests = new List<object>(endpointTests.Count);
+        var seenErrorPaths = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var endpoint in endpointTests)
         {
+            seenErrorPaths.Clear(); // Reuse the same HashSet for every endpoint test
             var testToUse = endpoint.PrimaryTestResult;
 
-            return new
+            tests.Add(new
             {
-                name = endpoint.Name ?? $"{endpoint.Method} {endpoint.Path}",
-                endpoint = $"{baseUrl}{endpoint.Path}",
+                name = endpoint.Name ?? string.Concat(endpoint.Method, " ", endpoint.Path),
+                endpoint = string.Concat(baseUrl, endpoint.Path),
                 description = endpoint.Summary ?? endpoint.OperationId ?? "Endpoint test",
                 id = testToUse?.TestedId,
                 success = endpoint.PrimaryTestResult?.ValidationResult?.IsValid ?? endpoint.TestResults.Any(tr => tr.ValidationResult != null && tr.ValidationResult.IsValid),
-                messages = MapEndpointMessages(endpoint, testToUse)
-            };
-        }).ToList();
+                messages = MapEndpointMessages(endpoint, testToUse, seenErrorPaths)
+            });
+        }
 
         return new
         {
@@ -140,20 +161,11 @@ public class OpenReferralUKValidationResponseMapper : IOpenReferralUKValidationR
         };
     }
 
-    private List<object> MapEndpointMessages(EndpointTestResult endpoint, HttpTestResult? specificTest = null)
+    private List<object> MapEndpointMessages(EndpointTestResult endpoint, HttpTestResult? specificTest, HashSet<string> seenErrorPaths)
     {
         var messages = new List<object>();
 
-        // Add schema validation issues from test results
-        // If a specific test is provided (first failed), use only that one
         var endpointErrors = endpoint.ValidationErrors;
-
-        var testsToProcess = specificTest != null
-            ? [specificTest]
-            : endpoint.TestResults.Where(tr => tr.ValidationResult != null && !tr.ValidationResult.IsValid);
-
-        // Track seen error paths to deduplicate errors across multiple test results
-        var seenErrorPaths = new HashSet<string>(StringComparer.Ordinal);
 
         if (specificTest == null && endpointErrors.Any())
         {
@@ -175,24 +187,20 @@ public class OpenReferralUKValidationResponseMapper : IOpenReferralUKValidationR
             return messages;
         }
 
-        foreach (var testResult in testsToProcess)
+        if (specificTest != null)
         {
-            if (testResult.ValidationResult != null && !testResult.ValidationResult.IsValid)
+            if (specificTest.ValidationResult != null && !specificTest.ValidationResult.IsValid)
             {
-                foreach (var validationError in testResult.ValidationResult.Errors)
+                ExtractMessagesFromTestResult(specificTest, seenErrorPaths, messages);
+            }
+        }
+        else
+        {
+            foreach (var testResult in endpoint.TestResults)
+            {
+                if (testResult.ValidationResult != null && !testResult.ValidationResult.IsValid)
                 {
-                    // Only add error if we haven't seen this path before
-                    if (seenErrorPaths.Add(validationError.Path))
-                    {
-                        messages.Add(new
-                        {
-                            name = validationError.ErrorCode,
-                            description = validationError.Severity,
-                            message = validationError.Message,
-                            errorIn = validationError.Path,
-                            errorAt = ""
-                        });
-                    }
+                    ExtractMessagesFromTestResult(testResult, seenErrorPaths, messages);
                 }
             }
         }
@@ -218,5 +226,25 @@ public class OpenReferralUKValidationResponseMapper : IOpenReferralUKValidationR
         }
 
         return messages;
+    }
+
+    private static void ExtractMessagesFromTestResult(HttpTestResult testResult, HashSet<string> seenErrorPaths, List<object> messages)
+    {
+        if (testResult.ValidationResult?.Errors == null) return;
+
+        foreach (var validationError in testResult.ValidationResult.Errors)
+        {
+            if (seenErrorPaths.Add(validationError.Path))
+            {
+                messages.Add(new
+                {
+                    name = validationError.ErrorCode,
+                    description = validationError.Severity,
+                    message = validationError.Message,
+                    errorIn = validationError.Path,
+                    errorAt = ""
+                });
+            }
+        }
     }
 }

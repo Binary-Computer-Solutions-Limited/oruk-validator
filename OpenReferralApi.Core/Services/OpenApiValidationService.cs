@@ -712,7 +712,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             return null;
         }
 
-        var updatedPaths = new JsonObject();
+        var updatedPaths = new Dictionary<string, JsonNode?>();
         var duplicatedEntries = new List<string>();
         var duplicateCollisions = new List<string>();
 
@@ -893,7 +893,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
 
             foreach (var testResult in endpoint.TestResults)
             {
-                if (string.IsNullOrEmpty(testResult.ResponseBody)
+                if (testResult.ResponseBody == null || testResult.ResponseBody.Length == 0
                     || testResult.ResponseBody.Length <= cap)
                 {
                     continue;

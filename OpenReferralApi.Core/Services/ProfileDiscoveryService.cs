@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using OpenReferralApi.Core.Extensions;
 using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Logging;
+using YamlDotNet.Serialization;
 namespace OpenReferralApi.Core.Services;
 
 public interface IProfileDiscoveryService
@@ -47,6 +48,14 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         "info.x-hsds-version",
         "info.x-profile-version",
         "info.version"
+    };
+
+    private static readonly string[] OpenApiCandidateTokens = new[]
+    {
+        "x-hsds-version",
+        "version",
+        "info.x-hsds-version",
+        "info.x-profile-version"
     };
 
     public ProfileDiscoveryService(
@@ -119,7 +128,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                     }
 
                     // 3. Extract schema if required and not yet found
-                    if (needsSchema && discoveredSchema == null)
+                    if ((needsSchema || discoveredVersion == null) && discoveredSchema == null)
                     {
                         if (LooksLikeOpenApiSpec(content))
                         {
@@ -129,6 +138,16 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                         {
                             // Attempt scraping for indirect schema (UI/Config)
                             discoveredSchema = await TryFetchIndirectSchemaAsync(client, content, normalizedBaseUrl, cancellationToken);
+
+                            if (discoveredVersion == null && discoveredSchema != null)
+                            {
+                                discoveredVersion = TryExtractPotentialHsdsProfileVersion(discoveredSchema);
+                                if (discoveredVersion != null)
+                                {
+                                    var reasonPath = string.IsNullOrEmpty(path) ? "root" : path;
+                                    discoveryReason = $"HSDS version {discoveredVersion} discovered from base URL at {reasonPath}";
+                                }
+                            }
                         }
                     }
 
@@ -199,8 +218,28 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
 
         if (!TryGetSchemaUrlForProfileVersion(discoveredVersion!, out var hsdsProfileSchemaUrl))
         {
-            throw new ArgumentException(
-                $"Can only validate against known profile versions. Discovered profile '{discoveredVersion}' is not supported.");
+            var hasConfiguredDefaultProfile = TryGetDefaultProfileSchemaFallback(
+                out _,
+                out var defaultProfileVersion);
+
+            if (hasConfiguredDefaultProfile && discoveredVersion != defaultProfileVersion)
+            {
+                usedDefaultProfile = true;
+                var oldDiscoveredVersion = discoveredVersion;
+                discoveredVersion = defaultProfileVersion;
+                discoveryReason = $"Discovered profile '{oldDiscoveredVersion}' is not supported. Falling back to configured default HSDS profile version: {defaultProfileVersion}";
+
+                if (!TryGetSchemaUrlForProfileVersion(discoveredVersion!, out hsdsProfileSchemaUrl))
+                {
+                    throw new ArgumentException(
+                        $"Can only validate against known profile versions. Discovered profile '{oldDiscoveredVersion}' is not supported and the default profile '{defaultProfileVersion}' is also not supported.");
+                }
+            }
+            else
+            {
+                throw new ArgumentException(
+                    $"Can only validate against known profile versions. Discovered profile '{discoveredVersion}' is not supported.");
+            }
         }
 
         var hsdsProfileSchemaContent = TryGetHsdsProfileSchemaContentFromCache(discoveredVersion);
@@ -344,14 +383,15 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
 
     private static string? TryExtractPotentialHsdsProfileVersion(string specContent)
     {
-        if (string.IsNullOrWhiteSpace(specContent))
+        var jsonContent = EnsureJson(specContent);
+        if (string.IsNullOrWhiteSpace(jsonContent))
         {
             return null;
         }
 
         try
         {
-            using var document = JsonDocument.Parse(specContent);
+            using var document = JsonDocument.Parse(jsonContent);
             var root = document.RootElement;
 
             foreach (var path in HSDS_VERSION_candidateTokens)
@@ -373,25 +413,19 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
 
     private static (string? version, bool fromOpenapiField) TryExtractProfileVersionFromOpenApiSpec(string? openApiSpecContent)
     {
-        if (string.IsNullOrWhiteSpace(openApiSpecContent))
+        var jsonContent = EnsureJson(openApiSpecContent ?? string.Empty);
+        if (string.IsNullOrWhiteSpace(jsonContent))
         {
             return (null, false);
         }
 
         try
         {
-            using var document = JsonDocument.Parse(openApiSpecContent);
+            using var document = JsonDocument.Parse(jsonContent);
             var root = document.RootElement;
 
-            var candidateTokens = new[]
-            {
-                "x-hsds-version",
-                "version",
-                "info.x-hsds-version",
-                "info.x-profile-version"
-            };
 
-            foreach (var tokenPath in candidateTokens)
+            foreach (var tokenPath in OpenApiCandidateTokens)
             {
                 var tokenValue = root.TryGetPathString(tokenPath);
                 if (!string.IsNullOrWhiteSpace(tokenValue))
@@ -459,7 +493,14 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             }
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
-            return LooksLikeOpenApiSpec(content) ? content : null;
+            if (LooksLikeOpenApiSpec(content))
+            {
+                return content;
+            }
+
+            // If the response is not JSON or an OpenAPI spec, parse the HTML and test if it is another specification such as Swagger UI
+            var extractedSpec = await TryFetchIndirectSchemaAsync(client, content, specUrl, cancellationToken);
+            return extractedSpec;
         }
         catch (OperationCanceledException)
         {
@@ -524,14 +565,15 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         var discoveredUrls = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        if (string.IsNullOrWhiteSpace(configContent))
+        var jsonContent = EnsureJson(configContent);
+        if (string.IsNullOrWhiteSpace(jsonContent))
         {
             return discoveredUrls;
         }
 
         try
         {
-            using var document = JsonDocument.Parse(configContent);
+            using var document = JsonDocument.Parse(jsonContent);
             var root = document.RootElement;
 
             AddResolvedUrl(TryGetString(root, "url"), baseUrl, seen, discoveredUrls);
@@ -754,5 +796,46 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         profileVersion = configuredDefaultKey;
 
         return true;
+    }
+
+    private static string? EnsureJson(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return null;
+        }
+
+        var trimmed = content.TrimStart();
+        if (trimmed.StartsWith("{", StringComparison.Ordinal) || trimmed.StartsWith("[", StringComparison.Ordinal))
+        {
+            return content;
+        }
+
+        // Fast path to reject obvious HTML/XML without throwing exceptions
+        if (trimmed.StartsWith("<", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        try
+        {
+            var deserializer = new DeserializerBuilder()
+                .Build();
+            var yamlObject = deserializer.Deserialize(new System.IO.StringReader(content));
+            if (yamlObject == null) return null;
+
+            var serializer = new SerializerBuilder().JsonCompatible().Build();
+            return serializer.Serialize(yamlObject);
+        }
+        catch (YamlDotNet.Core.YamlException)
+        {
+            // We only reach here if it wasn't JSON and wasn't HTML, meaning it was likely 
+            // intended to be YAML but had a syntax error.
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

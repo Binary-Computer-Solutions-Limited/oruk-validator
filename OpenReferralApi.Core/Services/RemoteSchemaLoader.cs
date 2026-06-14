@@ -74,6 +74,14 @@ public class RemoteSchemaLoader
             if (_memoryCache.TryGetValue<string>(cacheKey, out var cachedContent) && cachedContent != null)
             {
                 _logger.RetrievedSchemaFromCache(TextSanitizer.SanitizeUrlForLogging(resolvedUrl));
+                
+                try
+                {
+                    var schema = OpenReferralApi.Core.Helpers.JsonSchemaBuild.FromText(cachedContent);
+                    Json.Schema.SchemaRegistry.Global.Register(new Uri(resolvedUrl), schema);
+                }
+                catch { /* Ignore */ }
+
                 return JsonNode.Parse(cachedContent);
             }
         }
@@ -129,6 +137,13 @@ public class RemoteSchemaLoader
                 _ = _memoryCache.Set(cacheKey, content, cacheEntryOptions);
                 _logger.CachedSchema(TextSanitizer.SanitizeUrlForLogging(resolvedUrl), _cacheOptions.ExpirationMinutes);
             }
+
+            try
+            {
+                var schema = OpenReferralApi.Core.Helpers.JsonSchemaBuild.FromText(content);
+                Json.Schema.SchemaRegistry.Global.Register(new Uri(resolvedUrl), schema);
+            }
+            catch { /* Ignore registration errors if it's not a valid schema (e.g. partial component) */ }
 
             return JsonNode.Parse(content);
         }

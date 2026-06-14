@@ -53,6 +53,21 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     private readonly IHsdsComplianceService _hsdsComplianceService;
     private readonly OpenApiValidationServerOptions? _openApiValidationOptions;
     private readonly ConcurrentDictionary<string, JsonSchema> _validationSchemaCache = new(StringComparer.Ordinal);
+    
+    private static readonly string[][] TotalPagesPaths =
+    {
+        new[] { "total_pages" },
+        new[] { "totalPages" },
+        new[] { "pagination", "total_pages" },
+        new[] { "pagination", "totalPages" },
+        new[] { "meta", "total_pages" },
+        new[] { "meta", "totalPages" }
+    };
+    private static readonly string[] CollectionPropertyNames = { "data", "items", "results", "content", "contents" };
+    private static readonly string[] ItemCountPropertyNames = { "size", "count", "length" };
+    private static readonly string[] FallbackIdNames = { "id", "Id", "ID", "uuid", "guid" };
+    private static readonly string[] SchemaCombiners = { "allOf", "anyOf", "oneOf" };
+    private static readonly HashSet<string> ValidHttpMethods = new(StringComparer.OrdinalIgnoreCase) { "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TRACE" };
 
     public EndpointTestingService(
         ILogger<EndpointTestingService> logger,
@@ -263,53 +278,60 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                 // Check for non-success status codes and handle based on endpoint requirements
                 if (!testResult.IsSuccessStatusCode)
                 {
-                    var isOptionalEndpoint = pathItem.IsOptionalEndpoint();
-                    var statusCode = testResult.ResponseStatusCode ?? 0;
-                    var errorMessage = $"Endpoint returned {statusCode} status code";
-
-                    if (isOptionalEndpoint)
+                    if (testResult.ResponseStatusCode == null && !string.IsNullOrEmpty(testResult.ErrorMessage))
                     {
-                        // For optional endpoints, add validation warning instead of error
-                        if (testResult.ValidationResult == null)
-                        {
-                            testResult.ValidationResult = new ValidationResult
-                            {
-                                IsValid = false,
-                                Errors = new List<ValidationError>(),
-                                SchemaVersion = string.Empty,
-                                Duration = TimeSpan.Zero
-                            };
-                        }
-                        testResult.ValidationResult.Errors.Add(new ValidationError
-                        {
-                            Path = path,
-                            Message = $"Optional endpoint {method} {path} returned non-success status {statusCode}. This may indicate the endpoint is not implemented, which is acceptable for optional endpoints.",
-                            ErrorCode = "OPTIONAL_ENDPOINT_NON_SUCCESS",
-                            Severity = "Warning"
-                        });
-                        result.Status = EndpointTestStatus.PassedWithWarnings;
+                        result.Status = EndpointTestStatus.Error;
                     }
                     else
                     {
-                        // For required endpoints, add validation error
-                        if (testResult.ValidationResult == null)
+                        var isOptionalEndpoint = pathItem.IsOptionalEndpoint();
+                        var statusCode = testResult.ResponseStatusCode ?? 0;
+                        var errorMessage = $"Endpoint returned {statusCode} status code";
+
+                        if (isOptionalEndpoint)
                         {
-                            testResult.ValidationResult = new ValidationResult
+                            // For optional endpoints, add validation warning instead of error
+                            if (testResult.ValidationResult == null)
                             {
-                                IsValid = false,
-                                Errors = new List<ValidationError>(),
-                                SchemaVersion = string.Empty,
-                                Duration = TimeSpan.Zero
-                            };
+                                testResult.ValidationResult = new ValidationResult
+                                {
+                                    IsValid = false,
+                                    Errors = new List<ValidationError>(),
+                                    SchemaVersion = string.Empty,
+                                    Duration = TimeSpan.Zero
+                                };
+                            }
+                            testResult.ValidationResult.Errors.Add(new ValidationError
+                            {
+                                Path = path,
+                                Message = $"Optional endpoint {method} {path} returned non-success status {statusCode}. This may indicate the endpoint is not implemented, which is acceptable for optional endpoints.",
+                                ErrorCode = "OPTIONAL_ENDPOINT_NON_SUCCESS",
+                                Severity = "Warning"
+                            });
+                            result.Status = EndpointTestStatus.PassedWithWarnings;
                         }
-                        testResult.ValidationResult.Errors.Add(new ValidationError
+                        else
                         {
-                            Path = path,
-                            Message = $"Required endpoint {method} {path} returned non-success status {statusCode}. Expected 2xx status code.",
-                            ErrorCode = "REQUIRED_ENDPOINT_FAILED",
-                            Severity = "Error"
-                        });
-                        result.Status = EndpointTestStatus.FailedValidation;
+                            // For required endpoints, add validation error
+                            if (testResult.ValidationResult == null)
+                            {
+                                testResult.ValidationResult = new ValidationResult
+                                {
+                                    IsValid = false,
+                                    Errors = new List<ValidationError>(),
+                                    SchemaVersion = string.Empty,
+                                    Duration = TimeSpan.Zero
+                                };
+                            }
+                            testResult.ValidationResult.Errors.Add(new ValidationError
+                            {
+                                Path = path,
+                                Message = $"Required endpoint {method} {path} returned non-success status {statusCode}. Expected 2xx status code.",
+                                ErrorCode = "REQUIRED_ENDPOINT_FAILED",
+                                Severity = "Error"
+                            });
+                            result.Status = EndpointTestStatus.FailedValidation;
+                        }
                     }
                 }
 
@@ -419,32 +441,39 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
 
         if (!firstPageResult.IsSuccessStatusCode)
         {
-            var isOptionalEndpoint = pathItem.IsOptionalEndpoint();
-            var statusCode = firstPageResult.ResponseStatusCode ?? 0;
-
-            if (isOptionalEndpoint)
+            if (firstPageResult.ResponseStatusCode == null && !string.IsNullOrEmpty(firstPageResult.ErrorMessage))
             {
-                firstPageResult.ValidationResult!.Errors.Add(new ValidationError
-                {
-                    Path = path,
-                    Message = $"Optional endpoint {method} {path} returned non-success status {statusCode}. This may indicate the endpoint is not implemented, which is acceptable for optional endpoints.",
-                    ErrorCode = "OPTIONAL_ENDPOINT_NON_SUCCESS",
-                    Severity = "Warning"
-                });
-                NormalizeValidationResultErrors(firstPageResult.ValidationResult);
-                result.Status = EndpointTestStatus.PassedWithWarnings;
+                result.Status = EndpointTestStatus.Error;
             }
             else
             {
-                firstPageResult.ValidationResult!.Errors.Add(new ValidationError
+                var isOptionalEndpoint = pathItem.IsOptionalEndpoint();
+                var statusCode = firstPageResult.ResponseStatusCode ?? 0;
+
+                if (isOptionalEndpoint)
                 {
-                    Path = path,
-                    Message = $"Required endpoint {method} {path} returned non-success status {statusCode}. Expected 2xx status code.",
-                    ErrorCode = "REQUIRED_ENDPOINT_FAILED",
-                    Severity = "Error"
-                });
-                NormalizeValidationResultErrors(firstPageResult.ValidationResult);
-                result.Status = EndpointTestStatus.FailedValidation;
+                    firstPageResult.ValidationResult!.Errors.Add(new ValidationError
+                    {
+                        Path = path,
+                        Message = $"Optional endpoint {method} {path} returned non-success status {statusCode}. This may indicate the endpoint is not implemented, which is acceptable for optional endpoints.",
+                        ErrorCode = "OPTIONAL_ENDPOINT_NON_SUCCESS",
+                        Severity = "Warning"
+                    });
+                    NormalizeValidationResultErrors(firstPageResult.ValidationResult);
+                    result.Status = EndpointTestStatus.PassedWithWarnings;
+                }
+                else
+                {
+                    firstPageResult.ValidationResult!.Errors.Add(new ValidationError
+                    {
+                        Path = path,
+                        Message = $"Required endpoint {method} {path} returned non-success status {statusCode}. Expected 2xx status code.",
+                        ErrorCode = "REQUIRED_ENDPOINT_FAILED",
+                        Severity = "Error"
+                    });
+                    NormalizeValidationResultErrors(firstPageResult.ValidationResult);
+                    result.Status = EndpointTestStatus.FailedValidation;
+                }
             }
             return;
         }
@@ -585,17 +614,8 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     private (int? TotalPages, int ItemCount) ExtractPaginationInfo(JsonElement json)
     {
         int? totalPages = null;
-        var totalPagesPaths = new[]
-        {
-            new[] { "total_pages" },
-            new[] { "totalPages" },
-            new[] { "pagination", "total_pages" },
-            new[] { "pagination", "totalPages" },
-            new[] { "meta", "total_pages" },
-            new[] { "meta", "totalPages" }
-        };
 
-        foreach (var path in totalPagesPaths)
+        foreach (var path in TotalPagesPaths)
         {
             if (TryGetNestedPropertyIgnoreCase(json, path, out var totalPagesElement)
                 && TryParseInt32(totalPagesElement, out var pages))
@@ -612,7 +632,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         }
         else if (json.ValueKind == JsonValueKind.Object)
         {
-            foreach (var propName in new[] { "data", "items", "results", "content", "contents" })
+            foreach (var propName in CollectionPropertyNames)
             {
                 if (TryGetPropertyIgnoreCase(json, propName, out var itemsElement)
                     && itemsElement.ValueKind == JsonValueKind.Array)
@@ -624,7 +644,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
 
             if (itemCount == 0)
             {
-                foreach (var propName in new[] { "size", "count", "length" })
+                foreach (var propName in ItemCountPropertyNames)
                 {
                     if (TryGetPropertyIgnoreCase(json, propName, out var sizeElement)
                         && TryParseInt32(sizeElement, out var size))
@@ -774,7 +794,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             // Stream response content to avoid materialising a full string on every request.
             // On the retain path (FullHsdsRuntime / IncludeResponseBody) we still need the string;
             // on the fast path we stream directly into a JsonDocument with no string allocation.
-            string? responseBody = null;
+            byte[]? responseBody = null;
             JsonDocument? parsedResponseJson = null;
             var contentReadCanceled = false;
             var contentTransferStopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -782,22 +802,8 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             {
                 if (ShouldRetainResponseBodies(options))
                 {
-                    // Retain path: buffer via ArrayPool to avoid MemoryStream doubling,
-                    // then decode to string for ResponseBody output.
-                    var (rentedBuffer, bufferLength, wasCanceled) = await CopyToRentedBufferAsync(response.Content, cts.Token);
-                    contentReadCanceled = wasCanceled;
-                    try
-                    {
-                        if (!wasCanceled)
-                        {
-                            parsedResponseJson = TryParseJsonDocumentFromBuffer(rentedBuffer, bufferLength);
-                            responseBody = Encoding.UTF8.GetString(rentedBuffer, 0, bufferLength);
-                        }
-                    }
-                    finally
-                    {
-                        ArrayPool<byte>.Shared.Return(rentedBuffer);
-                    }
+                    responseBody = await response.Content.ReadAsByteArrayAsync(cts.Token);
+                    parsedResponseJson = TryParseJsonDocumentFromBuffer(responseBody);
                 }
                 else
                 {
@@ -897,7 +903,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                         {
                             jsonDataForValidation = parsedJson;
                         }
-                        else if (!string.IsNullOrWhiteSpace(testResult.ResponseBody))
+                        else if (testResult.ResponseBody != null && testResult.ResponseBody.Length > 0)
                         {
                             jsonDataForValidation = testResult.ResponseBody;
                         }
@@ -971,7 +977,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         {
             foreach (var httpResult in endpointResult.TestResults)
             {
-                if (string.IsNullOrEmpty(httpResult.ResponseBody))
+                if (httpResult.ResponseBody == null || httpResult.ResponseBody.Length == 0)
                 {
                     continue;
                 }
@@ -1002,49 +1008,15 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         }
     }
 
-    private static JsonDocument? TryParseJsonDocumentFromBuffer(byte[] buffer, int length)
+    private static JsonDocument? TryParseJsonDocumentFromBuffer(byte[] buffer)
     {
         try
         {
-            return JsonDocument.Parse(buffer.AsMemory(0, length));
+            return JsonDocument.Parse(buffer.AsMemory());
         }
         catch (System.Text.Json.JsonException)
         {
             return null;
-        }
-    }
-
-    /// <summary>
-    /// Copies HTTP content to a pooled byte array, growing it as needed.
-    /// The caller is responsible for returning the rented buffer to <see cref="ArrayPool{T}.Shared"/>.
-    /// </summary>
-    private static async Task<(byte[] RentedBuffer, int Length, bool WasCanceled)> CopyToRentedBufferAsync(
-        HttpContent content, CancellationToken cancellationToken)
-    {
-        const int InitialCapacity = 16 * 1024;
-        var buffer = ArrayPool<byte>.Shared.Rent(InitialCapacity);
-        int total = 0;
-        try
-        {
-            await using var stream = await content.ReadAsStreamAsync(cancellationToken);
-            int read;
-            while ((read = await stream.ReadAsync(buffer.AsMemory(total), cancellationToken)) > 0)
-            {
-                total += read;
-                if (total + 4096 > buffer.Length)
-                {
-                    var larger = ArrayPool<byte>.Shared.Rent(buffer.Length * 2);
-                    buffer.AsSpan(0, total).CopyTo(larger);
-                    ArrayPool<byte>.Shared.Return(buffer);
-                    buffer = larger;
-                }
-            }
-
-            return (buffer, total, false);
-        }
-        catch (OperationCanceledException)
-        {
-            return (buffer, total, true);
         }
     }
 
@@ -1100,7 +1072,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
 
     private static bool HasResponsePayload(HttpTestResult response, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult)
     {
-        return parsedResponseJsonByResult.ContainsKey(response) || !string.IsNullOrWhiteSpace(response.ResponseBody);
+        return parsedResponseJsonByResult.ContainsKey(response) || (response.ResponseBody != null && response.ResponseBody.Length > 0);
     }
 
     private static void ReleaseParsedResponseJsonDocuments(IEnumerable<HttpTestResult> testResults, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult)
@@ -1197,7 +1169,6 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     private List<EndpointGroup> GroupEndpointsByDependencies(JsonObject pathsObject, OpenApiValidationOptions options)
     {
         var endpoints = new List<EndpointInfo>();
-        var validHttpMethods = new HashSet<string> { "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TRACE" };
 
         // Extract all endpoints
         foreach (var pathProperty in pathsObject)
@@ -1212,7 +1183,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                     var method = methodProperty.Key.ToUpperInvariant();
 
                     // Skip non-HTTP method properties like "parameters", "summary", "$ref", "servers", etc.
-                    if (!validHttpMethods.Contains(method))
+                    if (!ValidHttpMethods.Contains(method))
                     {
                         continue;
                     }
@@ -1572,7 +1543,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
 
         if (!ids.Any())
         {
-            foreach (var propName in new[] { "data", "items", "results", "content", "contents" })
+            foreach (var propName in CollectionPropertyNames)
             {
                 if (TryGetPropertyIgnoreCase(json, propName, out var itemsElement)
                     && itemsElement.ValueKind == JsonValueKind.Array)
@@ -1622,7 +1593,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             }
         }
 
-        foreach (var fallbackName in new[] { "id", "Id", "ID", "uuid", "guid" })
+        foreach (var fallbackName in FallbackIdNames)
         {
             if (TryGetPropertyIgnoreCase(item, fallbackName, out var fieldValue)
                 && fieldValue.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined)
@@ -1722,7 +1693,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             }
 
             // Check allOf, anyOf, oneOf
-            foreach (var combiner in new[] { "allOf", "anyOf", "oneOf" })
+            foreach (var combiner in SchemaCombiners)
             {
                 if (schemaObj[combiner] is JsonArray combinerArray)
                 {

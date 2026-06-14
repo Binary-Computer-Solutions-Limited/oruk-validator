@@ -45,7 +45,7 @@ public class FeedValidationService : IFeedValidationService
             var filter = Builders<ServiceFeed>.Filter.Or(
                 Builders<ServiceFeed>.Filter.Eq(f => f.ActiveField, true),
                 Builders<ServiceFeed>.Filter.Eq(f => f.ActiveField, "true"),
-                Builders<ServiceFeed>.Filter.Regex("active.value", new System.Text.RegularExpressions.Regex("^true$", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                Builders<ServiceFeed>.Filter.Regex("active.value", new BsonRegularExpression("^true$", "i"))
             );
 
             return await _servicesCollection
@@ -166,28 +166,60 @@ public class FeedValidationService : IFeedValidationService
                 validationRequest,
                 cancellationToken);
 
-            // IsUp is true if any endpoint test result was successful
-            result.IsUp = validationResult.EndpointTests
-                .SelectMany(e => e.TestResults)
-                .Any(tr => tr.IsSuccessStatusCode);
+            var isUp = false;
+            var validationErrorCount = 0;
+
+            foreach (var endpointTest in validationResult.EndpointTests)
+            {
+                if (!isUp && endpointTest.TestResults != null)
+                {
+                    foreach (var tr in endpointTest.TestResults)
+                    {
+                        if (tr.IsSuccessStatusCode)
+                        {
+                            isUp = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (endpointTest.ValidationErrors != null)
+                {
+                    validationErrorCount += endpointTest.ValidationErrors.Count;
+                }
+            }
+
+            result.IsUp = isUp;
             result.IsValid = validationResult.IsValid;
             result.ResponseTimeMs = validationResult.Duration.TotalMilliseconds;
-
-            // Count all validation errors from endpoint test results
-            result.ValidationErrorCount = validationResult.EndpointTests
-                .Sum(e => e.ValidationErrors.Count);
+            result.ValidationErrorCount = validationErrorCount;
 
             if (!validationResult.IsValid)
             {
-                // Extract error messages from endpoint test results
-                var errors = validationResult.EndpointTests
-                  .SelectMany(e => e.ValidationErrors)
-                    .Take(5)
-                    .Select(e => $"{e.Path}: {e.Message}")
-                    .ToList();
+                var formattedErrorsCount = 0;
+                var sb = new System.Text.StringBuilder();
 
-                result.ErrorMessage = errors.Any()
-                    ? string.Join("; ", errors)
+                foreach (var endpointTest in validationResult.EndpointTests)
+                {
+                    if (endpointTest.ValidationErrors == null) continue;
+
+                    foreach (var error in endpointTest.ValidationErrors)
+                    {
+                        if (formattedErrorsCount > 0)
+                        {
+                            sb.Append("; ");
+                        }
+                        sb.Append(error.Path).Append(": ").Append(error.Message);
+                        formattedErrorsCount++;
+
+                        if (formattedErrorsCount >= 5) break;
+                    }
+
+                    if (formattedErrorsCount >= 5) break;
+                }
+
+                result.ErrorMessage = formattedErrorsCount > 0
+                    ? sb.ToString()
                     : "Validation failed with no specific errors";
             }
 
@@ -228,19 +260,23 @@ public class FeedValidationService : IFeedValidationService
             return new List<FeedValidationResult>();
         }
 
-        using var semaphore = new SemaphoreSlim(maxConcurrency);
+        var results = new FeedValidationResult[feeds.Count];
 
-        var tasks = feeds.Select(async feed =>
+        await Parallel.ForEachAsync(Enumerable.Range(0, feeds.Count), new ParallelOptions
         {
-            await semaphore.WaitAsync(cancellationToken);
+            MaxDegreeOfParallelism = maxConcurrency,
+            CancellationToken = cancellationToken
+        }, async (i, ct) =>
+        {
+            var feed = feeds[i];
             try
             {
-                return await ValidateAndUpdateFeedAsync(feed, cancellationToken);
+                results[i] = await ValidateAndUpdateFeedAsync(feed, ct);
             }
             catch (Exception ex)
             {
                 _logger.FailedToValidateFeed(ex, feed.Id ?? string.Empty);
-                return new FeedValidationResult
+                results[i] = new FeedValidationResult
                 {
                     FeedId = feed.Id ?? string.Empty,
                     FeedUrl = feed.Url,
@@ -250,13 +286,8 @@ public class FeedValidationService : IFeedValidationService
                     ErrorMessage = $"Validation error: {TextSanitizer.SanitizeExceptionMessage(ex.Message)}"
                 };
             }
-            finally
-            {
-                _ = semaphore.Release();
-            }
         });
 
-        var results = await Task.WhenAll(tasks);
         return results.ToList();
     }
 

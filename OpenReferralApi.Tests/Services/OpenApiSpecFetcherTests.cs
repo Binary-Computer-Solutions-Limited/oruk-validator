@@ -39,8 +39,8 @@ public class OpenApiSpecFetcherTests
 
         // Mock ResolveAsync to return the same JSON
         _schemaResolverServiceMock
-            .Setup(s => s.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication>()))
-            .ReturnsAsync((string content, string baseUri, DataSourceAuthentication auth) => content);
+            .Setup(s => s.ResolveAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DataSourceAuthentication?>()))
+            .ReturnsAsync((string content, string? baseUri, DataSourceAuthentication? auth) => content);
     }
 
     [TearDown]
@@ -547,9 +547,9 @@ public class OpenApiSpecFetcherTests
         string? capturedResolvedInput = null;
 
         _schemaResolverServiceMock
-            .Setup(s => s.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication>()))
-            .Callback<string, string, DataSourceAuthentication>((content, _, _) => capturedResolvedInput = content)
-            .ReturnsAsync((string content, string _, DataSourceAuthentication _) => content);
+            .Setup(s => s.ResolveAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DataSourceAuthentication?>()))
+            .Callback<string, string?, DataSourceAuthentication?>((content, _, _) => capturedResolvedInput = content)
+            .ReturnsAsync((string content, string? _, DataSourceAuthentication? _) => content);
 
         var handler = new MockHttpMessageHandler(async request =>
         {

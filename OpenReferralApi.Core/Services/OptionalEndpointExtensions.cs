@@ -7,6 +7,8 @@ namespace OpenReferralApi.Core.Services;
 /// </summary>
 public static class OptionalEndpointExtensions
 {
+    private static readonly string[] HttpMethods = { "get", "post", "put", "delete", "patch", "head", "options", "trace" };
+
     /// <summary>
     /// Determines if an endpoint is marked as optional in the OpenAPI specification
     /// </summary>
@@ -37,8 +39,7 @@ public static class OptionalEndpointExtensions
         }
 
         // If this is a path item, check all operations within it
-        var httpMethods = new[] { "get", "post", "put", "delete", "patch", "head", "options", "trace" };
-        foreach (var method in httpMethods)
+        foreach (var method in HttpMethods)
         {
             if (pathObject[method] is JsonObject operationObject)
             {
@@ -101,8 +102,7 @@ public static class OptionalEndpointExtensions
 
         // If this is a path item, get tags from all operations within it
         var allTags = new HashSet<string>();
-        var httpMethods = new[] { "get", "post", "put", "delete", "patch", "head", "options", "trace" };
-        foreach (var method in httpMethods)
+        foreach (var method in HttpMethods)
         {
             if (pathObject[method] is JsonObject operationObject)
             {
@@ -192,4 +192,3 @@ public static class OptionalEndpointExtensions
         return result;
     }
 }
-

@@ -76,7 +76,8 @@ public class HttpTestResult
     /// Contains the actual data returned by the API endpoint
     /// </summary>
     [JsonPropertyName("responseBody")]
-    public string? ResponseBody { get; set; }
+     [JsonConverter(typeof(RawJsonBytesConverter))]
+    public byte[]? ResponseBody { get; set; }
 
     /// <summary>
     /// Results from validating the response against the OpenAPI specification

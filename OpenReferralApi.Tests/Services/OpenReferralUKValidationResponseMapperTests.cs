@@ -427,4 +427,86 @@ public class OpenReferralUKValidationResponseMapperTests
         Assert.That(messages[0]!["description"]!.GetValue<string>(), Is.EqualTo("Warning"));
         Assert.That(messages[0]!["message"]!.GetValue<string>(), Does.Contain("Average response time is 6500ms"));
     }
+
+    [Test]
+    public void MapToOpenReferralUKValidationResponse_WhenRunRepeatedly_DoesNotLeakMemory()
+    {
+        // Arrange: Create a large, complex validation payload to stress the mapper
+        var result = new OpenApiValidationResult
+        {
+            Metadata = new CommonValidationMetadata { BaseUrl = "https://api.example.com" },
+            SpecificationValidation = new OpenApiSpecificationValidation
+            {
+                IsValid = false,
+                Version = "3.0",
+                Errors = new List<ValidationError>()
+            },
+            EndpointTests = new List<EndpointTestResult>()
+        };
+
+        for (int i = 0; i < 50; i++)
+        {
+            result.SpecificationValidation.Errors.Add(new ValidationError
+            {
+                ErrorCode = "SPEC_ERR",
+                Severity = "Error",
+                Message = "A specification error occurred",
+                Path = $"paths.test{i}"
+            });
+        }
+
+        for (int i = 0; i < 20; i++)
+        {
+            var testResult = new HttpTestResult { ValidationResult = new ValidationResult { IsValid = false, Errors = new List<ValidationError>() } };
+            
+            for (int j = 0; j < 10; j++)
+            {
+                testResult.ValidationResult.Errors.Add(new ValidationError
+                {
+                    ErrorCode = "VAL_ERR",
+                    Severity = "Error",
+                    Message = "A validation error occurred",
+                    Path = $"data.items[{j}].field"
+                });
+            }
+
+            result.EndpointTests.Add(new EndpointTestResult
+            {
+                Name = $"Endpoint {i}",
+                Method = "GET",
+                Path = $"/endpoint{i}",
+                IsOptional = i % 2 == 0,
+                Status = EndpointTestStatus.FailedValidation,
+                TestResults = new List<HttpTestResult> { testResult }
+            });
+        }
+
+        // Warmup: Ensure JIT compilation, static allocations, and capacity expansions are complete
+        _ = _mapper.MapToOpenReferralUKValidationResponse(result);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        var memoryBefore = GC.GetTotalMemory(true);
+
+        // Act: Run mapping extensively (mapping 250,000 total errors)
+        for (int i = 0; i < 1000; i++)
+        {
+            _ = _mapper.MapToOpenReferralUKValidationResponse(result);
+        }
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        var memoryAfter = GC.GetTotalMemory(true);
+        var memoryGrowth = memoryAfter - memoryBefore;
+
+        TestContext.Out.WriteLine($"Memory Before: {memoryBefore / 1024.0:F2} KB");
+        TestContext.Out.WriteLine($"Memory After:  {memoryAfter / 1024.0:F2} KB");
+        TestContext.Out.WriteLine($"Memory Growth: {memoryGrowth / 1024.0:F2} KB ({(memoryGrowth / 1024.0 / 1024.0):F2} MB)");
+
+        // Assert: Allow for .NET GC segment fragmentation and ArrayPool retention, but fail if unbounded leaks occur
+        Assert.That(memoryGrowth, Is.LessThan(5000 * 1024), $"Memory grew by {memoryGrowth} bytes, indicating a potential leak or degraded pooling optimizations.");
+    }
 }

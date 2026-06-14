@@ -121,6 +121,36 @@ public class ProfileDiscoveryServiceTests
     }
 
     [Test]
+    public async Task DiscoverFromBaseUrlAsync_WhenUnsupportedProfileDiscoveredAndDefaultConfigured_FallsBackToDefaultProfile()
+    {
+        SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode, string)>
+        {
+            ["/"] = (HttpStatusCode.OK, "{\"version\":\"UNSUPPORTED-VERSION\"}")
+        });
+
+        // Create service WITH a default profile version configured
+        var service = new ProfileDiscoveryService(
+            _loggerMock.Object,
+            _httpClientFactoryMock.Object,
+            Options.Create(new SpecificationOptions
+            {
+                DefaultProfileVersion = "HSDS-UK-3.0",
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-3.0"] = "https://hsds.example.org/3.0/openapi.json"
+                }
+            }),
+            Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.StrictOwnSchemaValidation }),
+            _memoryCache);
+
+        var result = await service.DiscoverFromBaseUrlAsync(null, "https://api.example.com");
+
+        Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
+        Assert.That(result.UsedDefaultProfile, Is.True);
+        Assert.That(result.HsdsProfileReason, Does.Contain("Falling back to configured default HSDS profile version: HSDS-UK-3.0"));
+    }
+
+    [Test]
     public async Task DiscoverFromBaseUrlAsync_WhenSwaggerConfigEndpointContainsUrl_ReturnsDiscoveredSpecContent()
     {
         // Use a URL not in Constants.Paths so it is only reachable via swagger-config probing
@@ -188,7 +218,8 @@ public class ProfileDiscoveryServiceTests
             {
                 Urls = new Dictionary<string, string>
                 {
-                    ["HSDS-UK-3.0"] = "https://hsds.example.org/3.0/openapi.json"
+                    ["HSDS-UK-3.0"] = "https://hsds.example.org/3.0/openapi.json",
+                    ["3.0"] = "https://hsds.example.org/3.0/openapi.json"
                 }
             }),
             Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = ownSchemaValidation }),

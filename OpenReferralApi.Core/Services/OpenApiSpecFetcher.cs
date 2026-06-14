@@ -267,9 +267,16 @@ public class OpenApiSpecFetcher
             return rawContent;
         }
 
+        // Fast path to reject obvious HTML/XML without throwing Yaml exceptions
+        if (trimmedContent.StartsWith("<", StringComparison.Ordinal))
+        {
+            throw new FormatException("OpenAPI spec content appears to be HTML/XML.");
+        }
+
         try
         {
-            var deserializer = new DeserializerBuilder().Build();
+            var deserializer = new DeserializerBuilder()
+                .Build();
             var yamlObject = deserializer.Deserialize(new StringReader(rawContent));
 
             var serializer = new SerializerBuilder()
