@@ -58,10 +58,13 @@ public class EndpointTestingServiceTests
       null,
       CancellationToken.None);
 
-    Assert.That(results, Has.Count.EqualTo(1));
-    Assert.That(HasInformationLogContaining(_loggerMock, "Memory checkpoint EndpointTestingService/start."), Is.True);
-    Assert.That(HasInformationLogContaining(_loggerMock, "ManagedHeapBytes:"), Is.True);
-    Assert.That(HasInformationLogContaining(_loggerMock, "GcHeapSizeBytes:"), Is.True);
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(results, Has.Count.EqualTo(1));
+      Assert.That(HasInformationLogContaining(_loggerMock, "Memory checkpoint EndpointTestingService/start."), Is.True);
+      Assert.That(HasInformationLogContaining(_loggerMock, "ManagedHeapBytes:"), Is.True);
+      Assert.That(HasInformationLogContaining(_loggerMock, "GcHeapSizeBytes:"), Is.True);
+    }
   }
 
   [Test]
@@ -76,13 +79,16 @@ public class EndpointTestingServiceTests
         null,
         CancellationToken.None);
 
-    Assert.That(results, Has.Count.EqualTo(1));
-    var endpoint = results[0];
-    Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.NotTested));
-    Assert.That(endpoint.TestResults, Has.Count.EqualTo(1));
-    Assert.That(endpoint.TestResults[0].ValidationResult, Is.Not.Null);
-    Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
-        Has.Some.Matches<ValidationError>(e => e.ErrorCode == "NO_IDS_AVAILABLE"));
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(results, Has.Count.EqualTo(1));
+      var endpoint = results[0];
+      Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.NotTested));
+      Assert.That(endpoint.TestResults, Has.Count.EqualTo(1));
+      Assert.That(endpoint.TestResults[0].ValidationResult, Is.Not.Null);
+      Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
+          Has.Some.Matches<ValidationError>(e => e.ErrorCode == "NO_IDS_AVAILABLE"));
+    }
   }
 
   [Test]
@@ -121,11 +127,14 @@ public class EndpointTestingServiceTests
         null,
         CancellationToken.None);
 
-    Assert.That(results, Has.Count.EqualTo(2));
-    var parameterized = results.Single(r => r.Path == "/services/{id}");
-    Assert.That(parameterized.Status, Is.EqualTo(EndpointTestStatus.PassedValidation));
-    Assert.That(parameterized.TestResults, Has.Count.EqualTo(2));
-    Assert.That(parameterized.TestResults.All(r => !string.IsNullOrWhiteSpace(r.TestedId)), Is.True);
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(results, Has.Count.EqualTo(2));
+      var parameterized = results.Single(r => r.Path == "/services/{id}");
+      Assert.That(parameterized.Status, Is.EqualTo(EndpointTestStatus.PassedValidation));
+      Assert.That(parameterized.TestResults, Has.Count.EqualTo(2));
+      Assert.That(parameterized.TestResults.All(r => !string.IsNullOrWhiteSpace(r.TestedId)), Is.True);
+    }
   }
 
   [Test]
@@ -164,11 +173,14 @@ public class EndpointTestingServiceTests
         null,
         CancellationToken.None);
 
-    Assert.That(results, Has.Count.EqualTo(2));
-    var parameterized = results.Single(r => r.Path == "/services/{id}");
-    Assert.That(parameterized.Status, Is.EqualTo(EndpointTestStatus.PassedValidation));
-    Assert.That(parameterized.TestResults, Has.Count.EqualTo(2));
-    Assert.That(parameterized.TestResults.All(r => !string.IsNullOrWhiteSpace(r.TestedId)), Is.True);
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(results, Has.Count.EqualTo(2));
+      var parameterized = results.Single(r => r.Path == "/services/{id}");
+      Assert.That(parameterized.Status, Is.EqualTo(EndpointTestStatus.PassedValidation));
+      Assert.That(parameterized.TestResults, Has.Count.EqualTo(2));
+      Assert.That(parameterized.TestResults.All(r => !string.IsNullOrWhiteSpace(r.TestedId)), Is.True);
+    }
   }
 
   [Test]
@@ -207,11 +219,14 @@ public class EndpointTestingServiceTests
         null,
         CancellationToken.None);
 
-    Assert.That(results, Has.Count.EqualTo(2));
-    var parameterized = results.Single(r => r.Path == "/services/{id}");
-    Assert.That(parameterized.Status, Is.EqualTo(EndpointTestStatus.PassedValidation));
-    Assert.That(parameterized.TestResults, Has.Count.EqualTo(2));
-    Assert.That(parameterized.TestResults.All(r => !string.IsNullOrWhiteSpace(r.TestedId)), Is.True);
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(results, Has.Count.EqualTo(2));
+      var parameterized = results.Single(r => r.Path == "/services/{id}");
+      Assert.That(parameterized.Status, Is.EqualTo(EndpointTestStatus.PassedValidation));
+      Assert.That(parameterized.TestResults, Has.Count.EqualTo(2));
+      Assert.That(parameterized.TestResults.All(r => !string.IsNullOrWhiteSpace(r.TestedId)), Is.True);
+    }
   }
 
   [Test]
@@ -250,11 +265,14 @@ public class EndpointTestingServiceTests
         null,
         CancellationToken.None);
 
-    Assert.That(results, Has.Count.EqualTo(2));
-    var parameterized = results.Single(r => r.Path == "/services/{id}");
-    Assert.That(parameterized.Status, Is.EqualTo(EndpointTestStatus.PassedValidation));
-    Assert.That(parameterized.TestResults, Has.Count.EqualTo(2));
-    Assert.That(parameterized.TestResults.All(r => !string.IsNullOrWhiteSpace(r.TestedId)), Is.True);
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(results, Has.Count.EqualTo(2));
+      var parameterized = results.Single(r => r.Path == "/services/{id}");
+      Assert.That(parameterized.Status, Is.EqualTo(EndpointTestStatus.PassedValidation));
+      Assert.That(parameterized.TestResults, Has.Count.EqualTo(2));
+      Assert.That(parameterized.TestResults.All(r => !string.IsNullOrWhiteSpace(r.TestedId)), Is.True);
+    }
   }
 
   [Test]
@@ -283,11 +301,14 @@ public class EndpointTestingServiceTests
         null,
         CancellationToken.None);
 
-    Assert.That(results, Has.Count.EqualTo(1));
-    var endpoint = results[0];
-    Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
-    Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
-        Has.Some.Matches<ValidationError>(e => e.ErrorCode == "OPTIONAL_ENDPOINT_NON_SUCCESS"));
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(results, Has.Count.EqualTo(1));
+      var endpoint = results[0];
+      Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
+      Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
+          Has.Some.Matches<ValidationError>(e => e.ErrorCode == "OPTIONAL_ENDPOINT_NON_SUCCESS"));
+    }
   }
 
   [Test]
@@ -305,11 +326,14 @@ public class EndpointTestingServiceTests
         null,
         CancellationToken.None);
 
-    Assert.That(results, Has.Count.EqualTo(1));
-    var endpoint = results[0];
-    Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.FailedValidation));
-    Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
-        Has.Some.Matches<ValidationError>(e => e.ErrorCode == "REQUIRED_ENDPOINT_FAILED"));
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(results, Has.Count.EqualTo(1));
+      var endpoint = results[0];
+      Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.FailedValidation));
+      Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
+          Has.Some.Matches<ValidationError>(e => e.ErrorCode == "REQUIRED_ENDPOINT_FAILED"));
+    }
   }
 
   [Test]
@@ -335,15 +359,18 @@ public class EndpointTestingServiceTests
       null,
       CancellationToken.None);
 
-    Assert.That(results, Has.Count.EqualTo(1));
-    Assert.That(capturedValidationRequest, Is.Not.Null);
-    Assert.That(capturedValidationRequest!.Schema, Is.TypeOf<JsonSchema>());
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(results, Has.Count.EqualTo(1));
+      Assert.That(capturedValidationRequest, Is.Not.Null);
+      Assert.That(capturedValidationRequest!.Schema, Is.TypeOf<JsonSchema>());
 
-    var schema = (JsonSchema)capturedValidationRequest.Schema!;
-    var schemaJson = System.Text.Json.JsonSerializer.Serialize(schema);
-    Assert.That(schemaJson, Does.Contain("\"components\""));
-    Assert.That(schemaJson, Does.Not.Contain("x-validation-schema"));
-    Assert.That(schemaJson, Does.Contain("#/components/schemas/Service"));
+      var schema = (JsonSchema)capturedValidationRequest.Schema!;
+      var schemaJson = System.Text.Json.JsonSerializer.Serialize(schema);
+      Assert.That(schemaJson, Does.Contain("\"components\""));
+      Assert.That(schemaJson, Does.Not.Contain("x-validation-schema"));
+      Assert.That(schemaJson, Does.Contain("#/components/schemas/Service"));
+    }
   }
 
   [Test]
@@ -372,11 +399,14 @@ public class EndpointTestingServiceTests
         null,
         CancellationToken.None);
 
-    Assert.That(results, Has.Count.EqualTo(1));
-    var endpoint = results[0];
-    Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
-    Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
-        Has.Some.Matches<ValidationError>(e => e.ErrorCode == "EMPTY_FEED_WARNING"));
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(results, Has.Count.EqualTo(1));
+      var endpoint = results[0];
+      Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
+      Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
+          Has.Some.Matches<ValidationError>(e => e.ErrorCode == "EMPTY_FEED_WARNING"));
+    }
   }
 
   [Test]
@@ -451,8 +481,11 @@ public class EndpointTestingServiceTests
       CancellationToken.None);
 
     var parameterized = results.Single(r => r.Path == "/services/{id}");
-    Assert.That(parameterized.Status, Is.EqualTo(EndpointTestStatus.Skipped));
-    Assert.That(parameterized.TestResults, Is.Empty);
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(parameterized.Status, Is.EqualTo(EndpointTestStatus.Skipped));
+      Assert.That(parameterized.TestResults, Is.Empty);
+    }
   }
 
   [Test]
@@ -515,10 +548,13 @@ public class EndpointTestingServiceTests
       null,
       CancellationToken.None);
 
-    Assert.That(results, Has.Count.EqualTo(1));
-    Assert.That(requestedUris.Count, Is.EqualTo(3));
-    Assert.That(requestedUris.Any(u => u.Contains("page=2", StringComparison.OrdinalIgnoreCase)), Is.True);
-    Assert.That(requestedUris.Any(u => u.Contains("page=4", StringComparison.OrdinalIgnoreCase)), Is.True);
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(results, Has.Count.EqualTo(1));
+      Assert.That(requestedUris, Has.Count.EqualTo(3));
+      Assert.That(requestedUris.Any(u => u.Contains("page=2", StringComparison.OrdinalIgnoreCase)), Is.True);
+      Assert.That(requestedUris.Any(u => u.Contains("page=4", StringComparison.OrdinalIgnoreCase)), Is.True);
+    }
   }
 
   [Test]
@@ -533,12 +569,15 @@ public class EndpointTestingServiceTests
       null,
       CancellationToken.None);
 
-    Assert.That(results, Has.Count.EqualTo(1));
-    var endpoint = results[0];
-    Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.Error));
-    Assert.That(endpoint.TestResults, Has.Count.EqualTo(1));
-    Assert.That(endpoint.TestResults[0].IsSuccessStatusCode, Is.False);
-    Assert.That(endpoint.TestResults[0].ErrorMessage, Does.Contain("boom"));
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(results, Has.Count.EqualTo(1));
+      var endpoint = results[0];
+      Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.Error));
+      Assert.That(endpoint.TestResults, Has.Count.EqualTo(1));
+      Assert.That(endpoint.TestResults[0].IsSuccessStatusCode, Is.False);
+      Assert.That(endpoint.TestResults[0].ErrorMessage, Does.Contain("boom"));
+    }
   }
 
   [Test]
@@ -605,10 +644,13 @@ public class EndpointTestingServiceTests
         null,
         CancellationToken.None);
 
-    Assert.That(results, Has.Count.EqualTo(1));
-    var endpoint = results[0];
-    Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.PassedValidation));
-    Assert.That(endpoint.TestResults[0].ResponseBody, Is.Null);
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(results, Has.Count.EqualTo(1));
+      var endpoint = results[0];
+      Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.PassedValidation));
+      Assert.That(endpoint.TestResults[0].ResponseBody, Is.Null);
+    }
   }
 
   private void SetupService(Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> responder)
