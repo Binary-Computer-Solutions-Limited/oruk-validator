@@ -57,7 +57,7 @@ public class ReferenceResolver
         // Check for cyclic reference recursion
         if (visited.Contains(refString))
         {
-            _logger.LogWarning("Cyclic reference detected during on-the-fly lookup: {Ref}", refString);
+            _logger.CyclicReferenceDetectedDuringLookup(refString);
             _resolutionIssues.Add(new SchemaResolutionIssue
             {
                 ErrorCode = CircularReferenceErrorCode,
@@ -335,7 +335,7 @@ public class ReferenceResolver
 
         if (!File.Exists(localPath))
         {
-            _logger.LogWarning("Schema file not found at path: {Path}", localPath);
+            _logger.SchemaFileNotFound(localPath);
             return null;
         }
 
@@ -346,7 +346,7 @@ public class ReferenceResolver
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to load local schema file from path: {Path}", localPath);
+            _logger.FailedToLoadLocalSchemaFile(ex, localPath);
             throw;
         }
     }

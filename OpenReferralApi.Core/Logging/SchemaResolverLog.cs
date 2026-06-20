@@ -33,5 +33,8 @@ namespace OpenReferralApi.Core.Logging
 
         [LoggerMessage(EventId = 16009, Level = LogLevel.Error, Message = "Failed to create JSON schema from JSON with resolver. DocumentUri: {DocumentUri}")]
         public static partial void FailedToCreateJsonSchema(this ILogger logger, Exception exception, string documentUri);
+
+        [LoggerMessage(EventId = 16010, Level = LogLevel.Warning, Message = "Failed to pre-fetch schema ref: {Url}")]
+        public static partial void FailedToPreFetchSchemaRef(this ILogger logger, Exception exception, string url);
     }
 }

@@ -453,14 +453,23 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             }
             else
             {
-                endpointValidationSpec = ownSchemaSpec;
+                endpointValidationSpec = ownSchemaSpec!;
                 result.Notifications.Add(
                     "OwnSchemaValidation is set to None but no HSDS profile schema could be resolved; falling back to the feed's own schema for endpoint validation.");
             }
         }
         else
         {
-            endpointValidationSpec = ownSchemaSpec;
+            if (ownSchemaSpec != null)
+            {
+                endpointValidationSpec = ownSchemaSpec;
+            }
+            else
+            {
+                endpointValidationSpec = hsdsProfileSpec!;
+                result.Notifications.Add(
+                    "OwnSchemaValidation is enabled but no own schema could be resolved; falling back to the HSDS profile schema for endpoint validation.");
+            }
         }
 
         endpointValidationSpec = PrepareEndpointValidationSpecForEndpointTesting(endpointValidationSpec, request.BaseUrl, out var pathDeduplicationWarning);

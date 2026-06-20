@@ -309,7 +309,7 @@ public class ProfileDiscoveryService(
 
         try
         {
-            logger.LogInformation("Profile schema '{ProfileVersion}' not found in cache. Fetching from {SchemaUrl} on demand.", profileVersion, schemaUrl);
+            logger.ProfileSchemaCacheMiss(profileVersion, schemaUrl);
             using var client = _httpClientFactory.CreateClient("OpenApiValidationService");
             using var response = await client.GetAsync(schemaUrl, cancellationToken);
             if (response.IsSuccessStatusCode)
@@ -349,12 +349,12 @@ public class ProfileDiscoveryService(
             }
             else
             {
-                logger.LogWarning("Failed to fetch profile schema from {SchemaUrl}. Status code: {StatusCode}", schemaUrl, response.StatusCode);
+                logger.FailedToFetchProfileSchema(schemaUrl, (int)response.StatusCode);
             }
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error fetching profile schema from {SchemaUrl} on demand.", schemaUrl);
+            logger.ErrorFetchingProfileSchema(ex, schemaUrl);
         }
 
         return null;

@@ -27,6 +27,14 @@ namespace OpenReferralApi.Core.Logging
 
        [LoggerMessage(EventId = 7000, Level = LogLevel.Information, Message = "Profile discovery resolved: DiscoverytUrl '{discoveryUrl}'; with profile context '{discoveredVersion}':{ProfileReason}")]
         public static partial void ProfileDiscoveryResolved(this ILogger logger, string discoveryUrl, string discoveredVersion,  string profileReason);
- 
+
+        [LoggerMessage(EventId = 12007, Level = LogLevel.Information, Message = "Profile schema '{ProfileVersion}' not found in cache. Fetching from {SchemaUrl} on demand.")]
+        public static partial void ProfileSchemaCacheMiss(this ILogger logger, string profileVersion, string schemaUrl);
+
+        [LoggerMessage(EventId = 12008, Level = LogLevel.Warning, Message = "Failed to fetch profile schema from {SchemaUrl}. Status code: {StatusCode}")]
+        public static partial void FailedToFetchProfileSchema(this ILogger logger, string schemaUrl, int statusCode);
+
+        [LoggerMessage(EventId = 12009, Level = LogLevel.Error, Message = "Error fetching profile schema from {SchemaUrl} on demand.")]
+        public static partial void ErrorFetchingProfileSchema(this ILogger logger, Exception exception, string schemaUrl);
     }
 }

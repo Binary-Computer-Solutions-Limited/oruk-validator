@@ -251,7 +251,7 @@ public class SchemaResolverService : ISchemaResolverService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to pre-fetch schema ref: {Url}", url);
+                _logger.FailedToPreFetchSchemaRef(ex, url);
             }
         }
     }
