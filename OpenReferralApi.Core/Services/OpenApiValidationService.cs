@@ -77,7 +77,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             var profile = ResolveMetadataProfileIdentifier(
                 _hsdsComplianceService.ExtractClaimedProfileVersion(null, request.OwnSchemaUrl),
                 request.OwnSchemaUrl);
-            var cacheState = GetResolvedOpenApiCacheState();
+            var (feedEntries, profileEntries, expiredEntries, feedJsonChars, profileJsonChars) = GetResolvedOpenApiCacheState();
 
             var payload = CreateMemoryCheckpointPayload(
                 service: nameof(OpenApiValidationService),
@@ -86,11 +86,11 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
                 snapshot: snapshot,
                 profile: TextSanitizer.SanitizeStringForLogging(profile ?? string.Empty)) with
             {
-                FeedCacheEntries = cacheState.FeedEntries,
-                ProfileCacheEntries = cacheState.ProfileEntries,
-                ExpiredCacheEntries = cacheState.ExpiredEntries,
-                FeedJsonChars = cacheState.FeedJsonChars,
-                ProfileJsonChars = cacheState.ProfileJsonChars
+                FeedCacheEntries = feedEntries,
+                ProfileCacheEntries = profileEntries,
+                ExpiredCacheEntries = expiredEntries,
+                FeedJsonChars = feedJsonChars,
+                ProfileJsonChars = profileJsonChars
             };
 
             _logger.UnifiedMemoryCheckpoint(payload);
@@ -103,11 +103,11 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
 
             _logger.ResolvedOpenApiCacheState(
                 stage,
-                cacheState.FeedEntries,
-                cacheState.ProfileEntries,
-                cacheState.ExpiredEntries,
-                cacheState.FeedJsonChars,
-                cacheState.ProfileJsonChars);
+                feedEntries,
+                profileEntries,
+                expiredEntries,
+                feedJsonChars,
+                profileJsonChars);
 
         }
 
@@ -127,7 +127,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
 
             result.SpecificationValidation = executionOutcome.SpecificationValidation;
             result.EndpointTests = executionOutcome.EndpointTests;
-            result.Summary = BuildTestSummary(result.SpecificationValidation, result.EndpointTests, request.Options);
+            result.Summary = BuildTestSummary(result.SpecificationValidation, result.EndpointTests);
             var hasFailedEndpoints = result.EndpointTests.Any(e =>
                 e.Status == EndpointTestStatus.FailedValidation || e.Status == EndpointTestStatus.Error);
             result.IsValid = result.Summary.FailedTests == 0 && !hasFailedEndpoints;
@@ -194,7 +194,6 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         // Step 2: Specification validation, including comparison against any discovered HSDS profile schema to produce profile compliance findings.
         var specificationStage = await ExecuteSpecificationStageAsync(
             request,
-            result,
             discovery.HsdsProfileVersion,
             discovery.HsdsProfileSchema,
             discovery.OwnSchemaSpec,
@@ -247,7 +246,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
     {
         if (string.IsNullOrWhiteSpace(request.BaseUrl))
         {
-            throw new ArgumentException("Base URL must be provided", nameof(request.BaseUrl));
+            throw new ArgumentException("Base URL must be provided", nameof(request));
         }
 
         var dataSourceRequestAuth =
@@ -269,7 +268,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             var schemaAuth = _authenticationValidationService.TryGetValidatedRequestAuthentication("schema", request.DataSourceAuth);
             try
             {
-                ownSchema = await GetCachedResolvedOpenApiSpecAsync(request.OwnSchemaUrl, schemaAuth, cancellationToken, "feed", schemaResolutionIssues);
+                ownSchema = await GetCachedResolvedOpenApiSpecAsync(request.OwnSchemaUrl, schemaAuth, "feed", schemaResolutionIssues, cancellationToken);
             }
             catch
             {
@@ -328,7 +327,6 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
 
     private async Task<SpecificationStageResult> ExecuteSpecificationStageAsync(
         OpenApiValidationRequest request,
-        OpenApiValidationResult result,
         string? hsdsProfileVersion,
         JsonObject? hsdsProfileSchemaContent,
         JsonObject? ownSchemaContent,
@@ -336,7 +334,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         CancellationToken cancellationToken)
     {
         OpenApiSpecificationValidation? specValidation = null;
-        List<ValidationError>? specValidationErrors = new List<ValidationError>();
+        List<ValidationError> specValidationErrors = [];
         if (_openApiValidationOptions.ValidateSpecification)
         {
             if (ownSchemaContent == null)
@@ -397,9 +395,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             var profileComplianceFindings = _hsdsComplianceService.CompareFeedSpecAgainstHsdsProfile(openApiSchemaContent, hsdsProfileSchemaContent);
             if (!request.Options!.ReportAdditionalFields)
             {
-                profileComplianceFindings = profileComplianceFindings
-                    .Where(ShouldIncludeProfileComplianceFinding)
-                    .ToList();
+                profileComplianceFindings = [.. profileComplianceFindings.Where(ShouldIncludeProfileComplianceFinding)];
             }
 
             if (profileComplianceFindings.Count > 0)
@@ -511,7 +507,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             return;
         }
 
-        var validationErrors = specificationStage.SpecValidationErrors ?? new List<ValidationError>();
+        var validationErrors = specificationStage.SpecValidationErrors ?? [];
         AddCircularReferenceValidationIssues(schemaResolutionIssues, validationErrors);
         specificationStage.SpecValidation.Errors = ValidationErrorNormalizer.NormalizeAndDeduplicateByPath(validationErrors);
         specificationStage.SpecValidation.IsValid = !specificationStage.SpecValidation.Errors.Any(e =>
@@ -600,7 +596,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
     private sealed class ValidationExecutionOutcome
     {
         public OpenApiSpecificationValidation? SpecificationValidation { get; init; }
-        public List<EndpointTestResult> EndpointTests { get; init; } = new();
+        public List<EndpointTestResult> EndpointTests { get; init; } = [];
         public string? ClaimedProfileVersion { get; init; }
         public string? ProfileReason { get; init; }
     }
@@ -630,7 +626,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             return;
         }
 
-        var latestIssues = _schemaResolverService.GetResolutionIssues() ?? Array.Empty<SchemaResolutionIssue>();
+        var latestIssues = _schemaResolverService.GetResolutionIssues() ?? [];
         foreach (var issue in latestIssues)
         {
             if (string.Equals(issue.ErrorCode, "CIRCULAR_SCHEMA_REFERENCE", StringComparison.Ordinal))
@@ -642,7 +638,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
 
     private static void AddCircularReferenceValidationIssues(
         IEnumerable<SchemaResolutionIssue> schemaResolutionIssues,
-        ICollection<ValidationError> targetValidationErrors)
+        List<ValidationError> targetValidationErrors)
     {
         foreach (var issue in DistinctCircularReferenceIssues(schemaResolutionIssues))
         {
@@ -885,7 +881,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
 
     private void ApplyResponseBodyRetentionCap(
         IEnumerable<EndpointTestResult> endpointTests,
-        ICollection<string> notifications)
+        List<string> notifications)
     {
         if (_openApiValidationOptions.MaxRetainedResponseBodyCharacters <= 0)
         {
@@ -925,9 +921,9 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
     private async Task<JsonObject> GetCachedResolvedOpenApiSpecAsync(
         string specUrl,
         DataSourceAuthentication? auth,
-        CancellationToken cancellationToken,
         string cacheScope,
-        ICollection<SchemaResolutionIssue>? collectedIssues = null)
+        ICollection<SchemaResolutionIssue>? collectedIssues = null,
+        CancellationToken cancellationToken = default)
     {
         var lookupStopwatch = Stopwatch.StartNew();
         var lookupStartManagedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
@@ -1145,7 +1141,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         return false;
     }
 
-    private OpenApiValidationSummary BuildTestSummary(OpenApiSpecificationValidation? specValidation, List<EndpointTestResult> endpointTests, OpenApiValidationOptions options)
+    private OpenApiValidationSummary BuildTestSummary(OpenApiSpecificationValidation? specValidation, List<EndpointTestResult> endpointTests)
     {
         var shouldIgnoreOptionalFailures = _openApiValidationOptions.TestOptionalEndpoints && _openApiValidationOptions.TreatOptionalEndpointsAsWarnings;
         var failedTests = endpointTests.Count(e =>
