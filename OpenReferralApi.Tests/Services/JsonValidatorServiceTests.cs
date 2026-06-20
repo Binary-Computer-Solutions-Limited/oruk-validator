@@ -818,6 +818,36 @@ public class JsonValidatorServiceTests
             e => e.ErrorCode == "SCHEMA_STRUCTURE_VIOLATION" && e.Path.Contains("$.self", StringComparison.Ordinal)));
     }
 
+    [Test]
+    public async Task ValidateAsync_WithFormatMismatch_IncludesFailedValueInErrorMessage()
+    {
+        // Arrange
+        var schema = new
+        {
+            type = "object",
+            properties = new
+            {
+                url = new { type = "string", format = "uri" }
+            }
+        };
+
+        var request = new ValidationRequest
+        {
+            JsonData = new { url = "not-a-valid-uri" },
+            Schema = schema
+        };
+
+        // Act
+        var result = await _service.ValidateAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.False);
+        var formatError = result.Errors.FirstOrDefault(e => e.Path == "url");
+        Assert.That(formatError, Is.Not.Null);
+        Assert.That(formatError!.Message, Contains.Substring("does not match format"));
+        Assert.That(formatError.Message, Contains.Substring("(failed value: \"not-a-valid-uri\")"));
+    }
+
     private static string BuildDeepJson(int depth)
     {
         var sb = new System.Text.StringBuilder();

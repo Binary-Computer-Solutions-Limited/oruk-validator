@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text.Json.Nodes;
+using Json.Pointer;
 using Json.Schema;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -996,7 +997,7 @@ public class JsonValidatorService : IJsonValidatorService
                 return Task.FromResult(errors);
             }
 
-            errors.AddRange(FlattenEvaluationErrors(evaluation).Take(maxErrors));
+            errors.AddRange(FlattenEvaluationErrors(evaluation, dataDocument.RootElement).Take(maxErrors));
         }
         catch (System.Text.Json.JsonException ex)
         {
@@ -1032,7 +1033,7 @@ public class JsonValidatorService : IJsonValidatorService
         return Task.FromResult(errors);
     }
 
-    private static IEnumerable<ValidationError> FlattenEvaluationErrors(EvaluationResults root)
+    private static IEnumerable<ValidationError> FlattenEvaluationErrors(EvaluationResults root, System.Text.Json.JsonElement rootElement)
     {
         var stack = new Stack<EvaluationResults>();
         stack.Push(root);
@@ -1050,10 +1051,21 @@ public class JsonValidatorService : IJsonValidatorService
                         || error.Value.Contains("additional properties", StringComparison.OrdinalIgnoreCase)
                         || evaluationPath.Contains("additionalProperties", StringComparison.OrdinalIgnoreCase);
 
+                    var message = error.Value;
+                    if (message.Contains("does not match format", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var failedValue = current.InstanceLocation.Evaluate(rootElement);
+                        if (failedValue.HasValue)
+                        {
+                            var valueStr = GetJsonElementRawOrStringValue(failedValue.Value);
+                            message = $"{message} (failed value: \"{valueStr}\")";
+                        }
+                    }
+
                     yield return new ValidationError
                     {
                         Path = ConvertJsonPointerToPath(current.InstanceLocation.ToString()),
-                        Message = error.Value,
+                        Message = message,
                         ErrorCode = isAdditionalProperty ? "ADDITIONAL_FIELD" : "VALIDATION_ERROR",
                         Severity = isAdditionalProperty ? "Info" : "Error"
                     };
@@ -1070,6 +1082,19 @@ public class JsonValidatorService : IJsonValidatorService
                 stack.Push(current.Details[i]);
             }
         }
+    }
+
+    private static string GetJsonElementRawOrStringValue(System.Text.Json.JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            System.Text.Json.JsonValueKind.String => element.GetString() ?? string.Empty,
+            System.Text.Json.JsonValueKind.Number => element.GetRawText(),
+            System.Text.Json.JsonValueKind.True => "true",
+            System.Text.Json.JsonValueKind.False => "false",
+            System.Text.Json.JsonValueKind.Null => "null",
+            _ => element.GetRawText()
+        };
     }
 
     private static string ConvertJsonPointerToPath(string jsonPointer)
