@@ -10,25 +10,19 @@ namespace OpenReferralApi.Core.Services;
 /// Handles both external and internal reference resolution with circular reference detection.
 /// Used during custom schema traversal (e.g. additional fields validation).
 /// </summary>
-public class ReferenceResolver
+public class ReferenceResolver(
+    ILogger logger,
+    RemoteSchemaLoader remoteSchemaLoader)
 {
     private const string CircularReferenceErrorCode = "CIRCULAR_SCHEMA_REFERENCE";
-    private readonly ILogger _logger;
-    private readonly RemoteSchemaLoader _remoteSchemaLoader;
-    private readonly Dictionary<string, JsonNode?> _refCache = new();
-    private readonly List<SchemaResolutionIssue> _resolutionIssues = new();
+    private readonly ILogger _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    private readonly RemoteSchemaLoader _remoteSchemaLoader = remoteSchemaLoader ?? throw new ArgumentNullException(nameof(remoteSchemaLoader));
+    private readonly Dictionary<string, JsonNode?> _refCache = [];
+    private readonly List<SchemaResolutionIssue> _resolutionIssues = [];
     private JsonNode? _rootDocument;
     private string? _baseUri;
 
     public IReadOnlyList<SchemaResolutionIssue> ResolutionIssues => _resolutionIssues;
-
-    public ReferenceResolver(
-        ILogger logger,
-        RemoteSchemaLoader remoteSchemaLoader)
-    {
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _remoteSchemaLoader = remoteSchemaLoader ?? throw new ArgumentNullException(nameof(remoteSchemaLoader));
-    }
 
     /// <summary>
     /// Initializes the resolver for a new resolution session.
@@ -227,7 +221,7 @@ public class ReferenceResolver
 
     private static bool IsInternalRef(string refString)
     {
-        return refString.StartsWith("#", StringComparison.Ordinal);
+        return refString.StartsWith('#');
     }
 
     private static JsonNode? FindAnchorNode(JsonNode? node, string anchorName)

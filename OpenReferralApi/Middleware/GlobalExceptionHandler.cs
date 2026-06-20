@@ -7,16 +7,10 @@ namespace OpenReferralApi.Middleware;
 /// <summary>
 /// Global exception handler middleware for centralized error handling
 /// </summary>
-internal sealed class GlobalExceptionHandler : IExceptionHandler
+internal sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger, IHostEnvironment environment) : IExceptionHandler
 {
-    private readonly ILogger<GlobalExceptionHandler> _logger;
-    private readonly IHostEnvironment _environment;
-
-    public GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger, IHostEnvironment environment)
-    {
-        _logger = logger;
-        _environment = environment;
-    }
+    private readonly ILogger<GlobalExceptionHandler> _logger = logger;
+    private readonly IHostEnvironment _environment = environment;
 
     public async ValueTask<bool> TryHandleAsync(
         HttpContext httpContext,
@@ -87,5 +81,5 @@ internal sealed class ProblemDetails
     public string? Title { get; set; }
     public string? Detail { get; set; }
     public string? Instance { get; set; }
-    public Dictionary<string, object?> Extensions { get; set; } = new();
+    public Dictionary<string, object?> Extensions { get; set; } = [];
 }

@@ -54,5 +54,5 @@ public class OpenApiSpecificationValidation : ValidationResultBase
     /// Provides specific guidance for enhancing security, documentation, and compliance
     /// </summary>
     [JsonPropertyName("recommendations")]
-    public List<Recommendation> Recommendations { get; set; } = new();
+    public List<Recommendation> Recommendations { get; set; } = [];
 }

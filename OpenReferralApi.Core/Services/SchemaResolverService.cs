@@ -80,6 +80,7 @@ public class SchemaResolverService : ISchemaResolverService
     private readonly CacheOptions _cacheOptions;
     private readonly RemoteSchemaLoader _remoteSchemaLoader;
     private readonly ReferenceResolver _referenceResolver;
+    private static readonly JsonSerializerOptions IndentedSerializerOptions = new() { WriteIndented = true };
 
     /// <summary>
     /// Initializes a new instance of the SchemaResolver for remote schema resolution.
@@ -174,14 +175,9 @@ public class SchemaResolverService : ISchemaResolverService
     /// <returns>The fully resolved schema as a JSON string.</returns>
     public async Task<string> ResolveAsync(string schema, string? baseUri = null, DataSourceAuthentication? auth = null)
     {
-        var jsonNode = JsonNode.Parse(schema);
-        if (jsonNode == null)
-        {
-            throw new ArgumentException("Invalid JSON schema", nameof(schema));
-        }
-
+        var jsonNode = JsonNode.Parse(schema) ?? throw new ArgumentException("Invalid JSON schema", nameof(schema));
         var resolved = await ResolveAsync(jsonNode, baseUri, auth);
-        return resolved?.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) ?? "null";
+        return resolved?.ToJsonString(IndentedSerializerOptions) ?? "null";
     }
 
     /// <summary>
@@ -208,7 +204,7 @@ public class SchemaResolverService : ISchemaResolverService
 
     public IReadOnlyList<SchemaResolutionIssue> GetResolutionIssues()
     {
-        return _referenceResolver.ResolutionIssues.ToList();
+        return [.. _referenceResolver.ResolutionIssues];
     }
 
     private async Task PreFetchSchemaRefsAsync(JsonNode rootNode, string? baseUri, DataSourceAuthentication? auth, CancellationToken cancellationToken)

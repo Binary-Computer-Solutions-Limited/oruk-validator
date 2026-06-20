@@ -27,5 +27,5 @@ public class SchemaValidationDetail
     /// Use the Severity property on ValidationError to distinguish between errors ("Error") and warnings ("Warning")
     /// </summary>
     [JsonPropertyName("errors")]
-    public List<ValidationError> Errors { get; set; } = new();
+    public List<ValidationError> Errors { get; set; } = [];
 }

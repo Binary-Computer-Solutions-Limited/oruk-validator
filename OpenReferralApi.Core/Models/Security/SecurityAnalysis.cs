@@ -19,14 +19,14 @@ public class SecurityAnalysis
     /// Provides insight into authentication methods, their security levels, and configurations
     /// </summary>
     [JsonPropertyName("securitySchemes")]
-    public List<SecuritySchemeInfo> SecuritySchemes { get; set; } = new();
+    public List<SecuritySchemeInfo> SecuritySchemes { get; set; } = [];
 
     /// <summary>
     /// List of security requirements that apply globally to all endpoints
     /// Shows which authentication methods are required by default across the API
     /// </summary>
     [JsonPropertyName("globalSecurityRequirements")]
-    public List<string> GlobalSecurityRequirements { get; set; } = new();
+    public List<string> GlobalSecurityRequirements { get; set; } = [];
 
     /// <summary>
     /// Number of endpoints that have security requirements (either global or operation-specific)
@@ -47,5 +47,5 @@ public class SecurityAnalysis
     /// Includes suggestions for authentication improvements, vulnerability mitigation, and best practices
     /// </summary>
     [JsonPropertyName("securityRecommendations")]
-    public List<string> SecurityRecommendations { get; set; } = new();
+    public List<string> SecurityRecommendations { get; set; } = [];
 }

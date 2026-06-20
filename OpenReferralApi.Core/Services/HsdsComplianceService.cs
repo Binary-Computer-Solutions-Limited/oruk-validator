@@ -20,9 +20,16 @@ public interface IHsdsComplianceService
     void ApplyAdditionalFieldPolicy(ValidationResult? validationResult, bool reportAdditionalFields);
 }
 
-public class HsdsComplianceService : IHsdsComplianceService
+public partial class HsdsComplianceService(
+    IJsonValidatorService jsonValidatorService,
+    IOptions<SpecificationOptions>? specificationOptions = null,
+    IOptions<OpenApiValidationServerOptions>? openApiValidationOptions = null) : IHsdsComplianceService
 {
-    private static readonly Regex ProfileReasonVersionRegex = new(@"Standard version \[user:\s*(?<version>[^\]]+)\]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    [GeneratedRegex(@"Standard version \[user:\s*(?<version>[^\]]+)\]", RegexOptions.IgnoreCase)]
+    private static partial Regex ProfileReasonVersionRegex();
+
+    [GeneratedRegex(@"/specifications/(?<version>[^/]+)/openapi\.json", RegexOptions.IgnoreCase)]
+    private static partial Regex SchemaUrlVersionRegex();
 
     private static readonly HashSet<string> SupportedHttpMethods = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -30,25 +37,15 @@ public class HsdsComplianceService : IHsdsComplianceService
     };
 
     // In-memory lookup table for known HSDS baseline schemas by profile version.
-    private readonly IJsonValidatorService _jsonValidatorService;
-    private readonly IReadOnlyDictionary<string, string> _profileSchemaByVersion;
-    private readonly OpenApiValidationServerOptions? _openApiValidationOptions;
-
-    public HsdsComplianceService(
-        IJsonValidatorService jsonValidatorService,
-        IOptions<SpecificationOptions>? specificationOptions = null,
-        IOptions<OpenApiValidationServerOptions>? openApiValidationOptions = null)
-    {
-        _jsonValidatorService = jsonValidatorService;
-        _openApiValidationOptions = openApiValidationOptions?.Value;
-        _profileSchemaByVersion = BuildProfileSchemaLookup(specificationOptions?.Value);
-    }
+    private readonly IJsonValidatorService _jsonValidatorService = jsonValidatorService;
+    private readonly Dictionary<string, string> _profileSchemaByVersion = BuildProfileSchemaLookup(specificationOptions?.Value);
+    private readonly OpenApiValidationServerOptions? _openApiValidationOptions = openApiValidationOptions?.Value;
 
     public string? ExtractClaimedProfileVersion(string? profileReason, string? schemaUrl)
     {
         if (!string.IsNullOrWhiteSpace(profileReason))
         {
-            var profileReasonMatch = ProfileReasonVersionRegex.Match(profileReason);
+            var profileReasonMatch = ProfileReasonVersionRegex().Match(profileReason);
             if (profileReasonMatch.Success)
             {
                 var extracted = profileReasonMatch.Groups["version"].Value.Trim();
@@ -61,7 +58,7 @@ public class HsdsComplianceService : IHsdsComplianceService
 
         if (!string.IsNullOrWhiteSpace(schemaUrl))
         {
-            var urlMatch = Regex.Match(schemaUrl, @"/specifications/(?<version>[^/]+)/openapi\.json", RegexOptions.IgnoreCase);
+            var urlMatch = SchemaUrlVersionRegex().Match(schemaUrl);
             if (urlMatch.Success)
             {
                 var extracted = urlMatch.Groups["version"].Value.Trim();
@@ -309,18 +306,17 @@ public class HsdsComplianceService : IHsdsComplianceService
 
         if (!reportAdditionalFields)
         {
-            validationResult.Errors = validationResult.Errors
+            validationResult.Errors = [.. validationResult.Errors
                 .Where(error =>
                     !string.Equals(error.ErrorCode, "ADDITIONAL_FIELD", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(error.Severity, "Error", StringComparison.OrdinalIgnoreCase))
-                .ToList();
+                    || string.Equals(error.Severity, "Error", StringComparison.OrdinalIgnoreCase))];
         }
 
         validationResult.IsValid = !validationResult.Errors.Any(e =>
             string.Equals(e.Severity, "Error", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static IReadOnlyDictionary<string, string> BuildProfileSchemaLookup(SpecificationOptions? options)
+    private static Dictionary<string, string> BuildProfileSchemaLookup(SpecificationOptions? options)
     {
         var lookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
@@ -409,7 +405,7 @@ public class HsdsComplianceService : IHsdsComplianceService
 
         var statusCodeKey = responses
             .Select(p => p.Key)
-            .FirstOrDefault(name => name.StartsWith("2", StringComparison.Ordinal));
+            .FirstOrDefault(name => name.StartsWith('2'));
 
         if (statusCodeKey == null)
         {

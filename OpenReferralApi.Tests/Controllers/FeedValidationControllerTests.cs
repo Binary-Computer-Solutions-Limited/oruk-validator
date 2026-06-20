@@ -30,8 +30,8 @@ public class FeedValidationControllerTests
         // Arrange
         var feeds = new List<ServiceFeed>
         {
-            new ServiceFeed { Id = "1", UrlField = "https://example1.com" },
-            new ServiceFeed { Id = "2", UrlField = "https://example2.com" }
+            new() { Id = "1", UrlField = "https://example1.com" },
+            new() { Id = "2", UrlField = "https://example2.com" }
         };
 
         _feedValidationServiceMock
@@ -67,14 +67,14 @@ public class FeedValidationControllerTests
         // Arrange
         var feeds = new List<ServiceFeed>
         {
-            new ServiceFeed { Id = "1", UrlField = "https://example1.com", ActiveField = true },
-            new ServiceFeed { Id = "2", UrlField = "https://example2.com", ActiveField = true }
+            new() { Id = "1", UrlField = "https://example1.com", ActiveField = true },
+            new() { Id = "2", UrlField = "https://example2.com", ActiveField = true }
         };
 
         var validationResults = new List<FeedValidationResult>
         {
-            new FeedValidationResult { FeedId = "1", IsUp = true, IsValid = true, ResponseTimeMs = 100 },
-            new FeedValidationResult { FeedId = "2", IsUp = true, IsValid = false, ResponseTimeMs = 150 }
+            new() { FeedId = "1", IsUp = true, IsValid = true, ResponseTimeMs = 100 },
+            new() { FeedId = "2", IsUp = true, IsValid = false, ResponseTimeMs = 150 }
         };
 
         _feedValidationServiceMock
@@ -104,7 +104,7 @@ public class FeedValidationControllerTests
         // Arrange
         _feedValidationServiceMock
             .Setup(x => x.GetAllFeedsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ServiceFeed>());
+            .ReturnsAsync([]);
 
         // Act
         var result = await _controller.ValidateAllFeeds(CancellationToken.None);
@@ -146,7 +146,7 @@ public class FeedValidationControllerTests
 
         _feedValidationServiceMock
             .Setup(x => x.GetAllFeedsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ServiceFeed> { feed });
+            .ReturnsAsync([feed]);
 
         _feedValidationServiceMock
             .Setup(x => x.ValidateAndUpdateFeedAsync(feed, It.IsAny<CancellationToken>()))
@@ -180,7 +180,7 @@ public class FeedValidationControllerTests
         var feedId = "nonexistent";
         _feedValidationServiceMock
             .Setup(x => x.GetAllFeedsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ServiceFeed>());
+            .ReturnsAsync([]);
 
         // Act
         var result = await _controller.ValidateFeed(feedId, CancellationToken.None);

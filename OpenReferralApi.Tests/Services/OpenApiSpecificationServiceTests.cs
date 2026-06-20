@@ -25,13 +25,13 @@ public class OpenApiSpecificationServiceTests
         .ReturnsAsync(new ValidationResult
         {
           IsValid = true,
-          Errors = new List<ValidationError>()
+          Errors = []
         });
 
     var schemaResolutionOptions = Options.Create(new SchemaResolutionOptions
     {
-      KnownJsonSchemaUrls = new List<string>
-            {
+      KnownJsonSchemaUrls =
+            [
                 "https://json-schema.org/draft/2020-12/schema",
                 "https://json-schema.org/draft/2020-12/meta/core",
                 "https://json-schema.org/draft/2020-12/meta/applicator",
@@ -40,7 +40,7 @@ public class OpenApiSpecificationServiceTests
                 "https://json-schema.org/draft/2020-12/meta/meta-data",
                 "https://json-schema.org/draft/2020-12/meta/format-annotation",
                 "https://json-schema.org/draft/2020-12/meta/content"
-            }
+            ]
     });
 
     _service = new OpenApiSpecificationService(_loggerMock.Object, _jsonValidatorServiceMock.Object, schemaResolutionOptions);
@@ -65,7 +65,7 @@ public class OpenApiSpecificationServiceTests
     _jsonValidatorServiceMock
         .Setup(x => x.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
         .Callback<ValidationRequest, CancellationToken>((req, _) => capturedRequest = req)
-        .ReturnsAsync(new ValidationResult { IsValid = true, Errors = new List<ValidationError>() });
+        .ReturnsAsync(new ValidationResult { IsValid = true, Errors = [] });
 
     var spec = JsonNode.Parse("""
         {
@@ -99,7 +99,7 @@ public class OpenApiSpecificationServiceTests
     _jsonValidatorServiceMock
         .Setup(x => x.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
         .Callback<ValidationRequest, CancellationToken>((req, _) => capturedRequest = req)
-        .ReturnsAsync(new ValidationResult { IsValid = true, Errors = new List<ValidationError>() });
+        .ReturnsAsync(new ValidationResult { IsValid = true, Errors = [] });
 
     var spec = JsonNode.Parse("""
         {
@@ -188,11 +188,11 @@ public class OpenApiSpecificationServiceTests
         .ReturnsAsync(new ValidationResult
         {
           IsValid = false,
-          Errors = new List<ValidationError>
-            {
+          Errors =
+            [
                     new() { Path = "paths[/services].get.responses[0].content", Message = "a[0]", ErrorCode = "V", Severity = "Error" },
                     new() { Path = "paths[/services].get.responses[1].content", Message = "a[1]", ErrorCode = "V", Severity = "Error" }
-            }
+            ]
         });
 
     var spec = JsonNode.Parse("""

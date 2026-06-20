@@ -10,15 +10,10 @@ namespace OpenReferralApi.Controllers;
 [ApiController]
 [ApiExplorerSettings(IgnoreApi = true)]
 [Route("api/[Controller]")]
-internal sealed class MockController : ControllerBase
+internal sealed class MockController(ILogger<MockController> logger) : ControllerBase
 {
     private const string MockPath = "Mocks/V3.0-UK-";
-    private readonly ILogger<MockController> _logger;
-
-    public MockController(ILogger<MockController> logger)
-    {
-        _logger = logger;
-    }
+    private readonly ILogger<MockController> _logger = logger;
 
     /// <summary>
     /// Resolves the appropriate mock file path based on the request path (fail/warn/default)
@@ -44,10 +39,7 @@ internal sealed class MockController : ControllerBase
     [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GetServiceMetadata()
-    {
-        return await ReadJsonFile(ResolveMockPath("api_details.json")).ConfigureAwait(false);
-    }
+    public async Task<IActionResult> GetServiceMetadata() => await ReadJsonFile(ResolveMockPath("api_details.json")).ConfigureAwait(false);
 
     /// <summary>
     /// A MOCK endpoint that returns an example of the expected response from the V3 GET /services endpoint  
@@ -60,10 +52,7 @@ internal sealed class MockController : ControllerBase
     [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GetServices()
-    {
-        return await ReadJsonFile(ResolveMockPath("service_list.json")).ConfigureAwait(false);
-    }
+    public async Task<IActionResult> GetServices() => await ReadJsonFile(ResolveMockPath("service_list.json")).ConfigureAwait(false);
 
     /// <summary>
     /// A MOCK endpoint that returns an example of the expected response from the V3 GET /services/{id} endpoint.
@@ -77,10 +66,7 @@ internal sealed class MockController : ControllerBase
     [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GetServicesById()
-    {
-        return await ReadJsonFile(ResolveMockPath("service_full.json")).ConfigureAwait(false);
-    }
+    public async Task<IActionResult> GetServicesById() => await ReadJsonFile(ResolveMockPath("service_full.json")).ConfigureAwait(false);
 
     /// <summary>
     /// A MOCK endpoint that returns an example of the expected response from the V3 GET /taxonomies endpoint  
@@ -93,10 +79,7 @@ internal sealed class MockController : ControllerBase
     [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GetTaxonomies()
-    {
-        return await ReadJsonFile(ResolveMockPath("taxonomy_list.json")).ConfigureAwait(false);
-    }
+    public async Task<IActionResult> GetTaxonomies() => await ReadJsonFile(ResolveMockPath("taxonomy_list.json")).ConfigureAwait(false);
 
     /// <summary>
     /// A MOCK endpoint that returns an example of the expected response from the V3 GET /taxonomies/{id} endpoint. 
@@ -110,10 +93,7 @@ internal sealed class MockController : ControllerBase
     [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GetTaxonomiesById()
-    {
-        return await ReadJsonFile(ResolveMockPath("taxonomy.json")).ConfigureAwait(false);
-    }
+    public async Task<IActionResult> GetTaxonomiesById() => await ReadJsonFile(ResolveMockPath("taxonomy.json")).ConfigureAwait(false);
 
     /// <summary>
     /// A MOCK endpoint that returns an example of the expected response from the V3 GET /taxonomy_terms endpoint
@@ -126,10 +106,7 @@ internal sealed class MockController : ControllerBase
     [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GetTaxonomyTerms()
-    {
-        return await ReadJsonFile(ResolveMockPath("taxonomy_term_list.json")).ConfigureAwait(false);
-    }
+    public async Task<IActionResult> GetTaxonomyTerms() => await ReadJsonFile(ResolveMockPath("taxonomy_term_list.json")).ConfigureAwait(false);
 
     /// <summary>
     /// A MOCK endpoint that returns an example of the expected response from the V3 GET /taxonomy_terms/{id} endpoint.  
@@ -143,10 +120,7 @@ internal sealed class MockController : ControllerBase
     [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GetTaxonomyTermsById()
-    {
-        return await ReadJsonFile(ResolveMockPath("taxonomy_term.json")).ConfigureAwait(false);
-    }
+    public async Task<IActionResult> GetTaxonomyTermsById() => await ReadJsonFile(ResolveMockPath("taxonomy_term.json")).ConfigureAwait(false);
 
     /// <summary>
     /// A MOCK endpoint that returns an example of the expected response from the V3 GET /service_at_locations endpoint
@@ -159,10 +133,7 @@ internal sealed class MockController : ControllerBase
     [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GetServiceAtLocations()
-    {
-        return await ReadJsonFile(ResolveMockPath("service_at_location_list.json")).ConfigureAwait(false);
-    }
+    public async Task<IActionResult> GetServiceAtLocations() => await ReadJsonFile(ResolveMockPath("service_at_location_list.json")).ConfigureAwait(false);
 
     /// <summary>
     /// A MOCK endpoint that returns an example of the expected response from the V3 GET /service_at_locations/{id} endpoint.  
@@ -176,10 +147,7 @@ internal sealed class MockController : ControllerBase
     [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GetServiceAtLocationsById()
-    {
-        return await ReadJsonFile(ResolveMockPath("service_at_location_full.json")).ConfigureAwait(false);
-    }
+    public async Task<IActionResult> GetServiceAtLocationsById() => await ReadJsonFile(ResolveMockPath("service_at_location_full.json")).ConfigureAwait(false);
 
     /// <summary>
     /// A MOCK endpoint that returns an example of the V1 `/validate` response 
@@ -190,10 +158,7 @@ internal sealed class MockController : ControllerBase
     [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GetV1ValidatorMock([FromQuery] string? serviceUrl = null)
-    {
-        return await ReadJsonFile("Mocks/V1.0-UK-Default/V1_ValidateResponse.json").ConfigureAwait(false);
-    }
+    public async Task<IActionResult> GetV1ValidatorMock([FromQuery] string? serviceUrl = null) => await ReadJsonFile("Mocks/V1.0-UK-Default/V1_ValidateResponse.json").ConfigureAwait(false);
 
     /// <summary>
     /// A MOCK endpoint that returns an example of the V1 `/dashboard` response
@@ -204,10 +169,7 @@ internal sealed class MockController : ControllerBase
     [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GetDashboardMock()
-    {
-        return await ReadJsonFile("Mocks/V1.0-UK-Default/V1_DashboardResponse.json").ConfigureAwait(false);
-    }
+    public async Task<IActionResult> GetDashboardMock() => await ReadJsonFile("Mocks/V1.0-UK-Default/V1_DashboardResponse.json").ConfigureAwait(false);
 
     /// <summary>
     /// A MOCK endpoint that returns an example of the expected response from the V3 GET /organizations endpoint  
@@ -218,10 +180,7 @@ internal sealed class MockController : ControllerBase
     [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GetOrganizations()
-    {
-        return await ReadJsonFile(ResolveMockPath("organization_list.json")).ConfigureAwait(false);
-    }
+    public async Task<IActionResult> GetOrganizations() => await ReadJsonFile(ResolveMockPath("organization_list.json")).ConfigureAwait(false);
 
     /// <summary>
     /// A MOCK endpoint that returns an example of the expected response from the V3 GET /organizations/{id} endpoint. 
@@ -233,10 +192,7 @@ internal sealed class MockController : ControllerBase
     [ProducesResponseType(typeof(JsonNode), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> GetOrganizationsById()
-    {
-        return await ReadJsonFile(ResolveMockPath("organization.json")).ConfigureAwait(false);
-    }
+    public async Task<IActionResult> GetOrganizationsById() => await ReadJsonFile(ResolveMockPath("organization.json")).ConfigureAwait(false);
 
     private async Task<IActionResult> ReadJsonFile(string filePath)
     {

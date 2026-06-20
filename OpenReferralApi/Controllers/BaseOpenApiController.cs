@@ -8,8 +8,8 @@ namespace OpenReferralApi.Controllers;
 /// </summary>
 internal abstract class BaseOpenApiController : ControllerBase
 {
-    private static readonly string[] OpenApiSchemaUrlError = { "OpenAPI schema URL must be provided or discoverable from baseUrl" };
-    private static readonly string[] BaseUrlError = { "BaseUrl is required when testing endpoints" };
+    private static readonly string[] OpenApiSchemaUrlError = ["OpenAPI schema URL must be provided or discoverable from baseUrl"];
+    private static readonly string[] BaseUrlError = ["BaseUrl is required when testing endpoints"];
     /// <summary>
     /// Validates the incoming request for required fields
     /// </summary>

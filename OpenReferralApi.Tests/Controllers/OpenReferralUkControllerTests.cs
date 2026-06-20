@@ -40,10 +40,10 @@ public class OpenReferralUkControllerTests
         var validationResult = new OpenApiValidationResult
         {
             IsValid = false,
-            Notifications = new List<string>
-            {
+            Notifications =
+            [
                 "Unable to get or resolve the OpenAPI specification from https://api.example.com/openapi.json. 404"
-            }
+            ]
         };
 
         var mappedResult = new OpenReferralUKValidationResponse
@@ -55,10 +55,10 @@ public class OpenReferralUkControllerTests
                 Profile = "Unknown",
                 ProfileReason = "Unknown"
             },
-            Notifications = new List<string>
-            {
+            Notifications =
+            [
                 "Unable to get or resolve the OpenAPI specification from https://api.example.com/openapi.json. 404"
-            }
+            ]
         };
 
         _validationServiceMock

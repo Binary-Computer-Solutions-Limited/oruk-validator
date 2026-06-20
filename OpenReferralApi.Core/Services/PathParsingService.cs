@@ -71,21 +71,15 @@ public class UriAccessibilityResult
 /// <summary>
 /// Service for parsing and validating URIs and URLs consistently across the application
 /// </summary>
-public class PathParsingService : IPathParsingService
+public class PathParsingService(ILogger<PathParsingService> logger, HttpClient httpClient) : IPathParsingService
 {
-    private readonly ILogger<PathParsingService> _logger;
-    private readonly HttpClient _httpClient;
+    private readonly ILogger<PathParsingService> _logger = logger;
+    private readonly HttpClient _httpClient = httpClient;
 
-    private static readonly string[] AllowedSchemes = { "http", "https", "ftp", "ftps" };
-    private static readonly string[] DataUrlSchemes = { "http", "https" };
-    private static readonly string[] SchemaUriSchemes = { "http", "https", "file" };
-    private static readonly int[] AllowedPorts = { 80, 443, 8080, 8443, 3000, 5000, 8000, 9000 };
-
-    public PathParsingService(ILogger<PathParsingService> logger, HttpClient httpClient)
-    {
-        _logger = logger;
-        _httpClient = httpClient;
-    }
+    private static readonly string[] AllowedSchemes = ["http", "https", "ftp", "ftps"];
+    private static readonly string[] DataUrlSchemes = ["http", "https"];
+    private static readonly string[] SchemaUriSchemes = ["http", "https", "file"];
+    private static readonly int[] AllowedPorts = [80, 443, 8080, 8443, 3000, 5000, 8000, 9000];
 
     public Task<Uri> ValidateAndParseUriAsync(string uriString, ValidationOptions? options = null)
     {
@@ -108,7 +102,7 @@ public class PathParsingService : IPathParsingService
 
         try
         {
-            _logger.CheckingAccessibilityOfUri(uri.ToString());
+            _logger.CheckingAccessibilityOfUri(uri);
 
             if (uri.Scheme == "file")
             {
@@ -159,14 +153,14 @@ public class PathParsingService : IPathParsingService
                     result.IsAccessible = false;
                     result.StatusCode = 0;
                     result.ErrorMessage = TextSanitizer.SanitizeExceptionMessage(ex.Message);
-                    _logger.HttpRequestFailedForUri(ex, uri.ToString());
+                    _logger.HttpRequestFailedForUri(ex, uri);
                 }
                 catch (TaskCanceledException ex) when (ex.CancellationToken.IsCancellationRequested)
                 {
                     result.IsAccessible = false;
                     result.StatusCode = 408; // Request Timeout
                     result.ErrorMessage = "Request timeout";
-                    _logger.RequestTimeoutForUri(uri.ToString());
+                    _logger.RequestTimeoutForUri(uri);
                 }
             }
             else
@@ -179,7 +173,7 @@ public class PathParsingService : IPathParsingService
         }
         catch (Exception ex)
         {
-            _logger.ErrorCheckingAccessibilityOfUri(ex, uri.ToString());
+            _logger.ErrorCheckingAccessibilityOfUri(ex, uri);
             result.IsAccessible = false;
             result.StatusCode = 0;
             result.ErrorMessage = TextSanitizer.SanitizeExceptionMessage(ex.Message);
@@ -197,10 +191,7 @@ public class PathParsingService : IPathParsingService
                 throw new ArgumentException("Relative URI cannot be null or empty", nameof(relativeUri));
             }
 
-            if (baseUrl == null)
-            {
-                throw new ArgumentNullException(nameof(baseUrl));
-            }
+            ArgumentNullException.ThrowIfNull(baseUrl);
 
             // Check if relativeUri is actually absolute
             if (Uri.IsWellFormedUriString(relativeUri, UriKind.Absolute))
@@ -213,7 +204,7 @@ public class PathParsingService : IPathParsingService
         }
         catch (Exception ex)
         {
-            _logger.ErrorResolvingRelativeUri(ex, relativeUri, baseUrl?.ToString() ?? string.Empty);
+            _logger.ErrorResolvingRelativeUri(ex, relativeUri, baseUrl);
             throw new ArgumentException($"Failed to resolve relative URI '{relativeUri}' against base '{baseUrl}': {TextSanitizer.SanitizeExceptionMessage(ex.Message)}", ex);
         }
     }
@@ -250,9 +241,9 @@ public class PathParsingService : IPathParsingService
             }
 
             // Security validation
-            ValidateUriSecurity(uri, uriType, options);
+            ValidateUriSecurity(uri, uriType);
 
-            _logger.SuccessfullyValidatedUri(uriType, uri.ToString());
+            _logger.SuccessfullyValidatedUri(uriType, uri);
             return uri;
         }
         catch (UriFormatException ex)
@@ -273,7 +264,7 @@ public class PathParsingService : IPathParsingService
         if (uri.Scheme == "https" && options.ValidateSslCertificate)
         {
             // This would be implemented with actual SSL certificate validation
-            _logger.SslCertificateValidationEnabled(uriType, uri.ToString());
+            _logger.SslCertificateValidationEnabled(uriType, uri);
         }
 
         // Accessibility check if required
@@ -286,12 +277,12 @@ public class PathParsingService : IPathParsingService
         await Task.CompletedTask; // Placeholder for async operations
     }
 
-    private void ValidateUriSecurity(Uri uri, string uriType, ValidationOptions? options)
+    private void ValidateUriSecurity(Uri uri, string uriType)
     {
         // Prevent localhost/private IP access unless explicitly allowed
         if (IsPrivateOrLocalhost(uri))
         {
-            _logger.PotentiallyUnsafeUri(uriType, uri.ToString());
+            _logger.PotentiallyUnsafeUri(uriType, uri);
             // Could throw exception here based on security policy
         }
 
@@ -302,7 +293,7 @@ public class PathParsingService : IPathParsingService
         }
     }
 
-    private void ConfigureHttpRequest(HttpRequestMessage request, ValidationOptions? options)
+    private static void ConfigureHttpRequest(HttpRequestMessage request, ValidationOptions? options)
     {
         // Configure redirects
         if (options?.FollowRedirects == false)

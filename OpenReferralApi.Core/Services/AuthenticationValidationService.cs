@@ -11,18 +11,12 @@ public interface IAuthenticationValidationService
     DataSourceAuthentication? TryGetValidatedRequestAuthentication(string context, DataSourceAuthentication? auth);
 }
 
-public class AuthenticationValidationService : IAuthenticationValidationService
+public class AuthenticationValidationService(
+    ILogger<AuthenticationValidationService> logger,
+    IOptions<OpenApiValidationServerOptions> authOptions) : IAuthenticationValidationService
 {
-    private readonly ILogger<AuthenticationValidationService> _logger;
-    private readonly bool _allowUserSuppliedAuth;
-
-    public AuthenticationValidationService(
-        ILogger<AuthenticationValidationService> logger,
-        IOptions<OpenApiValidationServerOptions> authOptions)
-    {
-        _logger = logger;
-        _allowUserSuppliedAuth = authOptions.Value.AllowUserSuppliedAuth;
-    }
+    private readonly ILogger<AuthenticationValidationService> _logger = logger;
+    private readonly bool _allowUserSuppliedAuth = authOptions.Value.AllowUserSuppliedAuth;
 
     public DataSourceAuthentication? TryGetValidatedRequestAuthentication(string context, DataSourceAuthentication? auth)
     {
@@ -113,7 +107,7 @@ public class AuthenticationValidationService : IAuthenticationValidationService
         }
         else if (hasCustomHeaders)
         {
-            validated.CustomHeaders = new Dictionary<string, string>();
+            validated.CustomHeaders = [];
             foreach (var kvp in auth.CustomHeaders!)
             {
                 var headerName = Normalize(kvp.Key);
@@ -169,7 +163,7 @@ public class AuthenticationValidationService : IAuthenticationValidationService
                 continue;
             }
 
-            if (allowedHeaderTokenSymbols.IndexOf(c) >= 0)
+            if (allowedHeaderTokenSymbols.Contains(c))
             {
                 continue;
             }

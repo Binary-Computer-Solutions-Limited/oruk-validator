@@ -13,21 +13,17 @@ public interface IOpenApiSpecificationService
     Task<OpenApiSpecificationValidation> ValidateAsync(JsonObject openApiSpec, CancellationToken cancellationToken = default);
 }
 
-public class OpenApiSpecificationService : IOpenApiSpecificationService
+public partial class OpenApiSpecificationService(
+    ILogger<OpenApiSpecificationService> logger,
+    IJsonValidatorService jsonValidatorService,
+    IOptions<SchemaResolutionOptions>? schemaResolutionOptions = null) : IOpenApiSpecificationService
 {
-    private readonly ILogger<OpenApiSpecificationService> _logger;
-    private readonly IJsonValidatorService _jsonValidatorService;
-    private readonly IOptions<SchemaResolutionOptions> _schemaResolutionOptions;
+    private readonly ILogger<OpenApiSpecificationService> _logger = logger;
+    private readonly IJsonValidatorService _jsonValidatorService = jsonValidatorService;
+    private readonly IOptions<SchemaResolutionOptions> _schemaResolutionOptions = schemaResolutionOptions ?? Options.Create(new SchemaResolutionOptions());
 
-    public OpenApiSpecificationService(
-        ILogger<OpenApiSpecificationService> logger,
-        IJsonValidatorService jsonValidatorService,
-        IOptions<SchemaResolutionOptions>? schemaResolutionOptions = null)
-    {
-        _logger = logger;
-        _jsonValidatorService = jsonValidatorService;
-        _schemaResolutionOptions = schemaResolutionOptions ?? Options.Create(new SchemaResolutionOptions());
-    }
+    [GeneratedRegex(@"\$ref")]
+    private static partial Regex RefRegex();
 
     public async Task<OpenApiSpecificationValidation> ValidateAsync(JsonObject openApiSpec, CancellationToken cancellationToken = default)
     {
@@ -170,7 +166,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
                 };
 
                 var schemaValidation = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
-                if (schemaValidation.Errors.Any())
+                if (schemaValidation.Errors.Count > 0)
                 {
                     errors.AddRange(schemaValidation.Errors);
                 }
@@ -338,7 +334,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
             analysis.ExampleCount = CountExamplesInSpec(specObject);
 
             var specJson = specObject.ToString();
-            var refMatches = Regex.Matches(specJson, "\\$ref");
+            var refMatches = RefRegex().Matches(specJson);
             analysis.ReferencesResolved = refMatches.Count;
         }
         catch (Exception ex)
@@ -566,7 +562,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         return metrics;
     }
 
-    private bool HasExamples(JsonObject operationObject)
+    private static bool HasExamples(JsonObject operationObject)
     {
         if (operationObject.ContainsKey("requestBody"))
         {
@@ -595,7 +591,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         return false;
     }
 
-    private bool HasContentExamples(JsonObject contentContainer)
+    private static bool HasContentExamples(JsonObject contentContainer)
     {
         if (contentContainer.ContainsKey("content"))
         {
@@ -617,7 +613,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         return false;
     }
 
-    private void CountSchemaDescriptions(JsonObject specObject, QualityMetrics metrics)
+    private static void CountSchemaDescriptions(JsonObject specObject, QualityMetrics metrics)
     {
         if (specObject.ContainsKey("components"))
         {
@@ -652,7 +648,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         }
     }
 
-    private void CalculateQualityScore(QualityMetrics metrics)
+    private static void CalculateQualityScore(QualityMetrics metrics)
     {
         double score = 0;
         int factors = 0;
@@ -731,7 +727,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         return recommendations;
     }
 
-    private void AddQualityRecommendations(JsonObject specObject, List<Recommendation> recommendations)
+    private static void AddQualityRecommendations(JsonObject specObject, List<Recommendation> recommendations)
     {
         if (!specObject.ContainsKey("info") || specObject["info"] is not JsonObject infoObject)
         {
@@ -783,7 +779,7 @@ public class OpenApiSpecificationService : IOpenApiSpecificationService
         AddEndpointQualityRecommendations(specObject, recommendations);
     }
 
-    private void AddEndpointQualityRecommendations(JsonObject specObject, List<Recommendation> recommendations)
+    private static void AddEndpointQualityRecommendations(JsonObject specObject, List<Recommendation> recommendations)
     {
         if (!HasServerMetadata(specObject))
         {

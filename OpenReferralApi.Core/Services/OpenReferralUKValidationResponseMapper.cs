@@ -15,7 +15,7 @@ public class OpenReferralUKValidationResponseMapper : IOpenReferralUKValidationR
         var testSuites = new List<object>();
 
         // Map endpoint tests to test groups - separate required and optional endpoints
-        if (openApiResult.EndpointTests != null && openApiResult.EndpointTests.Any())
+        if (openApiResult.EndpointTests != null && openApiResult.EndpointTests.Count > 0)
         {
             var requiredEndpoints = new List<EndpointTestResult>();
             var optionalEndpoints = new List<EndpointTestResult>();
@@ -28,7 +28,7 @@ public class OpenReferralUKValidationResponseMapper : IOpenReferralUKValidationR
                     requiredEndpoints.Add(e);
             }
 
-            if (requiredEndpoints.Any())
+            if (requiredEndpoints.Count > 0)
             {
                 testSuites.Add(MapEndpointTests(requiredEndpoints, openApiResult?.Metadata?.BaseUrl ?? "",
                     "Level 1 Compliance - Basic checks",
@@ -36,7 +36,7 @@ public class OpenReferralUKValidationResponseMapper : IOpenReferralUKValidationR
                     true));
             }
 
-            if (optionalEndpoints.Any())
+            if (optionalEndpoints.Count > 0)
             {
                 testSuites.Add(MapEndpointTests(optionalEndpoints, openApiResult?.Metadata?.BaseUrl ?? "",
                     "Level 2 Compliance - Extended checks",
@@ -128,7 +128,7 @@ public class OpenReferralUKValidationResponseMapper : IOpenReferralUKValidationR
             || string.Equals(errorCode, "SCHEMA_STRUCTURE_VIOLATION", StringComparison.Ordinal);
     }
 
-    private object MapEndpointTests(List<EndpointTestResult> endpointTests, string baseUrl,
+    private static object MapEndpointTests(List<EndpointTestResult> endpointTests, string baseUrl,
         string name, string description, bool required)
     {
         var tests = new List<object>(endpointTests.Count);
@@ -161,13 +161,13 @@ public class OpenReferralUKValidationResponseMapper : IOpenReferralUKValidationR
         };
     }
 
-    private List<object> MapEndpointMessages(EndpointTestResult endpoint, HttpTestResult? specificTest, HashSet<string> seenErrorPaths)
+    private static List<object> MapEndpointMessages(EndpointTestResult endpoint, HttpTestResult? specificTest, HashSet<string> seenErrorPaths)
     {
         var messages = new List<object>();
 
         var endpointErrors = endpoint.ValidationErrors;
 
-        if (specificTest == null && endpointErrors.Any())
+        if (specificTest == null && endpointErrors.Count > 0)
         {
             foreach (var validationError in endpointErrors)
             {
@@ -206,7 +206,7 @@ public class OpenReferralUKValidationResponseMapper : IOpenReferralUKValidationR
         }
 
         // If endpoint succeeded but had performance issues, add info messages
-        if (endpoint.Status == EndpointTestStatus.PassedValidation && endpoint.TestResults.Any())
+        if (endpoint.Status == EndpointTestStatus.PassedValidation && endpoint.TestResults.Count > 0)
         {
             var avgResponseTime = endpoint.TestResults
                 .Where(tr => tr.ResponseTime > TimeSpan.Zero)

@@ -5,7 +5,7 @@ namespace OpenReferralApi.Core.Helpers;
 internal static class Constants
 {
     internal static readonly string[] OpenApiDocumentProbePaths =
-  {
+  [
         "",
         "openapi.json",
         "openapi",
@@ -22,20 +22,20 @@ internal static class Constants
         "swagger/v1/swagger.json",
         "swagger/v1/swagger.yaml",
         "swagger/v1/swagger.yml"
-    };
+    ];
 
         internal static readonly string[] SwaggerConfigProbePaths =
-    {
+    [
         "swagger-config",
         "swagger/swagger-config",
         "api-docs/swagger-config",
         "v3/api-docs/swagger-config",
         "v2/api-docs/swagger-config",
         "swagger/v1/swagger-config"
-    };
+    ];
 
     internal static readonly string[] DocumentationUiProbePaths =
-  {
+  [
         "swagger/index.html",
         "swagger",
         "api/swagger",
@@ -49,7 +49,7 @@ internal static class Constants
         "api/redoc",
         "docs",
         "api/docs"
-    };
+    ];
     
     /// <summary>Detects OpenAPI/Swagger YAML roots by matching lines like: <c>openapi: 3.0.0</c> or <c>swagger: "2.0"</c>.</summary>
     internal static readonly Regex OpenApiYamlRegex = new(

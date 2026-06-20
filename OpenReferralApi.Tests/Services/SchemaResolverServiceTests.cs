@@ -460,14 +460,9 @@ public class SchemaResolverServiceTests
     /// <summary>
     /// Mock HTTP message handler for testing
     /// </summary>
-    private class MockHttpMessageHandler : HttpMessageHandler
+    private class MockHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler) : HttpMessageHandler
     {
-        private readonly Func<HttpRequestMessage, Task<HttpResponseMessage>> _handler;
-
-        public MockHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler)
-        {
-            _handler = handler;
-        }
+        private readonly Func<HttpRequestMessage, Task<HttpResponseMessage>> _handler = handler;
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {

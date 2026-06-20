@@ -9,8 +9,8 @@ public class EndpointInfo
 {
     public string Path { get; set; } = string.Empty;
     public string Method { get; set; } = string.Empty;
-    public JsonObject Operation { get; set; } = new();
-    public JsonObject PathItem { get; set; } = new();
+    public JsonObject Operation { get; set; } = [];
+    public JsonObject PathItem { get; set; } = [];
     public bool IsParameterized => Path.Contains('{');
     public string RootPath => GetRootPath(Path);
 

@@ -101,7 +101,7 @@ public class EndpointTestResult
     /// May contain multiple results if the endpoint was tested with different parameters or conditions
     /// </summary>
     [JsonPropertyName("testResults")]
-    public List<HttpTestResult> TestResults { get; set; } = new();
+    public List<HttpTestResult> TestResults { get; set; } = [];
 
     /// <summary>
     /// Flattened validation errors aggregated across all test results.
@@ -133,12 +133,11 @@ public class EndpointTestResult
 
     private static List<ValidationError> AggregateValidationErrors(IEnumerable<HttpTestResult> testResults)
     {
-        return testResults
+        return [.. testResults
             .Where(tr => tr.ValidationResult != null)
             .SelectMany(tr => tr.ValidationResult!.Errors)
             .GroupBy(e => $"{e.Path}|{e.ErrorCode}|{e.Message}|{e.Severity}", StringComparer.Ordinal)
-            .Select(g => g.First())
-            .ToList();
+            .Select(g => g.First())];
     }
 
 }

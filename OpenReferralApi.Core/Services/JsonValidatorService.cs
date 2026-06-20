@@ -25,6 +25,10 @@ public class JsonValidatorService : IJsonValidatorService
     private static readonly ConcurrentDictionary<string, CachedExternalSchemaDocument> ExternalSchemaUriCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly ConcurrentDictionary<string, ResolvedSchemaDetails> CompiledSchemaCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly string ArrayIndexToken = "[]";
+    private static readonly System.Text.Json.JsonSerializerOptions DefaultSerializerOptions = new()
+    {
+        MaxDepth = MaxAllowedJsonDepth
+    };
 
     private readonly ILogger<JsonValidatorService> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -224,7 +228,7 @@ public class JsonValidatorService : IJsonValidatorService
                 });
             }
 
-            result.IsValid = !schemaValidationErrors.Any();
+            result.IsValid = schemaValidationErrors.Count == 0;
             result.Errors = schemaValidationErrors;
             result.SchemaVersion = "2020-12";
             result.Metadata = new CommonValidationMetadata
@@ -301,14 +305,9 @@ public class JsonValidatorService : IJsonValidatorService
         }
         else if (request.JsonData != null)
         {
-            var options = new System.Text.Json.JsonSerializerOptions
-            {
-                MaxDepth = MaxAllowedJsonDepth
-            };
-
             try
             {
-                return System.Text.Json.JsonSerializer.SerializeToDocument(request.JsonData, options);
+                return System.Text.Json.JsonSerializer.SerializeToDocument(request.JsonData, DefaultSerializerOptions);
             }
             catch (System.Text.Json.JsonException ex) when (IsCycleOrDepthViolation(ex))
             {
@@ -454,24 +453,13 @@ public class JsonValidatorService : IJsonValidatorService
     {
         try
         {
-            var options = new System.Text.Json.JsonSerializerOptions
-            {
-                MaxDepth = MaxAllowedJsonDepth
-            };
-
             var schemaNode = schema switch
             {
                 System.Text.Json.Nodes.JsonNode node => node.DeepClone(),
-                System.Text.Json.JsonDocument doc => System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.Nodes.JsonNode>(doc, options),
-                System.Text.Json.JsonElement element => System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.Nodes.JsonNode>(element, options),
-                _ => System.Text.Json.JsonSerializer.SerializeToNode(schema, options)
-            };
-
-            if (schemaNode == null)
-            {
-                throw new InvalidOperationException("Failed to serialize schema object to JsonNode.");
-            }
-
+                System.Text.Json.JsonDocument doc => System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.Nodes.JsonNode>(doc, DefaultSerializerOptions),
+                System.Text.Json.JsonElement element => System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.Nodes.JsonNode>(element, DefaultSerializerOptions),
+                _ => System.Text.Json.JsonSerializer.SerializeToNode(schema, DefaultSerializerOptions)
+            } ?? throw new InvalidOperationException("Failed to serialize schema object to JsonNode.");
             return await CreateSchemaFromNodeAsync(schemaNode);
         }
         catch (System.Text.Json.JsonException ex) when (IsCycleOrDepthViolation(ex))
@@ -523,12 +511,7 @@ public class JsonValidatorService : IJsonValidatorService
             return cached;
         }
 
-        var schemaNode = System.Text.Json.Nodes.JsonNode.Parse(schemaJson);
-        if (schemaNode is null)
-        {
-            throw new InvalidOperationException("Schema JSON could not be parsed");
-        }
-
+        var schemaNode = System.Text.Json.Nodes.JsonNode.Parse(schemaJson) ?? throw new InvalidOperationException("Schema JSON could not be parsed");
         var details = BuildSchemaDetailsFromNode(schemaNode);
 
         if (CompiledSchemaCache.Count > 10000) CompiledSchemaCache.Clear();
@@ -809,7 +792,7 @@ public class JsonValidatorService : IJsonValidatorService
 
     private static string BuildChildPath(string parentPath, string segment, Type childType)
     {
-        var isArrayIndex = segment.StartsWith("[", StringComparison.Ordinal);
+        var isArrayIndex = segment.StartsWith('[');
         if (isArrayIndex)
         {
             return $"{parentPath}{segment}";
@@ -956,28 +939,17 @@ public class JsonValidatorService : IJsonValidatorService
         Depth
     }
 
-    private sealed class JsonStructureViolationException : Exception
+    private sealed class JsonStructureViolationException(JsonValidatorService.JsonStructureViolationSource sourceType, string sourceIdentifier, System.Text.Json.JsonException innerException, string? detectedPath = null) : Exception("JSON structure violates cycle/depth constraints.", innerException)
     {
-        public JsonStructureViolationException(JsonStructureViolationSource sourceType, string sourceIdentifier, System.Text.Json.JsonException innerException, string? detectedPath = null)
-            : base("JSON structure violates cycle/depth constraints.", innerException)
-        {
-            SourceType = sourceType;
-            SourceIdentifier = sourceIdentifier;
-            JsonPath = !string.IsNullOrWhiteSpace(detectedPath) ? detectedPath : innerException.Path;
-            LineNumber = innerException.LineNumber;
-            BytePositionInLine = innerException.BytePositionInLine;
-            ViolationKind = GetViolationKind(innerException);
-        }
-
-        public JsonStructureViolationSource SourceType { get; }
-        public string SourceIdentifier { get; }
-        public string? JsonPath { get; }
-        public long? LineNumber { get; }
-        public long? BytePositionInLine { get; }
-        public JsonStructureViolationKind ViolationKind { get; }
+        public JsonStructureViolationSource SourceType { get; } = sourceType;
+        public string SourceIdentifier { get; } = sourceIdentifier;
+        public string? JsonPath { get; } = !string.IsNullOrWhiteSpace(detectedPath) ? detectedPath : innerException.Path;
+        public long? LineNumber { get; } = innerException.LineNumber;
+        public long? BytePositionInLine { get; } = innerException.BytePositionInLine;
+        public JsonStructureViolationKind ViolationKind { get; } = GetViolationKind(innerException);
     }
 
-    private Task<List<ValidationError>> ValidateJsonAgainstSchemaAsync(System.Text.Json.JsonDocument dataDocument, ResolvedSchemaDetails schema, ValidationOptions? options)
+    private static Task<List<ValidationError>> ValidateJsonAgainstSchemaAsync(System.Text.Json.JsonDocument dataDocument, ResolvedSchemaDetails schema, ValidationOptions? options)
     {
         var errors = new List<ValidationError>();
         var maxErrors = options?.MaxErrors ?? 100;
@@ -1105,7 +1077,7 @@ public class JsonValidatorService : IJsonValidatorService
         }
 
         var span = jsonPointer.AsSpan();
-        if (span.StartsWith("/"))
+        if (span.StartsWith('/'))
         {
             span = span[1..];
         }
@@ -1246,10 +1218,7 @@ public class JsonValidatorService : IJsonValidatorService
                 System.Text.Json.Nodes.JsonNode schemaNode => schemaNode.ToJsonString(),
                 System.Text.Json.JsonDocument schemaDocument => schemaDocument.RootElement.GetRawText(),
                 System.Text.Json.JsonElement schemaElement => schemaElement.GetRawText(),
-                _ => System.Text.Json.JsonSerializer.Serialize(schemaObject, new System.Text.Json.JsonSerializerOptions
-                {
-                    MaxDepth = MaxAllowedJsonDepth
-                })
+                _ => System.Text.Json.JsonSerializer.Serialize(schemaObject, DefaultSerializerOptions)
             };
 
             var schemaNodeText = System.Text.Json.Nodes.JsonNode.Parse(schemaJson);
@@ -1296,7 +1265,7 @@ public class JsonValidatorService : IJsonValidatorService
                 }
             }
 
-            return uniqueWarnings.Values.ToList();
+            return [.. uniqueWarnings.Values];
         }
         catch (Exception ex)
         {
@@ -1473,11 +1442,10 @@ public class JsonValidatorService : IJsonValidatorService
             return [];
         }
 
-        return requiredArray
+        return [.. requiredArray
             .Select(static item => item?.GetValue<string>())
             .Where(static value => !string.IsNullOrWhiteSpace(value))
-            .Cast<string>()
-            .ToList();
+            .Cast<string>()];
     }
 
     private static bool HasRootTypeKeyword(System.Text.Json.Nodes.JsonNode? schemaNode)

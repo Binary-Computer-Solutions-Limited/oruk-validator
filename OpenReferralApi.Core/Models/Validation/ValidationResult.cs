@@ -19,7 +19,7 @@ public abstract class ValidationResultBase
     public bool IsValid { get; set; }
 
     [JsonPropertyName("errors")]
-    public List<ValidationError> Errors { get; set; } = new();
+    public List<ValidationError> Errors { get; set; } = [];
 
 }
 

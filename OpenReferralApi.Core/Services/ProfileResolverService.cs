@@ -17,15 +17,8 @@ public sealed class ProfileResolutionDecision
     public string? EffectiveProfileReason { get; init; }
 }
 
-public sealed class ProfileResolverService : IProfileResolverService
+public sealed class ProfileResolverService(IHsdsComplianceService hsdsComplianceService) : IProfileResolverService
 {
-    private readonly IHsdsComplianceService _hsdsComplianceService;
-
-    public ProfileResolverService(IHsdsComplianceService hsdsComplianceService)
-    {
-        _hsdsComplianceService = hsdsComplianceService;
-    }
-
     public ProfileResolutionDecision Resolve(
         string? profileReason,
         string? schemaUrl,
@@ -34,7 +27,7 @@ public sealed class ProfileResolverService : IProfileResolverService
         string? defaultProfileVersion)
     {
         var effectiveProfileReason = profileReason;
-        var claimedProfileVersion = _hsdsComplianceService.ExtractClaimedProfileVersion(profileReason, schemaUrl);
+        var claimedProfileVersion = hsdsComplianceService.ExtractClaimedProfileVersion(profileReason, schemaUrl);
         string? knownHsdsSchemaUrl = null;
 
         if (string.IsNullOrWhiteSpace(claimedProfileVersion)
@@ -47,11 +40,11 @@ public sealed class ProfileResolverService : IProfileResolverService
                 effectiveProfileReason = $"Standard version [user: {defaultProfileVersion}] configured default profile fallback";
             }
 
-            claimedProfileVersion = _hsdsComplianceService.ExtractClaimedProfileVersion(effectiveProfileReason, schemaUrl);
+            claimedProfileVersion = hsdsComplianceService.ExtractClaimedProfileVersion(effectiveProfileReason, schemaUrl);
         }
 
         if (string.IsNullOrWhiteSpace(knownHsdsSchemaUrl)
-            && _hsdsComplianceService.TryGetKnownHsdsSchemaUrl(claimedProfileVersion, out var mappedKnownHsdsSchemaUrl)
+            && hsdsComplianceService.TryGetKnownHsdsSchemaUrl(claimedProfileVersion, out var mappedKnownHsdsSchemaUrl)
             && !string.IsNullOrWhiteSpace(mappedKnownHsdsSchemaUrl))
         {
             knownHsdsSchemaUrl = mappedKnownHsdsSchemaUrl;

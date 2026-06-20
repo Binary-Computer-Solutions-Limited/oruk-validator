@@ -12,21 +12,14 @@ namespace OpenReferralApi.Controllers;
 [Route("api/openapi")] // Legacy route for backward compatibility, will be removed in future versions (once openreferraluk website is updated to point to new route)
 [Produces("application/json")]
 [EnableRateLimiting("fixed")]
-internal sealed class OpenReferralUkController : BaseOpenApiController
+internal sealed class OpenReferralUkController(
+    IOpenApiValidationService openApiValidationService,
+    ILogger<OpenReferralUkController> logger,
+    IOpenReferralUKValidationResponseMapper mapper) : BaseOpenApiController
 {
-    private readonly IOpenApiValidationService _openApiValidationService;
-    private readonly ILogger<OpenReferralUkController> _logger;
-    private readonly IOpenReferralUKValidationResponseMapper _mapper;
-
-    public OpenReferralUkController(
-        IOpenApiValidationService openApiValidationService,
-        ILogger<OpenReferralUkController> logger,
-        IOpenReferralUKValidationResponseMapper mapper)
-    {
-        _openApiValidationService = openApiValidationService;
-        _logger = logger;
-        _mapper = mapper;
-    }
+    private readonly IOpenApiValidationService _openApiValidationService = openApiValidationService;
+    private readonly ILogger<OpenReferralUkController> _logger = logger;
+    private readonly IOpenReferralUKValidationResponseMapper _mapper = mapper;
 
     /// <summary>
     /// Validates an OpenAPI specification and tests all defined endpoints, returning Open Referral UK formatted results

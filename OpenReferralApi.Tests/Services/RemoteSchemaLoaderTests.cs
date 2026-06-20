@@ -220,7 +220,7 @@ public class RemoteSchemaLoaderTests
         public string ApiKeyHeader { get; set; } = "X-API-Key";
         public string? BearerToken { get; set; }
         public BasicAuthentication? BasicAuth { get; set; }
-        public Dictionary<string, string>? CustomHeaders { get; set; } = new();
+        public Dictionary<string, string>? CustomHeaders { get; set; } = [];
     }
 
     [Test]
@@ -721,14 +721,9 @@ public class RemoteSchemaLoaderTests
     /// <summary>
     /// Mock HTTP message handler for testing
     /// </summary>
-    private class MockHttpMessageHandler : HttpMessageHandler
+    private class MockHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler) : HttpMessageHandler
     {
-        private readonly Func<HttpRequestMessage, Task<HttpResponseMessage>> _handler;
-
-        public MockHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler)
-        {
-            _handler = handler;
-        }
+        private readonly Func<HttpRequestMessage, Task<HttpResponseMessage>> _handler = handler;
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {

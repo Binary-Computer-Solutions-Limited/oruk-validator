@@ -248,14 +248,9 @@ public class ReferenceResolverTests
         }
     }
 
-    private class MockHttpMessageHandler : HttpMessageHandler
+    private class MockHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>>? handler = null) : HttpMessageHandler
     {
-        private readonly Func<HttpRequestMessage, Task<HttpResponseMessage>> _handler;
-
-        public MockHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>>? handler = null)
-        {
-            _handler = handler ?? (req => Task.FromResult(new HttpResponseMessage()));
-        }
+        private readonly Func<HttpRequestMessage, Task<HttpResponseMessage>> _handler = handler ?? (req => Task.FromResult(new HttpResponseMessage()));
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {

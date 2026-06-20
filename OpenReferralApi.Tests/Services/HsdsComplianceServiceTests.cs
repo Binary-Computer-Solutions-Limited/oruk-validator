@@ -21,7 +21,7 @@ public class HsdsComplianceServiceTests
         .ReturnsAsync(new ValidationResult
         {
           IsValid = true,
-          Errors = new List<ValidationError>()
+          Errors = []
         });
 
     _service = new HsdsComplianceService(_jsonValidatorServiceMock.Object);
@@ -270,11 +270,11 @@ public class HsdsComplianceServiceTests
         .ReturnsAsync(new ValidationResult
         {
           IsValid = false,
-          Errors = new List<ValidationError>
-            {
+          Errors =
+            [
                     new() { Path = "data.extra", Message = "extra", ErrorCode = "ADDITIONAL_FIELD", Severity = "Error" },
                     new() { Path = "data.id", Message = "bad", ErrorCode = "VALIDATION_ERROR", Severity = "Error" }
-            }
+            ]
         });
 
     var hsdsSpec = JsonNode.Parse("""
@@ -312,15 +312,15 @@ public class HsdsComplianceServiceTests
                 Path = "/services",
                 Status = EndpointTestStatus.PassedValidation,
                 IsTested = true,
-                TestResults = new List<HttpTestResult>
-                {
+                TestResults =
+                [
                     new()
                     {
                         IsSuccessStatusCode = true,
                         ResponseBody = System.Text.Encoding.UTF8.GetBytes("[{\"id\":\"1\",\"extra\":\"x\"}]"),
                         ValidationResult = null
                     }
-                }
+                ]
             }
         };
 
@@ -348,10 +348,10 @@ public class HsdsComplianceServiceTests
         .ReturnsAsync(new ValidationResult
         {
           IsValid = false,
-          Errors = new List<ValidationError>
-            {
+          Errors =
+            [
                     new() { Path = "data.extra", Message = "extra", ErrorCode = "ADDITIONAL_FIELD", Severity = "Error" }
-            }
+            ]
         });
 
     var hsdsSpec = JsonNode.Parse("""
@@ -389,8 +389,8 @@ public class HsdsComplianceServiceTests
                 Path = "/services",
                 Status = EndpointTestStatus.PassedValidation,
                 IsTested = true,
-                TestResults = new List<HttpTestResult>
-                {
+                TestResults =
+                [
                     new()
                     {
                         IsSuccessStatusCode = true,
@@ -398,10 +398,10 @@ public class HsdsComplianceServiceTests
                         ValidationResult = new ValidationResult
                         {
                             IsValid = true,
-                            Errors = new List<ValidationError>()
+                            Errors = []
                         }
                     }
-                }
+                ]
             }
         };
 
@@ -430,10 +430,10 @@ public class HsdsComplianceServiceTests
         .ReturnsAsync(new ValidationResult
         {
           IsValid = false,
-          Errors = new List<ValidationError>
-            {
+          Errors =
+            [
                     new() { Path = "data.extra", Message = "extra", ErrorCode = "ADDITIONAL_FIELD", Severity = "Error" }
-            }
+            ]
         });
 
     var hsdsSpec = JsonNode.Parse("""
@@ -471,8 +471,8 @@ public class HsdsComplianceServiceTests
                 Path = "/services",
                 Status = EndpointTestStatus.PassedValidation,
                 IsTested = true,
-                TestResults = new List<HttpTestResult>
-                {
+                TestResults =
+                [
                     new()
                     {
                         IsSuccessStatusCode = true,
@@ -480,10 +480,10 @@ public class HsdsComplianceServiceTests
                         ValidationResult = new ValidationResult
                         {
                             IsValid = true,
-                            Errors = new List<ValidationError>()
+                            Errors = []
                         }
                     }
-                }
+                ]
             }
         };
 
@@ -511,11 +511,11 @@ public class HsdsComplianceServiceTests
     var result = new ValidationResult
     {
       IsValid = false,
-      Errors = new List<ValidationError>
-            {
+      Errors =
+            [
                 new() { ErrorCode = "ADDITIONAL_FIELD", Severity = "Error" },
                 new() { ErrorCode = "SOME_OTHER", Severity = "Warning" }
-            }
+            ]
     };
 
     var serviceWithLenientPolicy = new HsdsComplianceService(
@@ -534,11 +534,11 @@ public class HsdsComplianceServiceTests
     var result = new ValidationResult
     {
       IsValid = false,
-      Errors = new List<ValidationError>
-      {
+      Errors =
+      [
         new() { ErrorCode = "ADDITIONAL_FIELD", Severity = "Error" },
         new() { ErrorCode = "SOME_OTHER", Severity = "Warning" }
-      }
+      ]
     };
 
     var serviceWithLenientPolicy = new HsdsComplianceService(

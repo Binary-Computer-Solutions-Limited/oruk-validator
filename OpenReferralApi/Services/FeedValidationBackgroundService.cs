@@ -9,27 +9,16 @@ namespace OpenReferralApi.Services;
 /// <summary>
 /// Background service that validates registered feeds every 24 hours at midnight
 /// </summary>
-internal sealed class FeedValidationBackgroundService : BackgroundService
+internal sealed class FeedValidationBackgroundService(
+    IServiceProvider serviceProvider,
+    IOptions<FeedValidationOptions> options,
+    ILogger<FeedValidationBackgroundService> logger) : BackgroundService
 {
-    private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger<FeedValidationBackgroundService> _logger;
-    private readonly TimeSpan _validationInterval;
-    private readonly bool _runAtMidnight;
-    private readonly bool _enabled;
-
-    public FeedValidationBackgroundService(
-        IServiceProvider serviceProvider,
-        IOptions<FeedValidationOptions> options,
-        ILogger<FeedValidationBackgroundService> logger)
-    {
-        _serviceProvider = serviceProvider;
-        _logger = logger;
-
-        // Read configuration from options
-        _enabled = options.Value.Enabled;
-        _validationInterval = TimeSpan.FromHours(options.Value.IntervalHours);
-        _runAtMidnight = options.Value.RunAtMidnight;
-    }
+    private readonly IServiceProvider _serviceProvider = serviceProvider;
+    private readonly ILogger<FeedValidationBackgroundService> _logger = logger;
+    private readonly TimeSpan _validationInterval = TimeSpan.FromHours(options.Value.IntervalHours);
+    private readonly bool _runAtMidnight = options.Value.RunAtMidnight;
+    private readonly bool _enabled = options.Value.Enabled;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

@@ -12,7 +12,7 @@ internal static class ValidationErrorNormalizer
             : new HashSet<string>(StringComparer.Ordinal);
         var deduplicatedErrors = capacity > 0
             ? new List<ValidationError>(capacity)
-            : new List<ValidationError>();
+            : [];
 
         foreach (var error in errors)
         {

@@ -27,7 +27,12 @@ public interface IEndpointTestingService
         CancellationToken cancellationToken = default);
 }
 
-public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTestingService
+public partial class EndpointTestingService(
+    ILogger<EndpointTestingService> logger,
+    IHttpClientFactory httpClientFactory,
+    IJsonValidatorService jsonValidatorService,
+    IHsdsComplianceService hsdsComplianceService,
+    IOptions<OpenApiValidationServerOptions>? openApiValidationOptions = null) : OpenApiValidationServiceBase, IEndpointTestingService
 {
     private const string EndpointTestingMetricsMeterName = "OpenReferralApi.Core.EndpointTestingService";
     private static readonly Meter EndpointTestingMetricsMeter = new(EndpointTestingMetricsMeterName, "1.0.0");
@@ -47,41 +52,27 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         "openreferral.openapi.endpoint_testing.memory.working_set_delta_bytes",
         unit: "By",
         description: "Process working set delta between endpoint testing memory checkpoints");
-    private readonly ILogger<EndpointTestingService> _logger;
-    private readonly IHttpClientFactory _httpClientFactory;
-    private readonly IJsonValidatorService _jsonValidatorService;
-    private readonly IHsdsComplianceService _hsdsComplianceService;
-    private readonly OpenApiValidationServerOptions? _openApiValidationOptions;
+    private readonly ILogger<EndpointTestingService> _logger = logger;
+    private readonly IHttpClientFactory _httpClientFactory = httpClientFactory;
+    private readonly IJsonValidatorService _jsonValidatorService = jsonValidatorService;
+    private readonly IHsdsComplianceService _hsdsComplianceService = hsdsComplianceService;
+    private readonly OpenApiValidationServerOptions? _openApiValidationOptions = openApiValidationOptions?.Value;
     private readonly ConcurrentDictionary<string, JsonSchema> _validationSchemaCache = new(StringComparer.Ordinal);
     
     private static readonly string[][] TotalPagesPaths =
-    {
-        new[] { "total_pages" },
-        new[] { "totalPages" },
-        new[] { "pagination", "total_pages" },
-        new[] { "pagination", "totalPages" },
-        new[] { "meta", "total_pages" },
-        new[] { "meta", "totalPages" }
-    };
-    private static readonly string[] CollectionPropertyNames = { "data", "items", "results", "content", "contents" };
-    private static readonly string[] ItemCountPropertyNames = { "size", "count", "length" };
-    private static readonly string[] FallbackIdNames = { "id", "Id", "ID", "uuid", "guid" };
-    private static readonly string[] SchemaCombiners = { "allOf", "anyOf", "oneOf" };
+    [
+        ["total_pages"],
+        ["totalPages"],
+        ["pagination", "total_pages"],
+        ["pagination", "totalPages"],
+        ["meta", "total_pages"],
+        ["meta", "totalPages"]
+    ];
+    private static readonly string[] CollectionPropertyNames = ["data", "items", "results", "content", "contents"];
+    private static readonly string[] ItemCountPropertyNames = ["size", "count", "length"];
+    private static readonly string[] FallbackIdNames = ["id", "Id", "ID", "uuid", "guid"];
+    private static readonly string[] SchemaCombiners = ["allOf", "anyOf", "oneOf"];
     private static readonly HashSet<string> ValidHttpMethods = new(StringComparer.OrdinalIgnoreCase) { "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TRACE" };
-
-    public EndpointTestingService(
-        ILogger<EndpointTestingService> logger,
-        IHttpClientFactory httpClientFactory,
-        IJsonValidatorService jsonValidatorService,
-        IHsdsComplianceService hsdsComplianceService,
-        IOptions<OpenApiValidationServerOptions>? openApiValidationOptions = null)
-    {
-        _logger = logger;
-        _httpClientFactory = httpClientFactory;
-        _jsonValidatorService = jsonValidatorService;
-        _hsdsComplianceService = hsdsComplianceService;
-        _openApiValidationOptions = openApiValidationOptions?.Value;
-    }
     public async Task<List<EndpointTestResult>> TestEndpointsAsync(JsonObject openApiSpec, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, CancellationToken cancellationToken = default)
     {
         return await TestEndpointsInternalAsync(openApiSpec, baseUrl, options, authentication, cancellationToken);
@@ -105,11 +96,16 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             var snapshot = memoryCheckpointTracker.Capture();
             const int compiledSchemaCacheEntryCount = 0;
             const long compiledSchemaCacheTotalKeyChars = 0;
-            var retentionSnapshot = GetEndpointRetentionSnapshot(
-                results,
-                parsedResponseJsonByResult,
-                extractedIds,
-                _validationSchemaCache);
+            var (parsedJsonDocumentsInFlight,
+                 retainedResponseBodies,
+                 retainedResponseBodyChars,
+                 extractedIdRoots,
+                 extractedIdValues,
+                 validationSchemaCacheEntries) = GetEndpointRetentionSnapshot(
+                    results,
+                    parsedResponseJsonByResult,
+                    extractedIds,
+                    _validationSchemaCache);
 
             var payload = CreateMemoryCheckpointPayload(
                 service: nameof(EndpointTestingService),
@@ -121,12 +117,12 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             {
                 CompiledSchemaCacheEntryCount = compiledSchemaCacheEntryCount,
                 CompiledSchemaCacheTotalKeyChars = compiledSchemaCacheTotalKeyChars,
-                ParsedJsonDocumentsInFlight = retentionSnapshot.ParsedJsonDocumentsInFlight,
-                RetainedResponseBodies = retentionSnapshot.RetainedResponseBodies,
-                RetainedResponseBodyChars = retentionSnapshot.RetainedResponseBodyChars,
-                ExtractedIdRoots = retentionSnapshot.ExtractedIdRoots,
-                ExtractedIdValues = retentionSnapshot.ExtractedIdValues,
-                ValidationSchemaCacheEntries = retentionSnapshot.ValidationSchemaCacheEntries
+                ParsedJsonDocumentsInFlight = parsedJsonDocumentsInFlight,
+                RetainedResponseBodies = retainedResponseBodies,
+                RetainedResponseBodyChars = retainedResponseBodyChars,
+                ExtractedIdRoots = extractedIdRoots,
+                ExtractedIdValues = extractedIdValues,
+                ValidationSchemaCacheEntries = validationSchemaCacheEntries
             };
 
             _logger.UnifiedMemoryCheckpoint(payload);
@@ -147,12 +143,12 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
 
             _logger.EndpointTestingRetentionSnapshot(
                 stage,
-                retentionSnapshot.ParsedJsonDocumentsInFlight,
-                retentionSnapshot.RetainedResponseBodies,
-                retentionSnapshot.RetainedResponseBodyChars,
-                retentionSnapshot.ExtractedIdRoots,
-                retentionSnapshot.ExtractedIdValues,
-                retentionSnapshot.ValidationSchemaCacheEntries);
+                parsedJsonDocumentsInFlight,
+                retainedResponseBodies,
+                retainedResponseBodyChars,
+                extractedIdRoots,
+                extractedIdValues,
+                validationSchemaCacheEntries);
 
         }
 
@@ -174,7 +170,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             }
 
             // Group and order endpoints with intelligent dependency handling
-            var endpointGroups = GroupEndpointsByDependencies(pathsObject, options);
+            var endpointGroups = GroupEndpointsByDependencies(pathsObject);
 
             _logger.FoundEndpointGroups(endpointGroups.Count);
             LogMemoryCheckpoint("grouping-complete", "all");
@@ -182,7 +178,10 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             // Test endpoints in dependency order - collection endpoints first, then parameterized
             foreach (var group in endpointGroups)
             {
-                _logger.TestingEndpointGroup(TextSanitizer.SanitizeForLogging(group.RootPath), group.Endpoints.Count);
+                if (_logger.IsEnabled(LogLevel.Information))
+                {
+                    _logger.TestingEndpointGroup(TextSanitizer.SanitizeForLogging(group.RootPath), group.Endpoints.Count);
+                }
                 LogMemoryCheckpoint("group-start", group.RootPath);
 
                 var semaphore = new SemaphoreSlim(options.MaxConcurrentRequests, options.MaxConcurrentRequests);
@@ -213,7 +212,10 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
 
                 semaphore.Dispose();
 
-                _logger.CompletedEndpointGroup(TextSanitizer.SanitizeForLogging(group.RootPath), group.CollectionEndpoints.Count, group.ParameterizedEndpoints.Count);
+                if (_logger.IsEnabled(LogLevel.Information))
+                {
+                    _logger.CompletedEndpointGroup(TextSanitizer.SanitizeForLogging(group.RootPath), group.CollectionEndpoints.Count, group.ParameterizedEndpoints.Count);
+                }
                 LogMemoryCheckpoint("group-complete", group.RootPath);
             }
 
@@ -233,7 +235,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         await semaphore.WaitAsync(cancellationToken);
 
         // Resolve all parameter references upfront (includes path-level and operation-level params)
-        var resolvedParams = ResolveOperationParameters(operation, pathItem, openApiDocument);
+        var resolvedParams = ResolveOperationParameters(operation, pathItem);
 
         var result = new EndpointTestResult
         {
@@ -257,9 +259,15 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             }
 
             // Check if this endpoint has pagination support
-            _logger.CheckingPaginationSupport(TextSanitizer.SanitizeStringForLogging(method), TextSanitizer.SanitizeStringForLogging(path));
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.CheckingPaginationSupport(TextSanitizer.SanitizeStringForLogging(method), TextSanitizer.SanitizeStringForLogging(path));
+            }
             bool hasPagination = method == "GET" && HasPageParameter(resolvedParams);
-            _logger.PaginationCheckResult(TextSanitizer.SanitizeStringForLogging(method), TextSanitizer.SanitizeStringForLogging(path), hasPagination);
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.PaginationCheckResult(TextSanitizer.SanitizeStringForLogging(method), TextSanitizer.SanitizeStringForLogging(path), hasPagination);
+            }
 
             if (hasPagination)
             {
@@ -269,8 +277,8 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             else
             {
                 // Standard single-request testing
-                var fullUrl = BuildFullUrl(baseUrl, path, resolvedParams, options);
-                var testResult = await ExecuteHttpRequestAsync(fullUrl, method, operation, options, authentication, parsedResponseJsonByResult, cancellationToken, testedId);
+                var fullUrl = BuildFullUrl(baseUrl, path, resolvedParams);
+                var testResult = await ExecuteHttpRequestAsync(fullUrl, method, options, authentication, parsedResponseJsonByResult, cancellationToken, testedId);
 
                 result.TestResults.Add(testResult);
                 result.IsTested = true;
@@ -291,16 +299,13 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                         if (isOptionalEndpoint)
                         {
                             // For optional endpoints, add validation warning instead of error
-                            if (testResult.ValidationResult == null)
+                            testResult.ValidationResult ??= new ValidationResult
                             {
-                                testResult.ValidationResult = new ValidationResult
-                                {
-                                    IsValid = false,
-                                    Errors = new List<ValidationError>(),
-                                    SchemaVersion = string.Empty,
-                                    Duration = TimeSpan.Zero
-                                };
-                            }
+                                IsValid = false,
+                                Errors = [],
+                                SchemaVersion = string.Empty,
+                                Duration = TimeSpan.Zero
+                            };
                             testResult.ValidationResult.Errors.Add(new ValidationError
                             {
                                 Path = path,
@@ -313,16 +318,13 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                         else
                         {
                             // For required endpoints, add validation error
-                            if (testResult.ValidationResult == null)
+                            testResult.ValidationResult ??= new ValidationResult
                             {
-                                testResult.ValidationResult = new ValidationResult
-                                {
-                                    IsValid = false,
-                                    Errors = new List<ValidationError>(),
-                                    SchemaVersion = string.Empty,
-                                    Duration = TimeSpan.Zero
-                                };
-                            }
+                                IsValid = false,
+                                Errors = [],
+                                SchemaVersion = string.Empty,
+                                Duration = TimeSpan.Zero
+                            };
                             testResult.ValidationResult.Errors.Add(new ValidationError
                             {
                                 Path = path,
@@ -430,14 +432,20 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         CancellationToken cancellationToken,
         bool retainFirstPageResponseJson = false)
     {
-        _logger.TestingPaginatedEndpoint(TextSanitizer.SanitizeStringForLogging(method), TextSanitizer.SanitizeStringForLogging(path));
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.TestingPaginatedEndpoint(TextSanitizer.SanitizeStringForLogging(method), TextSanitizer.SanitizeStringForLogging(path));
+        }
 
         result.IsTested = true;
 
         // Test first page (page=1)
-        _logger.TestingFirstPage(TextSanitizer.SanitizeForLogging(path));
-        var firstPageUrl = BuildFullUrl(baseUrl, path, resolvedParams, options, pageNumber: 1);
-        var firstPageResult = await ExecuteHttpRequestAsync(firstPageUrl, method, operation, options, auth, parsedResponseJsonByResult, cancellationToken);
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            _logger.TestingFirstPage(TextSanitizer.SanitizeForLogging(path));
+        }
+        var firstPageUrl = BuildFullUrl(baseUrl, path, resolvedParams, pageNumber: 1);
+        var firstPageResult = await ExecuteHttpRequestAsync(firstPageUrl, method, options, auth, parsedResponseJsonByResult, cancellationToken);
         result.TestResults.Add(firstPageResult);
 
         if (!firstPageResult.IsSuccessStatusCode)
@@ -486,7 +494,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         }
 
         // Try to determine total pages and check for empty feed
-        var paginationInfo = ExtractPaginationInfo(firstPageResult, parsedResponseJsonByResult);
+        var (totalPages, itemCount) = ExtractPaginationInfo(firstPageResult, parsedResponseJsonByResult);
 
         // Release the first page's parsed JSON document now that validation and pagination info extraction are complete,
         // unless we need to retain it for extracting IDs in dependency testing.
@@ -496,7 +504,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         }
 
         // Warn if feed returns no rows
-        if (paginationInfo.ItemCount == 0)
+        if (itemCount == 0)
         {
             firstPageResult.ValidationResult!.Errors.Add(new ValidationError
             {
@@ -508,22 +516,31 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             NormalizeValidationResultErrors(firstPageResult.ValidationResult);
             firstPageResult.ValidationResult.IsValid = false;
             result.Status = EndpointTestStatus.PassedWithWarnings;
-            _logger.PaginatedEndpointReturnedEmpty(TextSanitizer.SanitizeForLogging(path));
+            if (_logger.IsEnabled(LogLevel.Warning))
+            {
+                _logger.PaginatedEndpointReturnedEmpty(TextSanitizer.SanitizeForLogging(path));
+            }
             return; // No further pagination testing needed for empty feeds
         }
 
-        if (paginationInfo.TotalPages.HasValue && paginationInfo.TotalPages.Value > 1)
+        if (totalPages.HasValue && totalPages.Value > 1)
         {
-            var totalPages = paginationInfo.TotalPages.Value;
-            _logger.TestingPaginationPages(TextSanitizer.SanitizeForLogging(path), totalPages);
+            var pages = totalPages.Value;
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.TestingPaginationPages(TextSanitizer.SanitizeForLogging(path), pages);
+            }
 
             // Test middle page if there are more than 2 pages
-            if (totalPages > 2)
+            if (pages > 2)
             {
-                var middlePage = totalPages / 2;
-                _logger.TestingMiddlePage(middlePage, TextSanitizer.SanitizeForLogging(path));
-                var middlePageUrl = BuildFullUrl(baseUrl, path, resolvedParams, options, pageNumber: middlePage);
-                var middlePageResult = await ExecuteHttpRequestAsync(middlePageUrl, method, operation, options, auth, parsedResponseJsonByResult, cancellationToken);
+                var middlePage = pages / 2;
+                if (_logger.IsEnabled(LogLevel.Debug))
+                {
+                    _logger.TestingMiddlePage(middlePage, TextSanitizer.SanitizeForLogging(path));
+                }
+                var middlePageUrl = BuildFullUrl(baseUrl, path, resolvedParams, pageNumber: middlePage);
+                var middlePageResult = await ExecuteHttpRequestAsync(middlePageUrl, method, options, auth, parsedResponseJsonByResult, cancellationToken);
                 result.TestResults.Add(middlePageResult);
 
                 if (middlePageResult.IsSuccessStatusCode && HasResponsePayload(middlePageResult, parsedResponseJsonByResult))
@@ -536,9 +553,12 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             }
 
             // Test last page
-            _logger.TestingLastPage(totalPages, TextSanitizer.SanitizeForLogging(path));
-            var lastPageUrl = BuildFullUrl(baseUrl, path, resolvedParams, options, pageNumber: totalPages);
-            var lastPageResult = await ExecuteHttpRequestAsync(lastPageUrl, method, operation, options, auth, parsedResponseJsonByResult, cancellationToken);
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.TestingLastPage(pages, TextSanitizer.SanitizeForLogging(path));
+            }
+            var lastPageUrl = BuildFullUrl(baseUrl, path, resolvedParams, pageNumber: pages);
+            var lastPageResult = await ExecuteHttpRequestAsync(lastPageUrl, method, options, auth, parsedResponseJsonByResult, cancellationToken);
             result.TestResults.Add(lastPageResult);
 
             if (lastPageResult.IsSuccessStatusCode && HasResponsePayload(lastPageResult, parsedResponseJsonByResult))
@@ -551,7 +571,10 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         }
         else
         {
-            _logger.SkippingAdditionalPageTests(TextSanitizer.SanitizeForLogging(path));
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.SkippingAdditionalPageTests(TextSanitizer.SanitizeForLogging(path));
+            }
         }
 
         foreach (var testResult in result.TestResults)
@@ -572,7 +595,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
 
     private static EndpointTestStatus DeterminePaginatedEndpointStatus(EndpointTestResult result)
     {
-        if (!result.TestResults.Any())
+        if (result.TestResults.Count == 0)
         {
             return EndpointTestStatus.NotTested;
         }
@@ -606,7 +629,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         return EndpointTestStatus.PassedValidation;
     }
 
-    private (int? TotalPages, int ItemCount) ExtractPaginationInfo(HttpTestResult response, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult)
+    private static (int? TotalPages, int ItemCount) ExtractPaginationInfo(HttpTestResult response, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult)
     {
         if (parsedResponseJsonByResult.TryGetValue(response, out var parsedJson))
         {
@@ -616,7 +639,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         return (null, 0);
     }
 
-    private (int? TotalPages, int ItemCount) ExtractPaginationInfo(JsonElement json)
+    private static (int? TotalPages, int ItemCount) ExtractPaginationInfo(JsonElement json)
     {
         int? totalPages = null;
 
@@ -664,7 +687,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         return (totalPages, itemCount);
     }
 
-    private string BuildFullUrl(string baseUrl, string path, JsonArray resolvedParams, OpenApiValidationOptions options, int? pageNumber = null)
+    private string BuildFullUrl(string baseUrl, string path, JsonArray resolvedParams, int? pageNumber = null)
     {
         var url = $"{baseUrl.TrimEnd('/')}{path}";
 
@@ -684,14 +707,20 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     /// </summary>
     private bool HasPageParameter(JsonArray resolvedParams)
     {
-        _logger.CheckingPageParameter(resolvedParams.Count);
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            _logger.CheckingPageParameter(resolvedParams.Count);
+        }
         foreach (var param in resolvedParams)
         {
             if (param is JsonObject paramObj)
             {
                 var name = paramObj["name"]?.ToString();
                 var inLocation = paramObj["in"]?.ToString();
-                _logger.CheckingParam(TextSanitizer.SanitizeStringForLogging(name ?? string.Empty), TextSanitizer.SanitizeStringForLogging(inLocation ?? string.Empty));
+                if (_logger.IsEnabled(LogLevel.Debug))
+                {
+                    _logger.CheckingParam(TextSanitizer.SanitizeStringForLogging(name ?? string.Empty), TextSanitizer.SanitizeStringForLogging(inLocation ?? string.Empty));
+                }
 
                 if (name?.Equals("page", StringComparison.OrdinalIgnoreCase) == true &&
                     inLocation?.Equals("query", StringComparison.OrdinalIgnoreCase) == true)
@@ -709,21 +738,27 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     /// Merges path-level and operation-level parameters.
     /// Returns a JsonArray of parameter objects (references already resolved upstream).
     /// </summary>
-    private JsonArray ResolveOperationParameters(JsonObject operation, JsonObject pathItem, JsonObject openApiDocument)
+    private JsonArray ResolveOperationParameters(JsonObject operation, JsonObject pathItem)
     {
         var resolvedParams = new JsonArray();
 
         // Add path-level parameters first (these are inherited by all operations)
         if (pathItem["parameters"] is JsonArray pathParams)
         {
-            _logger.FoundPathLevelParameters(pathParams.Count);
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.FoundPathLevelParameters(pathParams.Count);
+            }
             foreach (var param in pathParams)
             {
                 resolvedParams.Add(param?.DeepClone());
                 if (param is JsonObject paramObj)
                 {
                     var paramName = paramObj["name"]?.ToString();
-                    _logger.PathLevelParam(TextSanitizer.SanitizeStringForLogging(paramName ?? string.Empty));
+                    if (_logger.IsEnabled(LogLevel.Debug))
+                    {
+                        _logger.PathLevelParam(TextSanitizer.SanitizeStringForLogging(paramName ?? string.Empty));
+                    }
                 }
             }
         }
@@ -731,14 +766,20 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         // Add operation-level parameters (these can override path-level params)
         if (operation["parameters"] is JsonArray operationParams)
         {
-            _logger.FoundOperationLevelParameters(operationParams.Count);
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.FoundOperationLevelParameters(operationParams.Count);
+            }
             foreach (var param in operationParams)
             {
                 resolvedParams.Add(param?.DeepClone());
                 if (param is JsonObject paramObj)
                 {
                     var paramName = paramObj["name"]?.ToString();
-                    _logger.OperationLevelParam(TextSanitizer.SanitizeStringForLogging(paramName ?? string.Empty));
+                    if (_logger.IsEnabled(LogLevel.Debug))
+                    {
+                        _logger.OperationLevelParam(TextSanitizer.SanitizeStringForLogging(paramName ?? string.Empty));
+                    }
                 }
             }
         }
@@ -747,7 +788,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         return resolvedParams;
     }
 
-    private async Task<HttpTestResult> ExecuteHttpRequestAsync(string url, string method, JsonObject operation, OpenApiValidationOptions options, DataSourceAuthentication? authentication, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken, string? testedId = null)
+    private async Task<HttpTestResult> ExecuteHttpRequestAsync(string url, string method, OpenApiValidationOptions options, DataSourceAuthentication? authentication, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken, string? testedId = null)
     {
         var testResult = new HttpTestResult
         {
@@ -1171,7 +1212,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             : 100;
     }
 
-    private List<EndpointGroup> GroupEndpointsByDependencies(JsonObject pathsObject, OpenApiValidationOptions options)
+    private static List<EndpointGroup> GroupEndpointsByDependencies(JsonObject pathsObject)
     {
         var endpoints = new List<EndpointInfo>();
 
@@ -1214,10 +1255,10 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             .Select(g => new EndpointGroup
             {
                 RootPath = g.Key,
-                CollectionEndpoints = g.Where(e => !e.IsParameterized && e.Method == "GET").ToList(),
-                ParameterizedEndpoints = g.Where(e => e.IsParameterized).ToList()
+                CollectionEndpoints = [.. g.Where(e => !e.IsParameterized && e.Method == "GET")],
+                ParameterizedEndpoints = [.. g.Where(e => e.IsParameterized)]
             })
-            .Where(g => g.Endpoints.Any())
+            .Where(g => g.Endpoints.Count > 0)
             .ToList();
 
         return groups;
@@ -1251,26 +1292,38 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             var rootPath = EndpointInfo.GetRootPath(path);
             var successfulResponse = result.TestResults.First(r => r.IsSuccessStatusCode);
 
-            _logger.ProcessingHttpResponse(
-                TextSanitizer.SanitizeUrlForLogging(successfulResponse.RequestUrl ?? string.Empty),
-                successfulResponse.ResponseStatusCode ?? 0,
-                successfulResponse.ResponseBody?.Length ?? 0);
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.ProcessingHttpResponse(
+                    TextSanitizer.SanitizeUrlForLogging(successfulResponse.RequestUrl ?? string.Empty),
+                    successfulResponse.ResponseStatusCode ?? 0,
+                    successfulResponse.ResponseBody?.Length ?? 0);
+            }
 
-            _logger.ResponseContentLength(successfulResponse.ResponseBody?.Length ?? 0);
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.ResponseContentLength(successfulResponse.ResponseBody?.Length ?? 0);
+            }
 
             var ids = ExtractIdsFromResponse(successfulResponse, rootPath, operation, openApiDocument, parsedResponseJsonByResult);
 
-            if (ids.Any())
+            if (ids.Count > 0)
             {
                 // Store extracted IDs in the shared dictionary for use by dependent endpoints
                 // Note: ConcurrentDictionary is a reference type, so this modification persists to the caller
                 extractedIds[rootPath] = ids;
-                _logger.SuccessfullyExtractedIds(ids.Count, TextSanitizer.SanitizeForLogging(path), TextSanitizer.SanitizeForLogging(rootPath));
+                if (_logger.IsEnabled(LogLevel.Information))
+                {
+                    _logger.SuccessfullyExtractedIds(ids.Count, TextSanitizer.SanitizeForLogging(path), TextSanitizer.SanitizeForLogging(rootPath));
+                }
 
                 // Verify the IDs were stored correctly
                 if (extractedIds.TryGetValue(rootPath, out var storedIds))
                 {
-                    _logger.VerifiedIdsStored(storedIds.Count, TextSanitizer.SanitizeForLogging(rootPath));
+                    if (_logger.IsEnabled(LogLevel.Debug))
+                    {
+                        _logger.VerifiedIdsStored(storedIds.Count, TextSanitizer.SanitizeForLogging(rootPath));
+                    }
                 }
                 else
                 {
@@ -1319,21 +1372,30 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     {
         var rootPath = EndpointInfo.GetRootPath(path);
 
-        _logger.LookingForExtractedIds(TextSanitizer.SanitizeForLogging(rootPath), extractedIds.Keys.Count);
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LookingForExtractedIds(TextSanitizer.SanitizeForLogging(rootPath), extractedIds.Keys.Count);
+        }
 
         // Try to retrieve extracted IDs from the shared dictionary populated by collection endpoint tests
-        if (extractedIds.TryGetValue(rootPath, out var availableIds) && availableIds.Any())
+        if (extractedIds.TryGetValue(rootPath, out var availableIds) && availableIds.Count > 0)
         {
-            _logger.FoundExtractedIds(availableIds.Count, TextSanitizer.SanitizeForLogging(rootPath));
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.FoundExtractedIds(availableIds.Count, TextSanitizer.SanitizeForLogging(rootPath));
+            }
 
             // Test up to 10 random IDs from the available IDs
             var maxIdsToTest = Math.Min(10, availableIds.Count);
             var random = new Random();
-            var idsToTest = availableIds.Count <= 10
-                ? availableIds.ToList()
-                : availableIds.OrderBy(_ => random.Next()).Take(10).ToList();
+            List<string> idsToTest = availableIds.Count <= 10
+                ? [.. availableIds]
+                : [.. availableIds.OrderBy(_ => random.Next()).Take(10)];
 
-            _logger.TestingRandomIds(idsToTest.Count, TextSanitizer.SanitizeForLogging(path));
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.TestingRandomIds(idsToTest.Count, TextSanitizer.SanitizeForLogging(path));
+            }
 
             // Create a composite result that combines all test results
             var compositeResult = new EndpointTestResult
@@ -1378,10 +1440,10 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                 ReleaseParsedResponseJsonDocuments(singleResult.TestResults, parsedResponseJsonByResult);
             }
 
-            compositeResult.IsTested = compositeResult.TestResults.Any();
+            compositeResult.IsTested = compositeResult.TestResults.Count > 0;
 
             // Set the composite status based on all test results
-            if (compositeResult.TestResults.Any())
+            if (compositeResult.TestResults.Count > 0)
             {
                 if (allTestsSuccessful)
                 {
@@ -1416,7 +1478,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             _logger.NoExtractedIdsAvailable(TextSanitizer.SanitizeForLogging(rootPath), extractedIds.Count, TextSanitizer.SanitizeForLogging(path));
 
             // Log available keys for debugging
-            if (extractedIds.Any())
+            if (!extractedIds.IsEmpty)
             {
                 _logger.AvailableIdKeysCount(extractedIds.Keys.Count);
             }
@@ -1432,28 +1494,29 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                 IsOptional = operation.IsOptionalEndpoint(),
                 Status = EndpointTestStatus.NotTested,
                 IsTested = false,
-                TestResults = new List<HttpTestResult>(){
+                TestResults =
+                [
                     new() {
                         IsSuccessStatusCode = false,
                         RequestMethod = method,
                         RequestUrl = $"{baseUrl}{path}",
                         ErrorMessage = "No extracted IDs available for parameter substitution. Endpoint was not tested.",
-                        ValidationResult= new ValidationResult
+                        ValidationResult = new ValidationResult
                         {
                             IsValid = false,
-                            Errors = new List<ValidationError>
-                            {
-                                new ValidationError
+                            Errors =
+                            [
+                                new()
                                 {
                                     Path = path,
                                     Message = "No extracted IDs available for parameter substitution. Endpoint was not tested.",
                                     ErrorCode = "NO_IDS_AVAILABLE",
                                     Severity = "Warning"
                                 }
-                            }
+                            ]
                         }
                     }
-                }
+                ]
             };
 
             NormalizeValidationResultErrors(notTestedResult.TestResults.FirstOrDefault()?.ValidationResult);
@@ -1468,11 +1531,14 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     {
         var ids = new List<string>();
 
-        _logger.StartingIdExtraction(TextSanitizer.SanitizeForLogging(rootPath));
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.StartingIdExtraction(TextSanitizer.SanitizeForLogging(rootPath));
+        }
 
         // First, try to extract ID field names from the OpenAPI schema
         var schemaIdFields = ExtractIdFieldsFromSchema(operation, openApiDocument);
-        if (schemaIdFields.Any())
+        if (schemaIdFields.Count > 0)
         {
             _logger.FoundIdFieldsFromSchema(schemaIdFields.Count);
         }
@@ -1483,7 +1549,10 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
 
         if (parsedResponseJsonByResult.TryGetValue(response, out var parsedJson))
         {
-            _logger.ParsedJsonType(parsedJson.RootElement.ValueKind.ToString());
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.ParsedJsonType(parsedJson.RootElement.ValueKind.ToString());
+            }
             try
             {
                 ExtractIdsFromJsonElement(parsedJson.RootElement, schemaIdFields, operation, openApiDocument, ids);
@@ -1494,14 +1563,17 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             }
         }
 
-        return ids.Distinct().ToList();
+        return [.. ids.Distinct()];
     }
 
     private void ExtractIdsFromJsonElement(JsonElement json, List<string> schemaIdFields, JsonObject operation, JsonObject openApiDocument, List<string> ids)
     {
         if (json.ValueKind == JsonValueKind.Array)
         {
-            _logger.FoundJsonArray(json.GetArrayLength());
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.FoundJsonArray(json.GetArrayLength());
+            }
 
             foreach (var item in json.EnumerateArray())
             {
@@ -1522,7 +1594,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         }
 
         var collectionProps = ExtractCollectionPropertiesFromSchema(operation, openApiDocument);
-        if (collectionProps.Any())
+        if (collectionProps.Count > 0)
         {
             var sanitizedProps = string.Join(", ", collectionProps.Select(p => TextSanitizer.SanitizeForLogging(p)));
             _logger.FoundCollectionProperties(sanitizedProps);
@@ -1532,7 +1604,10 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                 if (TryGetPropertyIgnoreCase(json, propName, out var itemsElement)
                     && itemsElement.ValueKind == JsonValueKind.Array)
                 {
-                    _logger.ProcessingCollectionProperty(TextSanitizer.SanitizeForLogging(propName), itemsElement.GetArrayLength());
+                    if (_logger.IsEnabled(LogLevel.Debug))
+                    {
+                        _logger.ProcessingCollectionProperty(TextSanitizer.SanitizeForLogging(propName), itemsElement.GetArrayLength());
+                    }
                     foreach (var item in itemsElement.EnumerateArray())
                     {
                         var id = ExtractIdFromElement(item, schemaIdFields);
@@ -1547,14 +1622,17 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             }
         }
 
-        if (!ids.Any())
+        if (ids.Count == 0)
         {
             foreach (var propName in CollectionPropertyNames)
             {
                 if (TryGetPropertyIgnoreCase(json, propName, out var itemsElement)
                     && itemsElement.ValueKind == JsonValueKind.Array)
                 {
-                    _logger.ProcessingFallbackCollectionProperty(TextSanitizer.SanitizeForLogging(propName), itemsElement.GetArrayLength());
+                    if (_logger.IsEnabled(LogLevel.Debug))
+                    {
+                        _logger.ProcessingFallbackCollectionProperty(TextSanitizer.SanitizeForLogging(propName), itemsElement.GetArrayLength());
+                    }
                     foreach (var item in itemsElement.EnumerateArray())
                     {
                         var id = ExtractIdFromElement(item, schemaIdFields);
@@ -1569,7 +1647,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             }
         }
 
-        if (!ids.Any())
+        if (ids.Count == 0)
         {
             var id = ExtractIdFromElement(json, schemaIdFields);
             if (!string.IsNullOrEmpty(id))
@@ -1622,7 +1700,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             return null;
         }
 
-        var parts = refStr.Substring(2).Split('/');
+        var parts = refStr[2..].Split('/');
         JsonNode? current = openApiDocument;
 
         foreach (var part in parts)
@@ -1662,7 +1740,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             _logger.FailedToExtractIdFieldsFromSchema(ex);
         }
 
-        return idFields.Distinct().ToList();
+        return [.. idFields.Distinct()];
     }
 
     /// <summary>
@@ -1686,7 +1764,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             _logger.FailedToExtractCollectionProperties(ex);
         }
 
-        return collectionProps.Distinct().ToList();
+        return [.. collectionProps.Distinct()];
     }
 
     /// <summary>
@@ -1859,12 +1937,12 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     /// <summary>
     /// Substitutes path parameters with a specific ID value
     /// </summary>
-    private string SubstitutePathParametersWithSpecificId(string path, string id)
+    private static string SubstitutePathParametersWithSpecificId(string path, string id)
     {
         var substitutedPath = path;
 
         // Find all path parameters and replace with the specific ID
-        var matches = Regex.Matches(path, @"\{([^}]+)\}");
+        var matches = PathParameterRegex().Matches(path);
 
         foreach (Match match in matches)
         {
@@ -1891,7 +1969,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                 continue;
             }
 
-            if (allowedHeaderTokenSymbols.IndexOf(c) >= 0)
+            if (allowedHeaderTokenSymbols.Contains(c))
             {
                 continue;
             }
@@ -1926,7 +2004,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     /// </summary>
     /// <param name="request">The HTTP request message to apply authentication to</param>
     /// <param name="authentication">The authentication configuration containing credentials and auth type</param>
-    private void ApplyAuthenticationHeaders(HttpRequestMessage request, IAuthenticationConfig authentication)
+    private void ApplyAuthenticationHeaders(HttpRequestMessage request, DataSourceAuthentication authentication)
     {
         // Apply API Key authentication
         if (!string.IsNullOrEmpty(authentication.ApiKey))
@@ -1935,7 +2013,10 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             if (IsValidHttpHeaderName(headerName) && IsSafeHeaderValue(authentication.ApiKey))
             {
                 request.Headers.Add(headerName, authentication.ApiKey);
-                _logger.AppliedApiKeyAuthenticationWithHeader(TextSanitizer.SanitizeForLogging(headerName));
+                if (_logger.IsEnabled(LogLevel.Debug))
+                {
+                    _logger.AppliedApiKeyAuthenticationWithHeader(TextSanitizer.SanitizeForLogging(headerName));
+                }
             }
             else
             {
@@ -1964,11 +2045,14 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             var credentials = Convert.ToBase64String(
                 Encoding.ASCII.GetBytes($"{authentication.BasicAuth.Username}:{authentication.BasicAuth.Password ?? string.Empty}"));
             request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
-            _logger.AppliedBasicAuthentication(TextSanitizer.SanitizeForLogging(authentication.BasicAuth.Username));
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.AppliedBasicAuthentication(TextSanitizer.SanitizeForLogging(authentication.BasicAuth.Username));
+            }
         }
 
         // Apply Custom Headers
-        if (authentication.CustomHeaders != null && authentication.CustomHeaders.Any())
+        if (authentication.CustomHeaders != null && authentication.CustomHeaders.Count > 0)
         {
             foreach (var header in authentication.CustomHeaders)
             {
@@ -1978,7 +2062,10 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                     IsSafeHeaderValue(header.Value))
                 {
                     request.Headers.Add(header.Key, header.Value);
-                    EndpointTestingLog.AppliedCustomHeader(_logger, TextSanitizer.SanitizeForLogging(header.Key));
+                    if (_logger.IsEnabled(LogLevel.Debug))
+                    {
+                        EndpointTestingLog.AppliedCustomHeader(_logger, TextSanitizer.SanitizeForLogging(header.Key));
+                    }
                 }
                 else
                 {
@@ -1987,4 +2074,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             }
         }
     }
+
+    [GeneratedRegex(@"\{([^}]+)\}")]
+    private static partial Regex PathParameterRegex();
 }

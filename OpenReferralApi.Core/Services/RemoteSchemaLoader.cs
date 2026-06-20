@@ -126,12 +126,7 @@ public class RemoteSchemaLoader
             _ = response.EnsureSuccessStatusCode();
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
-            var jsonNode = JsonNode.Parse(content);
-            if (jsonNode == null)
-            {
-                throw new InvalidOperationException("Fetched content is not valid JSON.");
-            }
-
+            var jsonNode = JsonNode.Parse(content) ?? throw new InvalidOperationException("Fetched content is not valid JSON.");
             var cacheKey = GenerateCacheKey(resolvedUrl);
             var cacheEntryOptions = new MemoryCacheEntryOptions
             {

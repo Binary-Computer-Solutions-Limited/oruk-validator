@@ -82,5 +82,5 @@ public class SchemaAnalysis
     /// Circular references can cause issues in code generation and documentation tools
     /// </summary>
     [JsonPropertyName("circularReferences")]
-    public List<string> CircularReferences { get; set; } = new();
+    public List<string> CircularReferences { get; set; } = [];
 }

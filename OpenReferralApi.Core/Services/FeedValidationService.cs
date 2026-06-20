@@ -55,7 +55,7 @@ public class FeedValidationService : IFeedValidationService
         catch (Exception ex)
         {
             _logger.FailedToRetrieveFeeds(ex);
-            return new List<ServiceFeed>();
+            return [];
         }
     }
 
@@ -257,7 +257,7 @@ public class FeedValidationService : IFeedValidationService
     {
         if (feeds.Count == 0)
         {
-            return new List<FeedValidationResult>();
+            return [];
         }
 
         var results = new FeedValidationResult[feeds.Count];
@@ -288,7 +288,7 @@ public class FeedValidationService : IFeedValidationService
             }
         });
 
-        return results.ToList();
+        return [.. results];
     }
 
     public async Task<FeedValidationResult> ValidateAndUpdateFeedAsync(
@@ -314,14 +314,10 @@ public class FeedValidationService : IFeedValidationService
 /// <summary>
 /// Null implementation when MongoDB is not configured
 /// </summary>
-public class NullFeedValidationService : IFeedValidationService
+public class NullFeedValidationService(ILogger<NullFeedValidationService> logger) : IFeedValidationService
 {
-    private readonly ILogger<NullFeedValidationService> _logger;
+    private readonly ILogger<NullFeedValidationService> _logger = logger;
 
-    public NullFeedValidationService(ILogger<NullFeedValidationService> logger)
-    {
-        _logger = logger;
-    }
 
     public Task<List<ServiceFeed>> GetAllFeedsAsync(CancellationToken cancellationToken = default)
     {

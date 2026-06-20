@@ -7,7 +7,7 @@ namespace OpenReferralApi.Core.Services;
 /// </summary>
 public static class OptionalEndpointExtensions
 {
-    private static readonly string[] HttpMethods = { "get", "post", "put", "delete", "patch", "head", "options", "trace" };
+    private static readonly string[] HttpMethods = ["get", "post", "put", "delete", "patch", "head", "options", "trace"];
 
     /// <summary>
     /// Determines if an endpoint is marked as optional in the OpenAPI specification
@@ -66,7 +66,7 @@ public static class OptionalEndpointExtensions
         if (pathItem is JsonObject pathObject)
         {
             var tags = GetEndpointTags(pathObject);
-            if (tags != null && tags.Any())
+            if (tags != null && tags.Count > 0)
             {
                 // Return the first tag as the category, excluding "Optional" 
                 var categoryTag = tags.FirstOrDefault(tag =>
@@ -97,7 +97,7 @@ public static class OptionalEndpointExtensions
         // Check if this is an operation object with tags
         if (pathObject["tags"] is JsonArray tagsArray)
         {
-            return tagsArray.Select(tag => tag?.ToString() ?? string.Empty).ToList();
+            return [.. tagsArray.Select(tag => tag?.ToString() ?? string.Empty)];
         }
 
         // If this is a path item, get tags from all operations within it
@@ -116,7 +116,7 @@ public static class OptionalEndpointExtensions
             }
         }
 
-        return allTags.Count > 0 ? allTags.ToList() : null;
+        return allTags.Count > 0 ? [.. allTags] : null;
     }
 
     /// <summary>

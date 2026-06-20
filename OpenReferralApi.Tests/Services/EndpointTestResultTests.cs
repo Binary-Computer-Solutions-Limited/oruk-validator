@@ -11,18 +11,18 @@ public class EndpointTestResultTests
         {
             Path = "/services",
             Method = "GET",
-            TestResults = new List<HttpTestResult>
-            {
+            TestResults =
+            [
                 new()
                 {
                     ValidationResult = new ValidationResult
                     {
                         IsValid = false,
-                        Errors = new List<ValidationError>
-                        {
+                        Errors =
+                        [
                             new() { Path = "data.name", ErrorCode = "E1", Message = "required", Severity = "Error" },
                             new() { Path = "data.postcode", ErrorCode = "W1", Message = "unknown", Severity = "Warning" }
-                        }
+                        ]
                     }
                 },
                 new()
@@ -30,14 +30,14 @@ public class EndpointTestResultTests
                     ValidationResult = new ValidationResult
                     {
                         IsValid = false,
-                        Errors = new List<ValidationError>
-                        {
+                        Errors =
+                        [
                             new() { Path = "data.name", ErrorCode = "E1", Message = "required", Severity = "Error" },
                             new() { Path = "data.email", ErrorCode = "E2", Message = "invalid", Severity = "Error" }
-                        }
+                        ]
                     }
                 }
-            }
+            ]
         };
 
         var flattened = endpoint.ValidationErrors;
@@ -63,20 +63,20 @@ public class EndpointTestResultTests
             ValidationResult = new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<ValidationError> { new() { Path = "data.name", Message = "required", ErrorCode = "E1" } }
+                Errors = [new() { Path = "data.name", Message = "required", ErrorCode = "E1" }]
             }
         };
 
         var endpointWithFailure = new EndpointTestResult
         {
-            TestResults = new List<HttpTestResult> { passing, failing }
+            TestResults = [passing, failing]
         };
 
         Assert.That(endpointWithFailure.PrimaryTestResult, Is.SameAs(failing));
 
         var endpointWithoutFailure = new EndpointTestResult
         {
-            TestResults = new List<HttpTestResult> { passing }
+            TestResults = [passing]
         };
 
         Assert.That(endpointWithoutFailure.PrimaryTestResult, Is.SameAs(passing));
@@ -87,20 +87,20 @@ public class EndpointTestResultTests
     {
         var endpoint = new EndpointTestResult
         {
-            TestResults = new List<HttpTestResult>
-            {
+            TestResults =
+            [
                 new()
                 {
                     ValidationResult = new ValidationResult
                     {
                         IsValid = false,
-                        Errors = new List<ValidationError>
-                        {
+                        Errors =
+                        [
                             new() { Path = "data.name", ErrorCode = "E1", Message = "required", Severity = "Error" }
-                        }
+                        ]
                     }
                 }
-            }
+            ]
         };
 
         endpoint.RefreshFlattenedFields();

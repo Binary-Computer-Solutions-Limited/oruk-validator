@@ -6,7 +6,7 @@ namespace OpenReferralApi.Core.Models.Endpoints;
 public class EndpointGroup
 {
     public string RootPath { get; set; } = string.Empty;
-    public List<EndpointInfo> CollectionEndpoints { get; set; } = new();
-    public List<EndpointInfo> ParameterizedEndpoints { get; set; } = new();
-    public List<EndpointInfo> Endpoints => CollectionEndpoints.Concat(ParameterizedEndpoints).ToList();
+    public List<EndpointInfo> CollectionEndpoints { get; set; } = [];
+    public List<EndpointInfo> ParameterizedEndpoints { get; set; } = [];
+    public List<EndpointInfo> Endpoints => [.. CollectionEndpoints, .. ParameterizedEndpoints];
 }

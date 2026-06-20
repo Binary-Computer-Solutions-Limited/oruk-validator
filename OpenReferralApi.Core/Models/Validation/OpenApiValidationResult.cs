@@ -38,7 +38,7 @@ public class OpenApiValidationResult
     /// Empty list if endpoint testing was disabled or no testable endpoints were found
     /// </summary>
     [JsonPropertyName("endpointTests")]
-    public List<EndpointTestResult> EndpointTests { get; set; } = new();
+    public List<EndpointTestResult> EndpointTests { get; set; } = [];
 
     /// <summary>
     /// High-level summary statistics of validation and testing results
@@ -61,5 +61,5 @@ public class OpenApiValidationResult
     /// Includes issues such as failing to fetch or resolve the OpenAPI specification.
     /// </summary>
     [JsonPropertyName("notifications")]
-    public List<string> Notifications { get; set; } = new();
+    public List<string> Notifications { get; set; } = [];
 }

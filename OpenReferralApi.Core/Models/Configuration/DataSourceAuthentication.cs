@@ -24,5 +24,5 @@ public class DataSourceAuthentication : IAuthenticationConfig
     public BasicAuthentication? BasicAuth { get; set; }
 
     [JsonPropertyName("customHeaders")]
-    public Dictionary<string, string>? CustomHeaders { get; set; } = new();
+    public Dictionary<string, string>? CustomHeaders { get; set; } = [];
 }

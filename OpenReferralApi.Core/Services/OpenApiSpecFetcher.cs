@@ -12,24 +12,16 @@ namespace OpenReferralApi.Core.Services;
 /// Internal helper class for fetching and parsing OpenAPI specifications from remote URLs.
 /// Handles authentication and reference resolution.
 /// </summary>
-public class OpenApiSpecFetcher
+public class OpenApiSpecFetcher(
+    IHttpClientFactory httpClientFactory,
+    ILogger logger,
+    ISchemaResolverService schemaResolverService,
+    bool allowUserSuppliedAuth)
 {
-    private readonly IHttpClientFactory _httpClientFactory;
-    private readonly ILogger _logger;
-    private readonly ISchemaResolverService _schemaResolverService;
-    private readonly bool _allowUserSuppliedAuth;
-
-    public OpenApiSpecFetcher(
-        IHttpClientFactory httpClientFactory,
-        ILogger logger,
-        ISchemaResolverService schemaResolverService,
-        bool allowUserSuppliedAuth)
-    {
-        _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _schemaResolverService = schemaResolverService ?? throw new ArgumentNullException(nameof(schemaResolverService));
-        _allowUserSuppliedAuth = allowUserSuppliedAuth;
-    }
+    private readonly IHttpClientFactory _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
+    private readonly ILogger _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    private readonly ISchemaResolverService _schemaResolverService = schemaResolverService ?? throw new ArgumentNullException(nameof(schemaResolverService));
+    private readonly bool _allowUserSuppliedAuth = allowUserSuppliedAuth;
 
     /// <summary>
     /// Validates user-supplied authentication according to server-side policy.
@@ -187,7 +179,7 @@ public class OpenApiSpecFetcher
         }
 
         // Simple length limits to avoid abuse
-        bool IsTooLong(string? value, int maxLength) =>
+        static bool IsTooLong(string? value, int maxLength) =>
             !string.IsNullOrEmpty(value) && value.Length > maxLength;
 
         const int MaxTokenLength = 4096;
@@ -261,14 +253,14 @@ public class OpenApiSpecFetcher
         }
 
         var trimmedContent = rawContent.TrimStart();
-        if (trimmedContent.StartsWith("{", StringComparison.Ordinal) ||
-            trimmedContent.StartsWith("[", StringComparison.Ordinal))
+        if (trimmedContent.StartsWith('{') ||
+            trimmedContent.StartsWith('['))
         {
             return rawContent;
         }
 
         // Fast path to reject obvious HTML/XML without throwing Yaml exceptions
-        if (trimmedContent.StartsWith("<", StringComparison.Ordinal))
+        if (trimmedContent.StartsWith('<'))
         {
             throw new FormatException("OpenAPI spec content appears to be HTML/XML.");
         }
@@ -304,13 +296,16 @@ public class OpenApiSpecFetcher
     /// <summary>
     /// Applies authentication credentials to an HTTP request.
     /// </summary>
-    private void ApplyAuthentication(HttpRequestMessage request, IAuthenticationConfig auth)
+    private void ApplyAuthentication(HttpRequestMessage request, DataSourceAuthentication auth)
     {
         // Apply API Key authentication
         if (!string.IsNullOrEmpty(auth.ApiKey))
         {
             request.Headers.Add(auth.ApiKeyHeader, auth.ApiKey);
-            _logger.AppliedApiKeyAuthentication(TextSanitizer.SanitizeStringForLogging(auth.ApiKeyHeader));
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.AppliedApiKeyAuthentication(TextSanitizer.SanitizeStringForLogging(auth.ApiKeyHeader));
+            }
         }
 
         // Apply Bearer Token authentication
@@ -336,7 +331,10 @@ public class OpenApiSpecFetcher
             foreach (var header in auth.CustomHeaders)
             {
                 request.Headers.Add(header.Key, header.Value);
-                OpenApiSpecFetcherLog.AppliedCustomHeader(_logger, TextSanitizer.SanitizeStringForLogging(header.Key));
+                if (_logger.IsEnabled(LogLevel.Debug))
+                {
+                    OpenApiSpecFetcherLog.AppliedCustomHeader(_logger, TextSanitizer.SanitizeStringForLogging(header.Key));
+                }
             }
         }
     }

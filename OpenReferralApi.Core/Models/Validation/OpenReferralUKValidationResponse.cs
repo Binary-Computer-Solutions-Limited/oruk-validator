@@ -17,7 +17,7 @@ public class OpenReferralUKValidationResponse
     /// Collection of test suites containing endpoint validation results
     /// </summary>
     [JsonPropertyName("testSuites")]
-    public List<object> TestSuites { get; set; } = new();
+    public List<object> TestSuites { get; set; } = [];
 
     /// <summary>
     /// Specification-level validation findings (for example OpenAPI schema/profile comparison errors)
@@ -29,7 +29,7 @@ public class OpenReferralUKValidationResponse
     /// User-facing notifications about processing issues such as specification fetch/resolve failures
     /// </summary>
     [JsonPropertyName("notifications")]
-    public List<string> Notifications { get; set; } = new();
+    public List<string> Notifications { get; set; } = [];
 }
 
 /// <summary>

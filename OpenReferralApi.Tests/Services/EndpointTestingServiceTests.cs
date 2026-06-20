@@ -28,7 +28,7 @@ public class EndpointTestingServiceTests
         .ReturnsAsync(new ValidationResult
         {
           IsValid = true,
-          Errors = new List<ValidationError>(),
+          Errors = [],
           SchemaVersion = "test",
           Duration = TimeSpan.Zero
         });
@@ -323,7 +323,7 @@ public class EndpointTestingServiceTests
       .ReturnsAsync(new ValidationResult
       {
         IsValid = true,
-        Errors = new List<ValidationError>(),
+        Errors = [],
         SchemaVersion = "test",
         Duration = TimeSpan.Zero
       });
@@ -1085,16 +1085,11 @@ public class EndpointTestingServiceTests
         """)!.AsObject();
   }
 
-  private sealed class DelegateHttpMessageHandler : HttpMessageHandler
+  private sealed class DelegateHttpMessageHandler(Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> responder) : HttpMessageHandler
   {
-    private readonly Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> _responder;
+    private readonly Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> _responder = responder;
 
-    public DelegateHttpMessageHandler(Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> responder)
-    {
-      _responder = responder;
-    }
-
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
       return Task.FromResult(_responder(request, cancellationToken));
     }

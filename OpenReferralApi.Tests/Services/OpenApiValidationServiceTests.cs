@@ -93,7 +93,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = true,
-                Errors = new List<Core.Models.Validation.ValidationError>(),
+                Errors = [],
                 SchemaVersion = "test",
                 Duration = TimeSpan.Zero
             });
@@ -113,7 +113,7 @@ public class OpenApiValidationServiceTests
 
         _schemaResolverServiceMock
             .Setup(service => service.GetResolutionIssues())
-            .Returns(Array.Empty<SchemaResolutionIssue>());
+            .Returns([]);
 
         var mockHandler = new MockHttpMessageHandler();
         _httpClient = TestHttpClientFactory.CreateClient(mockHandler);
@@ -205,7 +205,7 @@ public class OpenApiValidationServiceTests
         var strictSchemaResolver = new Mock<ISchemaResolverService>(MockBehavior.Strict);
         strictSchemaResolver
             .Setup(service => service.GetResolutionIssues())
-            .Returns(Array.Empty<SchemaResolutionIssue>());
+            .Returns([]);
 
         var discoveryMock = new Mock<IProfileDiscoveryService>();
         discoveryMock
@@ -530,8 +530,8 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<Core.Models.Validation.ValidationError>
-                {
+                Errors =
+                [
                     new()
                     {
                         Path = "paths./items[0].name",
@@ -560,7 +560,7 @@ public class OpenApiValidationServiceTests
                         ErrorCode = "VALIDATION_WARNING",
                         Severity = "Warning"
                     }
-                }
+                ]
             });
 
         SetupHttpMock(json);
@@ -570,7 +570,7 @@ public class OpenApiValidationServiceTests
         hsdsComplianceMock.Setup(s => s.ExtractClaimedProfileVersion(It.IsAny<string>(), It.IsAny<string>())).Returns((string?)"HSDS-30");
         string? unused;
         hsdsComplianceMock.Setup(s => s.TryGetKnownHsdsSchemaUrl(It.IsAny<string>(), out unused)).Returns(false);
-        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>())).Returns(new List<Core.Models.Validation.ValidationError>());
+        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>())).Returns([]);
         _service = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
@@ -616,8 +616,8 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<Core.Models.Validation.ValidationError>
-                {
+                Errors =
+                [
                     new()
                     {
                         Path = "items[0].name",
@@ -632,7 +632,7 @@ public class OpenApiValidationServiceTests
                         ErrorCode = "VALIDATION_WARNING",
                         Severity = "Warning"
                     }
-                }
+                ]
             });
 
         SetupHttpMock(json);
@@ -642,7 +642,7 @@ public class OpenApiValidationServiceTests
         hsdsComplianceMock.Setup(s => s.ExtractClaimedProfileVersion(It.IsAny<string>(), It.IsAny<string>())).Returns((string?)"HSDS-30");
         string? unused;
         hsdsComplianceMock.Setup(s => s.TryGetKnownHsdsSchemaUrl(It.IsAny<string>(), out unused)).Returns(true);
-        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>())).Returns(new List<Core.Models.Validation.ValidationError>());
+        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>())).Returns([]);
         _service = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
@@ -1541,7 +1541,7 @@ _openApiSpecificationService,
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = true,
-                Errors = new List<Core.Models.Validation.ValidationError>(),
+                Errors = [],
                 SchemaVersion = "test",
                 Duration = TimeSpan.Zero
             });
@@ -1604,7 +1604,7 @@ _openApiSpecificationService,
 
         hsdsComplianceServiceMock
             .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>()))
-            .Returns(new List<Core.Models.Validation.ValidationError>());
+            .Returns([]);
 
         hsdsComplianceServiceMock
             .Setup(s => s.ValidateEndpointResponsesAgainstHsdsProfileAsync(
@@ -1623,8 +1623,8 @@ _openApiSpecificationService,
                 tests[0].TestResults[0].ValidationResult = new ValidationResult
                 {
                     IsValid = false,
-                    Errors = new List<Core.Models.Validation.ValidationError>
-                    {
+                    Errors =
+                    [
                         new()
                         {
                             Path = "[0].name",
@@ -1632,7 +1632,7 @@ _openApiSpecificationService,
                             ErrorCode = "HSDS_RUNTIME_VALIDATION_ERROR",
                             Severity = "Error"
                         }
-                    },
+                    ],
                     SchemaVersion = "test",
                     Duration = TimeSpan.Zero
                 };
@@ -1648,16 +1648,16 @@ _openApiSpecificationService,
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<DataSourceAuthentication>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<EndpointTestResult>
-            {
+            .ReturnsAsync(
+            [
                 new()
                 {
                     Path = "/organisations",
                     Method = "GET",
                     IsTested = true,
                     Status = EndpointTestStatus.PassedValidation,
-                    TestResults = new List<HttpTestResult>
-                    {
+                    TestResults =
+                    [
                         new()
                         {
                             ResponseStatusCode = 200,
@@ -1666,14 +1666,14 @@ _openApiSpecificationService,
                             ValidationResult = new ValidationResult
                             {
                                 IsValid = true,
-                                Errors = new List<Core.Models.Validation.ValidationError>(),
+                                Errors = [],
                                 SchemaVersion = "test",
                                 Duration = TimeSpan.Zero
                             }
                         }
-                    }
+                    ]
                 }
-            });
+            ]);
 
         var request = new OpenApiValidationRequest
         {
@@ -1779,7 +1779,7 @@ _openApiSpecificationService,
 
         hsdsComplianceServiceMock
             .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>()))
-            .Returns(new List<Core.Models.Validation.ValidationError>());
+            .Returns([]);
 
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
@@ -1789,16 +1789,16 @@ _openApiSpecificationService,
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<EndpointTestResult>
-            {
+            .ReturnsAsync(
+            [
                 new()
                 {
                     Path = "/organisations",
                     Method = "GET",
                     IsTested = true,
                     Status = EndpointTestStatus.PassedValidation,
-                    TestResults = new List<HttpTestResult>
-                    {
+                    TestResults =
+                    [
                         new()
                         {
                             ResponseStatusCode = 200,
@@ -1807,14 +1807,14 @@ _openApiSpecificationService,
                             ValidationResult = new ValidationResult
                             {
                                 IsValid = true,
-                                Errors = new List<Core.Models.Validation.ValidationError>(),
+                                Errors = [],
                                 SchemaVersion = "test",
                                 Duration = TimeSpan.Zero
                             }
                         }
-                    }
+                    ]
                 }
-            });
+            ]);
 
         var request = new OpenApiValidationRequest
         {
@@ -1905,8 +1905,8 @@ _openApiSpecificationService,
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<Core.Models.Validation.ValidationError>
-                {
+                Errors =
+                [
                     new()
                     {
                         Path = "[].extra",
@@ -1914,7 +1914,7 @@ _openApiSpecificationService,
                         ErrorCode = "ADDITIONAL_FIELD",
                         Severity = "Warning"
                     }
-                },
+                ],
                 SchemaVersion = "test",
                 Duration = TimeSpan.Zero
             });
@@ -1962,8 +1962,8 @@ _openApiSpecificationService,
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<Core.Models.Validation.ValidationError>
-                {
+                Errors =
+                [
                     new()
                     {
                         Path = "[].extra",
@@ -1971,7 +1971,7 @@ _openApiSpecificationService,
                         ErrorCode = "ADDITIONAL_FIELD",
                         Severity = "Warning"
                     }
-                },
+                ],
                 SchemaVersion = "test",
                 Duration = TimeSpan.Zero
             });
@@ -2028,7 +2028,7 @@ _openApiSpecificationService,
             .Returns(true);
         hsdsComplianceServiceMock
             .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>()))
-            .Returns(new List<Core.Models.Validation.ValidationError>());
+            .Returns([]);
 
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
@@ -2040,7 +2040,7 @@ _openApiSpecificationService,
                 It.IsAny<CancellationToken>()))
             .Callback<JsonObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>(
                 (spec, _, _, _, _) => capturedSpec = spec)
-            .ReturnsAsync(new List<EndpointTestResult>());
+            .ReturnsAsync([]);
 
         var request = new OpenApiValidationRequest
         {
@@ -2116,7 +2116,7 @@ _openApiSpecificationService,
             .Returns(true);
         hsdsComplianceServiceMock
             .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>()))
-            .Returns(new List<Core.Models.Validation.ValidationError>());
+            .Returns([]);
 
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
@@ -2128,7 +2128,7 @@ _openApiSpecificationService,
                 It.IsAny<CancellationToken>()))
             .Callback<JsonObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>(
                 (spec, _, _, _, _) => capturedSpec = spec)
-            .ReturnsAsync(new List<EndpointTestResult>());
+            .ReturnsAsync([]);
 
         var request = new OpenApiValidationRequest
         {
@@ -2211,7 +2211,7 @@ _openApiSpecificationService,
                 It.IsAny<CancellationToken>()))
             .Callback<JsonObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>(
                 (spec, _, _, _, _) => capturedSpec = spec)
-            .ReturnsAsync(new List<EndpointTestResult>());
+            .ReturnsAsync([]);
 
         var request = new OpenApiValidationRequest
         {
@@ -2274,7 +2274,7 @@ _openApiSpecificationService,
             .Returns(true);
         hsdsComplianceServiceMock
             .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>()))
-            .Returns(new List<Core.Models.Validation.ValidationError>());
+            .Returns([]);
 
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
@@ -2284,7 +2284,7 @@ _openApiSpecificationService,
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<EndpointTestResult>());
+            .ReturnsAsync([]);
 
         var request = new OpenApiValidationRequest
         {
@@ -2819,8 +2819,8 @@ _openApiSpecificationService,
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<Core.Models.Validation.ValidationError>
-                {
+                Errors =
+                [
                     new()
                     {
                         Path = "data[0].name",
@@ -2828,7 +2828,7 @@ _openApiSpecificationService,
                         ErrorCode = "VALIDATION_ERROR",
                         Severity = "Error"
                     }
-                }
+                ]
             });
 
         SetupHttpMock(json, endpointResponseBody: "[{\"name\":\"a\"}]");
@@ -2907,8 +2907,8 @@ _openApiSpecificationService,
             .ReturnsAsync(new OpenApiSpecificationValidation
             {
                 IsValid = false,
-                Errors = new List<Core.Models.Validation.ValidationError>
-                {
+                Errors =
+                [
                     new()
                     {
                         Path = "openapi",
@@ -2916,7 +2916,7 @@ _openApiSpecificationService,
                         ErrorCode = "SPEC_ERROR",
                         Severity = "Error"
                     }
-                }
+                ]
             });
 
         var hsdsServiceMock = new Mock<IHsdsComplianceService>();
@@ -2931,8 +2931,8 @@ _openApiSpecificationService,
         hsdsServiceMock
             .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>()))
             .Callback(() => callOrder.Add("hsds"))
-            .Returns(new List<Core.Models.Validation.ValidationError>
-            {
+            .Returns(
+            [
                 new()
                 {
                     Path = "paths.GET /required",
@@ -2940,7 +2940,7 @@ _openApiSpecificationService,
                     ErrorCode = "HSDS_MISSING_ENDPOINT",
                     Severity = "Error"
                 }
-            });
+            ]);
 
         hsdsServiceMock
             .Setup(s => s.ValidateEndpointResponsesAgainstHsdsProfileAsync(
@@ -2959,17 +2959,17 @@ _openApiSpecificationService,
                 It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
             .Callback(() => callOrder.Add("endpoints"))
-            .ReturnsAsync(new List<EndpointTestResult>
-            {
+            .ReturnsAsync(
+            [
                 new()
                 {
                     Path = "/services",
                     Method = "GET",
                     IsTested = true,
                     Status = EndpointTestStatus.PassedValidation,
-                    TestResults = new List<HttpTestResult>()
+                    TestResults = []
                 }
-            });
+            ]);
 
         var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((req, ct) =>
         {
@@ -3018,7 +3018,7 @@ _openApiSpecificationService,
             var result = await service.ValidateOpenApiSpecificationAsync(request);
 
             // Assert
-            Assert.That(callOrder, Is.EqualTo(new[] { "spec", "hsds", "endpoints" }));
+            Assert.That(callOrder, Is.EqualTo(["spec", "hsds", "endpoints"]));
             Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
             Assert.That(result.SpecificationValidation, Is.Not.Null);
             Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "SPEC_ERROR"), Is.True);
@@ -3126,7 +3126,7 @@ _openApiSpecificationService,
             {
                 capturedOpenApi = (JsonObject)spec.DeepClone();
             })
-            .ReturnsAsync(new List<EndpointTestResult>());
+            .ReturnsAsync([]);
 
         var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((req, ct) =>
         {
@@ -3211,7 +3211,7 @@ _openApiSpecificationService,
             {
                 capturedOpenApi = (JsonObject)spec.DeepClone();
             })
-            .ReturnsAsync(new List<EndpointTestResult>());
+            .ReturnsAsync([]);
 
         var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((req, ct) =>
         {
@@ -3290,8 +3290,8 @@ _openApiSpecificationService,
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<Core.Models.Validation.ValidationError>
-                {
+                Errors =
+                [
                     new()
                     {
                         Path = "data[0].name",
@@ -3320,7 +3320,7 @@ _openApiSpecificationService,
                         ErrorCode = "VALIDATION_WARNING",
                         Severity = "Warning"
                     }
-                }
+                ]
             });
 
         SetupHttpMock(json, endpointResponseBody: "[{\"name\":\"a\"},{\"name\":\"b\"}]");
@@ -3355,8 +3355,8 @@ _openApiSpecificationService,
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<Core.Models.Validation.ValidationError>
-                {
+                Errors =
+                [
                     new()
                     {
                         Path = "data[0]",
@@ -3371,7 +3371,7 @@ _openApiSpecificationService,
                         ErrorCode = "VALIDATION_ERROR",
                         Severity = "Error"
                     }
-                }
+                ]
             });
 
         SetupHttpMock(json, endpointResponseBody: "[{\"name\":\"a\"}]");
@@ -3462,8 +3462,8 @@ _openApiSpecificationService,
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<Core.Models.Validation.ValidationError>
-                {
+                Errors =
+                [
                     new()
                     {
                         Path = "data",
@@ -3471,7 +3471,7 @@ _openApiSpecificationService,
                         ErrorCode = "SCHEMA_MISMATCH",
                         Severity = "Error"
                     }
-                },
+                ],
                 SchemaVersion = "test",
                 Duration = TimeSpan.Zero
             });
@@ -3508,7 +3508,7 @@ _openApiSpecificationService,
         hsdsComplianceMock.Setup(s => s.ExtractClaimedProfileVersion(It.IsAny<string>(), It.IsAny<string>())).Returns((string?)"HSDS-30");
         string? unused;
         hsdsComplianceMock.Setup(s => s.TryGetKnownHsdsSchemaUrl(It.IsAny<string>(), out unused)).Returns(true);
-        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>())).Returns(new List<Core.Models.Validation.ValidationError>());
+        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>())).Returns([]);
         _service = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
@@ -4846,18 +4846,13 @@ _openApiSpecificationService,
         }";
     }
 
-    private class MockHttpMessageHandler : HttpMessageHandler
+    private class MockHttpMessageHandler(Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> handler) : HttpMessageHandler
     {
-        private readonly Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> _handler;
+        private readonly Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> _handler = handler;
 
         public MockHttpMessageHandler()
             : this((req, ct) => new HttpResponseMessage(System.Net.HttpStatusCode.OK))
         {
-        }
-
-        public MockHttpMessageHandler(Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> handler)
-        {
-            _handler = handler;
         }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)

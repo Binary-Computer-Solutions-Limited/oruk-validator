@@ -222,7 +222,7 @@ public class SchemaWarmupBackgroundServiceTests
 
         Assert.That(method, Is.Not.Null, "ExecuteAsync method not found via reflection.");
 
-        var result = method!.Invoke(service, new object[] { cancellationToken }) as Task;
+        var result = method!.Invoke(service, [cancellationToken]) as Task;
         Assert.That(result, Is.Not.Null, "ExecuteAsync did not return a Task.");
 
         return result!;

@@ -32,7 +32,7 @@ public sealed class ProfileDiscoveryResult
     public bool UsedDefaultProfile { get; init; }
 }
 
-public class ProfileDiscoveryService(
+public partial class ProfileDiscoveryService(
     ILogger<ProfileDiscoveryService> logger,
     IHttpClientFactory httpClientFactory,
     IOptions<SpecificationOptions> specificationOptions,
@@ -410,7 +410,7 @@ public class ProfileDiscoveryService(
             paths = new[] { ownSchemaUrl }.Concat(paths).Distinct(StringComparer.OrdinalIgnoreCase);
         }
 
-        return paths.ToArray();
+        return [.. paths];
     }
 
     private static IEnumerable<string> ExpandSpecPaths(IEnumerable<string> basePaths)
@@ -436,7 +436,7 @@ public class ProfileDiscoveryService(
         }
 
         var trimmed = content.TrimStart();
-        if (trimmed.StartsWith("{", StringComparison.Ordinal) || trimmed.StartsWith("[", StringComparison.Ordinal))
+        if (trimmed.StartsWith('{') || trimmed.StartsWith('['))
         {
             return content.Contains("\"openapi\"", StringComparison.OrdinalIgnoreCase)
                    || content.Contains("\"swagger\"", StringComparison.OrdinalIgnoreCase);
@@ -648,7 +648,7 @@ public class ProfileDiscoveryService(
             {
                 logger.SwaggerConfigEndpointReturnedStatusCode(TextSanitizer.SanitizeUrlForLogging(configUrl), (int)response.StatusCode);
             }
-            return new List<string>();
+            return [];
         }
 
         var content = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -705,7 +705,7 @@ public class ProfileDiscoveryService(
         return discoveredUrls;
     }
 
-    private static IReadOnlyList<string> DiscoverConfigUrls(string htmlContent, string baseUrl)
+    private static List<string> DiscoverConfigUrls(string htmlContent, string baseUrl)
     {
         var discoveredUrls = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -761,7 +761,7 @@ public class ProfileDiscoveryService(
         return Task.FromResult(discoveredUrls);
     }
 
-    private static void AddResolvedUrl(string? path, string baseUri, ISet<string> seen, ICollection<string> output)
+    private static void AddResolvedUrl(string? path, string baseUri, HashSet<string> seen, List<string> output)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -786,7 +786,7 @@ public class ProfileDiscoveryService(
         return $"{baseUrl}/{relativePath.TrimStart('/')}";
     }
 
-    private static void ApplyAuthentication(HttpRequestMessage request, IAuthenticationConfig? auth)
+    private static void ApplyAuthentication(HttpRequestMessage request, DataSourceAuthentication? auth)
     {
         if (auth == null)
         {
@@ -856,6 +856,9 @@ public class ProfileDiscoveryService(
         };
     }
 
+    [GeneratedRegex(@"/specifications/(?<version>[^/]+)/openapi\.json", RegexOptions.IgnoreCase)]
+    private static partial Regex SchemaUrlVersionRegex();
+
     private static string? TryExtractProfileVersionFromSchemaUrl(string? schemaUrl)
     {
         if (string.IsNullOrWhiteSpace(schemaUrl))
@@ -863,10 +866,7 @@ public class ProfileDiscoveryService(
             return null;
         }
 
-        var match = Regex.Match(
-            schemaUrl,
-            @"/specifications/(?<version>[^/]+)/openapi\.json",
-            RegexOptions.IgnoreCase);
+        var match = SchemaUrlVersionRegex().Match(schemaUrl);
 
         if (!match.Success)
         {
@@ -940,13 +940,13 @@ public class ProfileDiscoveryService(
         }
 
         var trimmed = content.TrimStart();
-        if (trimmed.StartsWith("{", StringComparison.Ordinal) || trimmed.StartsWith("[", StringComparison.Ordinal))
+        if (trimmed.StartsWith('{') || trimmed.StartsWith('['))
         {
             return content;
         }
 
         // Fast path to reject obvious HTML/XML without throwing exceptions
-        if (trimmed.StartsWith("<", StringComparison.Ordinal))
+        if (trimmed.StartsWith('<'))
         {
             return null;
         }

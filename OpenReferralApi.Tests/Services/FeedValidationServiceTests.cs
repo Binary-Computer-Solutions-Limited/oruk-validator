@@ -64,7 +64,7 @@ public class FeedValidationServiceTests
         // Mock OpenAPI Validation to simulate successful API evaluation
         _validationServiceMock
             .Setup(v => v.ValidateOpenApiSpecificationAsync(It.IsAny<OpenApiValidationRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OpenApiValidationResult { IsValid = true, EndpointTests = new List<EndpointTestResult>() });
+            .ReturnsAsync(new OpenApiValidationResult { IsValid = true, EndpointTests = [] });
 
         _service = new FeedValidationService(
             _mongoClientMock.Object,

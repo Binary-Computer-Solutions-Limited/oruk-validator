@@ -886,16 +886,10 @@ public class JsonValidatorServiceTests
         return mock.Object;
     }
 
-    private sealed class MockHttpMessageHandler : HttpMessageHandler
+    private sealed class MockHttpMessageHandler(string schemaJson, string dataJson) : HttpMessageHandler
     {
-        private readonly string _schemaJson;
-        private readonly string _dataJson;
-
-        public MockHttpMessageHandler(string schemaJson, string dataJson)
-        {
-            _schemaJson = schemaJson;
-            _dataJson = dataJson;
-        }
+        private readonly string _schemaJson = schemaJson;
+        private readonly string _dataJson = dataJson;
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -913,14 +907,9 @@ public class JsonValidatorServiceTests
         }
     }
 
-    private sealed class CountingHttpMessageHandler : HttpMessageHandler
+    private sealed class CountingHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> handler) : HttpMessageHandler
     {
-        private readonly Func<HttpRequestMessage, HttpResponseMessage> _handler;
-
-        public CountingHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> handler)
-        {
-            _handler = handler;
-        }
+        private readonly Func<HttpRequestMessage, HttpResponseMessage> _handler = handler;
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {

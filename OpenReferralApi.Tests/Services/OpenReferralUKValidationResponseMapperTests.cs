@@ -30,7 +30,7 @@ public class OpenReferralUKValidationResponseMapperTests
             {
                 IsValid = true,
                 Version = "3.0",
-                Errors = new List<ValidationError>()
+                Errors = []
             },
             Summary = new OpenApiValidationSummary
             {
@@ -38,7 +38,7 @@ public class OpenReferralUKValidationResponseMapperTests
                 SuccessfulTests = 5,
                 FailedTests = 0
             },
-            EndpointTests = new List<EndpointTestResult>()
+            EndpointTests = []
         };
 
         // Act
@@ -74,7 +74,7 @@ public class OpenReferralUKValidationResponseMapperTests
                 SuccessfulTests = 0,
                 FailedTests = 0
             },
-            EndpointTests = new List<EndpointTestResult>()
+            EndpointTests = []
         };
 
         // Act
@@ -103,7 +103,7 @@ public class OpenReferralUKValidationResponseMapperTests
             {
                 FailedTests = 0
             },
-            EndpointTests = new List<EndpointTestResult>()
+            EndpointTests = []
         };
 
         // Act
@@ -122,10 +122,10 @@ public class OpenReferralUKValidationResponseMapperTests
         var result = new OpenApiValidationResult
         {
             IsValid = false,
-            Notifications = new List<string>
-            {
+            Notifications =
+            [
                 "Unable to get or resolve the OpenAPI specification from https://example.com/openapi.json. 404"
-            }
+            ]
         };
 
         // Act
@@ -152,7 +152,7 @@ public class OpenReferralUKValidationResponseMapperTests
             {
                 Version = "1.0.0"
             },
-            EndpointTests = new List<EndpointTestResult>()
+            EndpointTests = []
         };
 
         // Act
@@ -176,8 +176,8 @@ public class OpenReferralUKValidationResponseMapperTests
             {
                 IsValid = false,
                 Version = "3.0.0",
-                Errors = new List<ValidationError>
-                {
+                Errors =
+                [
                     new()
                     {
                         ErrorCode = "HSDS_MISSING_ENDPOINT",
@@ -185,9 +185,9 @@ public class OpenReferralUKValidationResponseMapperTests
                         Message = "Missing required HSDS endpoint: GET /organizations",
                         Path = "paths.GET /organizations"
                     }
-                }
+                ]
             },
-            EndpointTests = new List<EndpointTestResult>()
+            EndpointTests = []
         };
 
         // Act
@@ -218,8 +218,8 @@ public class OpenReferralUKValidationResponseMapperTests
             {
                 BaseUrl = "https://api.example.com"
             },
-            EndpointTests = new List<EndpointTestResult>
-            {
+            EndpointTests =
+            [
                 new()
                 {
                     Name = "Get Organizations",
@@ -227,7 +227,7 @@ public class OpenReferralUKValidationResponseMapperTests
                     Path = "/organizations",
                     IsOptional = false,
                     Status = EndpointTestStatus.PassedValidation,
-                    TestResults = new List<HttpTestResult>()
+                    TestResults = []
                 },
                 new()
                 {
@@ -236,9 +236,9 @@ public class OpenReferralUKValidationResponseMapperTests
                     Path = "/services",
                     IsOptional = true,
                     Status = EndpointTestStatus.PassedWithWarnings,
-                    TestResults = new List<HttpTestResult>()
+                    TestResults = []
                 }
-            }
+            ]
         };
 
         // Act
@@ -268,17 +268,17 @@ public class OpenReferralUKValidationResponseMapperTests
             {
                 BaseUrl = "https://api.example.com"
             },
-            EndpointTests = new List<EndpointTestResult>
-            {
+            EndpointTests =
+            [
                 new()
                 {
                     Method = "GET",
                     Path = "/organizations",
                     IsOptional = false,
                     Status = EndpointTestStatus.FailedValidation,
-                    TestResults = new List<HttpTestResult>()
+                    TestResults = []
                 }
-            }
+            ]
         };
 
         // Act
@@ -304,7 +304,7 @@ public class OpenReferralUKValidationResponseMapperTests
             {
                 Version = "3.0.1"
             },
-            EndpointTests = new List<EndpointTestResult>()
+            EndpointTests = []
         };
 
         // Act
@@ -327,15 +327,15 @@ public class OpenReferralUKValidationResponseMapperTests
             Path = "/organizations",
             IsOptional = false,
             Status = EndpointTestStatus.FailedValidation,
-            TestResults = new List<HttpTestResult>
-            {
+            TestResults =
+            [
                 new()
                 {
                     ValidationResult = new ValidationResult
                     {
                         IsValid = false,
-                        Errors = new List<ValidationError>
-                        {
+                        Errors =
+                        [
                             new()
                             {
                                 ErrorCode = "ERR_ONE",
@@ -343,7 +343,7 @@ public class OpenReferralUKValidationResponseMapperTests
                                 Message = "First error",
                                 Path = duplicatePath
                             }
-                        }
+                        ]
                     }
                 },
                 new()
@@ -351,8 +351,8 @@ public class OpenReferralUKValidationResponseMapperTests
                     ValidationResult = new ValidationResult
                     {
                         IsValid = false,
-                        Errors = new List<ValidationError>
-                        {
+                        Errors =
+                        [
                             new()
                             {
                                 ErrorCode = "ERR_TWO",
@@ -360,10 +360,10 @@ public class OpenReferralUKValidationResponseMapperTests
                                 Message = "Second error same path",
                                 Path = duplicatePath
                             }
-                        }
+                        ]
                     }
                 }
-            }
+            ]
         };
 
         var result = new OpenApiValidationResult
@@ -372,7 +372,7 @@ public class OpenReferralUKValidationResponseMapperTests
             {
                 BaseUrl = "https://api.example.com"
             },
-            EndpointTests = new List<EndpointTestResult> { endpoint }
+            EndpointTests = [endpoint]
         };
 
         // Act
@@ -398,11 +398,11 @@ public class OpenReferralUKValidationResponseMapperTests
             Path = "/locations",
             IsOptional = false,
             Status = EndpointTestStatus.PassedValidation,
-            TestResults = new List<HttpTestResult>
-            {
+            TestResults =
+            [
                 new() { ResponseTime = TimeSpan.FromMilliseconds(6000) },
                 new() { ResponseTime = TimeSpan.FromMilliseconds(7000) }
-            }
+            ]
         };
 
         var result = new OpenApiValidationResult
@@ -411,7 +411,7 @@ public class OpenReferralUKValidationResponseMapperTests
             {
                 BaseUrl = "https://api.example.com"
             },
-            EndpointTests = new List<EndpointTestResult> { endpoint }
+            EndpointTests = [endpoint]
         };
 
         // Act
@@ -439,9 +439,9 @@ public class OpenReferralUKValidationResponseMapperTests
             {
                 IsValid = false,
                 Version = "3.0",
-                Errors = new List<ValidationError>()
+                Errors = []
             },
-            EndpointTests = new List<EndpointTestResult>()
+            EndpointTests = []
         };
 
         for (int i = 0; i < 50; i++)
@@ -457,7 +457,7 @@ public class OpenReferralUKValidationResponseMapperTests
 
         for (int i = 0; i < 20; i++)
         {
-            var testResult = new HttpTestResult { ValidationResult = new ValidationResult { IsValid = false, Errors = new List<ValidationError>() } };
+            var testResult = new HttpTestResult { ValidationResult = new ValidationResult { IsValid = false, Errors = [] } };
             
             for (int j = 0; j < 10; j++)
             {
@@ -477,7 +477,7 @@ public class OpenReferralUKValidationResponseMapperTests
                 Path = $"/endpoint{i}",
                 IsOptional = i % 2 == 0,
                 Status = EndpointTestStatus.FailedValidation,
-                TestResults = new List<HttpTestResult> { testResult }
+                TestResults = [testResult]
             });
         }
 
