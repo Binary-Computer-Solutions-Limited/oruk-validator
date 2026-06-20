@@ -81,7 +81,10 @@ public class RemoteSchemaLoader
             var cacheKey = GenerateCacheKey(resolvedUrl);
             if (_memoryCache.TryGetValue<CachedSchema>(cacheKey, out var cachedSchema) && cachedSchema != null)
             {
-                _logger.RetrievedSchemaFromCache(TextSanitizer.SanitizeUrlForLogging(resolvedUrl));
+                if (_logger.IsEnabled(LogLevel.Debug))
+                {
+                    _logger.RetrievedSchemaFromCache(TextSanitizer.SanitizeUrlForLogging(resolvedUrl));
+                }
                 
                 try
                 {
@@ -105,7 +108,10 @@ public class RemoteSchemaLoader
                 throw new ArgumentException($"Invalid schema URL: Only HTTP and HTTPS URLs are allowed", nameof(schemaUrl));
             }
 
-            _logger.FetchingRemoteSchema(TextSanitizer.SanitizeUrlForLogging(resolvedUrl));
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.FetchingRemoteSchema(TextSanitizer.SanitizeUrlForLogging(resolvedUrl));
+            }
 
             using var request = new HttpRequestMessage(HttpMethod.Get, resolvedUrl);
 
@@ -161,7 +167,10 @@ public class RemoteSchemaLoader
             {
                 var cachedSchema = new CachedSchema(schema, jsonNode, content, content.Length);
                 _ = _memoryCache.Set(cacheKey, cachedSchema, cacheEntryOptions);
-                _logger.CachedSchema(TextSanitizer.SanitizeUrlForLogging(resolvedUrl), _cacheOptions.ExpirationMinutes);
+                if (_logger.IsEnabled(LogLevel.Debug))
+                {
+                    _logger.CachedSchema(TextSanitizer.SanitizeUrlForLogging(resolvedUrl), _cacheOptions.ExpirationMinutes);
+                }
             }
 
             try
@@ -296,7 +305,10 @@ public class RemoteSchemaLoader
             IsJsonSchemaDraftUrl(normalized) &&
             _unknownDraftWarnings.Add(normalized))
         {
-            _logger.UnknownJsonSchemaDraftUrl(TextSanitizer.SanitizeUrlForLogging(normalized));
+            if (_logger.IsEnabled(LogLevel.Warning))
+            {
+                _logger.UnknownJsonSchemaDraftUrl(TextSanitizer.SanitizeUrlForLogging(normalized));
+            }
         }
 
         return null;

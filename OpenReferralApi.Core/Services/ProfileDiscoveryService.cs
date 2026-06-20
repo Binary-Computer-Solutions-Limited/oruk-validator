@@ -92,7 +92,10 @@ public class ProfileDiscoveryService(
                 var discoveryUrl = BuildAbsoluteUrl(normalizedBaseUrl, path);
                 try
                 {
-                    logger.ProbingStandardPath(TextSanitizer.SanitizeUrlForLogging(discoveryUrl));
+                    if (logger.IsEnabled(LogLevel.Debug))
+                    {
+                        logger.ProbingStandardPath(TextSanitizer.SanitizeUrlForLogging(discoveryUrl));
+                    }
                     using var request = new HttpRequestMessage(HttpMethod.Get, discoveryUrl);
                     ApplyAuthentication(request, authentication);
                     using var response = await client.SendAsync(request, cancellationToken);
@@ -155,7 +158,10 @@ public class ProfileDiscoveryService(
                 }
                 catch (Exception ex)
                 {
-                    logger.ProbeFailed(ex, TextSanitizer.SanitizeUrlForLogging(normalizedBaseUrl), path);
+                    if (logger.IsEnabled(LogLevel.Debug))
+                    {
+                        logger.ProbeFailed(ex, TextSanitizer.SanitizeUrlForLogging(normalizedBaseUrl), path);
+                    }
                 }
             }
         }
@@ -256,7 +262,10 @@ public class ProfileDiscoveryService(
         discoveryReason ??= "Discovery completed with available information.";
         discoveredVersion ??= "unknown version";  // should never be null/empty here due to fallback logic, but just in case
 
-        logger.ProfileDiscoveryResolved(TextSanitizer.SanitizeUrlForLogging(hsdsProfileSchemaUrl), discoveredVersion, discoveryReason);
+        if (logger.IsEnabled(LogLevel.Information))
+        {
+            logger.ProfileDiscoveryResolved(TextSanitizer.SanitizeUrlForLogging(hsdsProfileSchemaUrl), discoveredVersion, discoveryReason);
+        }
 
         return new ProfileDiscoveryResult
         {
@@ -543,7 +552,10 @@ public class ProfileDiscoveryService(
             using var response = await client.GetAsync(specUrl, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                logger.DiscoveredSpecUrlReturnedStatusCode(TextSanitizer.SanitizeUrlForLogging(specUrl), (int)response.StatusCode);
+                if (logger.IsEnabled(LogLevel.Debug))
+                {
+                    logger.DiscoveredSpecUrlReturnedStatusCode(TextSanitizer.SanitizeUrlForLogging(specUrl), (int)response.StatusCode);
+                }
                 return null;
             }
 
@@ -563,7 +575,10 @@ public class ProfileDiscoveryService(
         }
         catch (Exception ex)
         {
-            logger.FailedToFetchDiscoveredSpecContent(ex, TextSanitizer.SanitizeUrlForLogging(specUrl));
+            if (logger.IsEnabled(LogLevel.Debug))
+            {
+                logger.FailedToFetchDiscoveredSpecContent(ex, TextSanitizer.SanitizeUrlForLogging(specUrl));
+            }
             return null;
         }
     }
@@ -573,9 +588,12 @@ public class ProfileDiscoveryService(
         var discoveredUrls = await DiscoverAllDefinitionsAsync(htmlContent, baseUrl);
         if (discoveredUrls.Count > 0)
         {
-            foreach (var discoveredUrl in discoveredUrls)
+            if (logger.IsEnabled(LogLevel.Debug))
             {
-                logger.DiscoveredCandidateFromUiHtml(TextSanitizer.SanitizeUrlForLogging(discoveredUrl));
+                foreach (var discoveredUrl in discoveredUrls)
+                {
+                    logger.DiscoveredCandidateFromUiHtml(TextSanitizer.SanitizeUrlForLogging(discoveredUrl));
+                }
             }
 
             return discoveredUrls[0];
@@ -584,7 +602,10 @@ public class ProfileDiscoveryService(
         var configUrls = DiscoverConfigUrls(htmlContent, baseUrl);
         foreach (var configUrl in configUrls)
         {
-            logger.DiscoveredSwaggerConfigCandidate(TextSanitizer.SanitizeUrlForLogging(configUrl));
+            if (logger.IsEnabled(LogLevel.Debug))
+            {
+                logger.DiscoveredSwaggerConfigCandidate(TextSanitizer.SanitizeUrlForLogging(configUrl));
+            }
             var discoveredFromConfig = await DiscoverFromSwaggerConfigEndpointAsync(client, baseUrl, configUrl, cancellationToken);
             if (discoveredFromConfig.Count > 0)
             {
@@ -597,19 +618,28 @@ public class ProfileDiscoveryService(
 
     private async Task<List<string>> DiscoverFromSwaggerConfigEndpointAsync(HttpClient client, string baseUrl, string configUrl, CancellationToken cancellationToken)
     {
-        logger.RequestingSwaggerConfigEndpoint(TextSanitizer.SanitizeUrlForLogging(configUrl));
+        if (logger.IsEnabled(LogLevel.Debug))
+        {
+            logger.RequestingSwaggerConfigEndpoint(TextSanitizer.SanitizeUrlForLogging(configUrl));
+        }
         using var response = await client.GetAsync(configUrl, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            logger.SwaggerConfigEndpointReturnedStatusCode(TextSanitizer.SanitizeUrlForLogging(configUrl), (int)response.StatusCode);
+            if (logger.IsEnabled(LogLevel.Debug))
+            {
+                logger.SwaggerConfigEndpointReturnedStatusCode(TextSanitizer.SanitizeUrlForLogging(configUrl), (int)response.StatusCode);
+            }
             return new List<string>();
         }
 
         var content = await response.Content.ReadAsStringAsync(cancellationToken);
         var discovered = DiscoverFromSwaggerConfigContent(content, baseUrl);
-        foreach (var discoveredUrl in discovered)
+        if (logger.IsEnabled(LogLevel.Debug))
         {
-            logger.DiscoveredCandidateFromSwaggerConfig(TextSanitizer.SanitizeUrlForLogging(configUrl), TextSanitizer.SanitizeUrlForLogging(discoveredUrl));
+            foreach (var discoveredUrl in discovered)
+            {
+                logger.DiscoveredCandidateFromSwaggerConfig(TextSanitizer.SanitizeUrlForLogging(configUrl), TextSanitizer.SanitizeUrlForLogging(discoveredUrl));
+            }
         }
 
         return discovered;
