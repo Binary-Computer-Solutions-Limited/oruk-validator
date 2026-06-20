@@ -1,7 +1,9 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using Json.Schema;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -30,47 +32,35 @@ public sealed class ProfileDiscoveryResult
     public bool UsedDefaultProfile { get; init; }
 }
 
-public class ProfileDiscoveryService : IProfileDiscoveryService
+public class ProfileDiscoveryService(
+    ILogger<ProfileDiscoveryService> logger,
+    IHttpClientFactory httpClientFactory,
+    IOptions<SpecificationOptions> specificationOptions,
+    IOptions<OpenApiValidationServerOptions>? openApiValidationOptions = null,
+    IMemoryCache? memoryCache = null,
+    ISchemaResolverService? schemaResolverService = null) : IProfileDiscoveryService
 {
+    private readonly OpenApiValidationServerOptions _openApiValidationOptions = openApiValidationOptions?.Value ?? new OpenApiValidationServerOptions();
 
-    private readonly ILogger<ProfileDiscoveryService> _logger;
-    private readonly OpenApiValidationServerOptions _openApiValidationOptions;
+    private readonly IHttpClientFactory _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
 
-    private readonly IHttpClientFactory _httpClientFactory;
-
-    private readonly SpecificationOptions _specificationOptions;
-    private readonly IMemoryCache? _memoryCache;
-
-    private static readonly string[] HSDS_VERSION_candidateTokens = new[]
-    {
+    private readonly SpecificationOptions _specificationOptions = specificationOptions?.Value ?? throw new ArgumentNullException(nameof(specificationOptions));
+    private static readonly string[] HSDS_VERSION_candidateTokens =
+    [
         "x-hsds-version",
         "version",
         "info.x-hsds-version",
         "info.x-profile-version",
         "info.version"
-    };
+    ];
 
-    private static readonly string[] OpenApiCandidateTokens = new[]
-    {
+    private static readonly string[] OpenApiCandidateTokens =
+    [
         "x-hsds-version",
         "version",
         "info.x-hsds-version",
         "info.x-profile-version"
-    };
-
-    public ProfileDiscoveryService(
-        ILogger<ProfileDiscoveryService> logger,
-        IHttpClientFactory httpClientFactory,
-        IOptions<SpecificationOptions> specificationOptions,
-        IOptions<OpenApiValidationServerOptions>? openApiValidationOptions = null,
-        IMemoryCache? memoryCache = null)
-    {
-        _logger = logger;
-        _openApiValidationOptions = openApiValidationOptions?.Value ?? new OpenApiValidationServerOptions();
-        _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
-        _specificationOptions = specificationOptions?.Value ?? throw new ArgumentNullException(nameof(specificationOptions));
-        _memoryCache = memoryCache;
-    }
+    ];
 
     public async Task<ProfileDiscoveryResult> DiscoverFromBaseUrlAsync(
         string? ownSchemaUrl,
@@ -91,7 +81,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         string? discoveryReason = null;
         string? candidateOpenApiSpecContent = null;
         bool usedDefaultProfile = false;
-        
+
         if (!string.IsNullOrWhiteSpace(normalizedBaseUrl))
         {
             using var client = _httpClientFactory.CreateClient("OpenApiValidationService");
@@ -102,7 +92,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                 var discoveryUrl = BuildAbsoluteUrl(normalizedBaseUrl, path);
                 try
                 {
-                    _logger.ProbingStandardPath(TextSanitizer.SanitizeUrlForLogging(discoveryUrl));
+                    logger.ProbingStandardPath(TextSanitizer.SanitizeUrlForLogging(discoveryUrl));
                     using var request = new HttpRequestMessage(HttpMethod.Get, discoveryUrl);
                     ApplyAuthentication(request, authentication);
                     using var response = await client.SendAsync(request, cancellationToken);
@@ -151,15 +141,15 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
                         }
                     }
 
-                // 4. Check if we already have everything we need to stop
-                if (discoveredVersion != null && (!needsSchema || discoveredSchema != null))
-                {
-                    break;
-                }
+                    // 4. Check if we already have everything we need to stop
+                    if (discoveredVersion != null && (!needsSchema || discoveredSchema != null))
+                    {
+                        break;
+                    }
                 }
                 catch (Exception ex)
                 {
-                    _logger.ProbeFailed(ex, TextSanitizer.SanitizeUrlForLogging(normalizedBaseUrl), path);
+                    logger.ProbeFailed(ex, TextSanitizer.SanitizeUrlForLogging(normalizedBaseUrl), path);
                 }
             }
         }
@@ -181,7 +171,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             if (!string.IsNullOrWhiteSpace(versionFromOpenApiSpec))
             {
                 discoveredVersion = versionFromOpenApiSpec;
-                
+
                 if (fromOpenapiField)
                 {
                     discoveryReason =
@@ -242,7 +232,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             }
         }
 
-        var hsdsProfileSchemaContent = TryGetHsdsProfileSchemaContentFromCache(discoveredVersion);
+        var hsdsProfileSchemaContent = await GetHsdsProfileSchemaContentAsync(discoveredVersion, cancellationToken);
         if (string.IsNullOrWhiteSpace(hsdsProfileSchemaContent))
         {
             throw new ArgumentException(
@@ -252,7 +242,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         discoveryReason ??= "Discovery completed with available information.";
         discoveredVersion ??= "unknown version";  // should never be null/empty here due to fallback logic, but just in case
 
-        _logger.ProfileDiscoveryResolved(TextSanitizer.SanitizeUrlForLogging(hsdsProfileSchemaUrl), discoveredVersion, discoveryReason);
+        logger.ProfileDiscoveryResolved(TextSanitizer.SanitizeUrlForLogging(hsdsProfileSchemaUrl), discoveredVersion, discoveryReason);
 
         return new ProfileDiscoveryResult
         {
@@ -265,9 +255,9 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         };
     }
 
-    private string? TryGetHsdsProfileSchemaContentFromCache(string? hsdsProfileVersion)
+    private async Task<string?> GetHsdsProfileSchemaContentAsync(string? hsdsProfileVersion, CancellationToken cancellationToken)
     {
-        if (_memoryCache == null)
+        if (memoryCache == null)
         {
             return null;
         }
@@ -286,11 +276,62 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
 
         foreach (var cacheKey in GetSchemaCacheKeyCandidates(schemaUrl))
         {
-            if (_memoryCache.TryGetValue<string>(cacheKey, out var schemaContent)
-                && !string.IsNullOrWhiteSpace(schemaContent))
+            if (memoryCache.TryGetValue<CachedSchema>(cacheKey, out var cachedSchema)
+                && cachedSchema != null
+                && !string.IsNullOrWhiteSpace(cachedSchema.RawJson))
             {
-                return schemaContent;
+                return cachedSchema.RawJson;
             }
+        }
+
+        try
+        {
+            logger.LogInformation("Profile schema '{ProfileVersion}' not found in cache. Fetching from {SchemaUrl} on demand.", profileVersion, schemaUrl);
+            using var client = _httpClientFactory.CreateClient("OpenApiValidationService");
+            using var response = await client.GetAsync(schemaUrl, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                var jsonNode = JsonNode.Parse(content);
+                if (jsonNode != null)
+                {
+                    var cacheEntryOptions = new MemoryCacheEntryOptions
+                    {
+                        Size = content.Length,
+                        Priority = CacheItemPriority.Normal
+                    };
+
+                    // Put placeholder in cache to prevent circular recursion/deadlocks during compilation
+                    var placeholder = new CachedSchema(new JsonSchemaBuilder().Build(), jsonNode, content, content.Length);
+                    memoryCache.Set($"schema:{schemaUrl}", placeholder, cacheEntryOptions);
+
+                    var schema = schemaResolverService != null
+                        ? await schemaResolverService.CreateSchemaFromJsonAsync(content, schemaUrl, auth: null, cancellationToken)
+                        : JsonSchemaBuild.FromText(content);
+                    var cachedSchema = new CachedSchema(schema, jsonNode, content, content.Length);
+
+                    memoryCache.Set($"schema:{schemaUrl}", cachedSchema, cacheEntryOptions);
+
+                    try
+                    {
+                        if (Json.Schema.SchemaRegistry.Global.Get(new Uri(schemaUrl)) == null)
+                        {
+                            Json.Schema.SchemaRegistry.Global.Register(new Uri(schemaUrl), schema);
+                        }
+                    }
+                    catch { /* Ignore */ }
+
+                    return content;
+                }
+            }
+            else
+            {
+                logger.LogWarning("Failed to fetch profile schema from {SchemaUrl}. Status code: {StatusCode}", schemaUrl, response.StatusCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error fetching profile schema from {SchemaUrl} on demand.", schemaUrl);
         }
 
         return null;
@@ -488,7 +529,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             using var response = await client.GetAsync(specUrl, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                _logger.DiscoveredSpecUrlReturnedStatusCode(TextSanitizer.SanitizeUrlForLogging(specUrl), (int)response.StatusCode);
+                logger.DiscoveredSpecUrlReturnedStatusCode(TextSanitizer.SanitizeUrlForLogging(specUrl), (int)response.StatusCode);
                 return null;
             }
 
@@ -508,7 +549,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         }
         catch (Exception ex)
         {
-            _logger.FailedToFetchDiscoveredSpecContent(ex, TextSanitizer.SanitizeUrlForLogging(specUrl));
+            logger.FailedToFetchDiscoveredSpecContent(ex, TextSanitizer.SanitizeUrlForLogging(specUrl));
             return null;
         }
     }
@@ -520,7 +561,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         {
             foreach (var discoveredUrl in discoveredUrls)
             {
-                _logger.DiscoveredCandidateFromUiHtml(TextSanitizer.SanitizeUrlForLogging(discoveredUrl));
+                logger.DiscoveredCandidateFromUiHtml(TextSanitizer.SanitizeUrlForLogging(discoveredUrl));
             }
 
             return discoveredUrls[0];
@@ -529,7 +570,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         var configUrls = DiscoverConfigUrls(htmlContent, baseUrl);
         foreach (var configUrl in configUrls)
         {
-            _logger.DiscoveredSwaggerConfigCandidate(TextSanitizer.SanitizeUrlForLogging(configUrl));
+            logger.DiscoveredSwaggerConfigCandidate(TextSanitizer.SanitizeUrlForLogging(configUrl));
             var discoveredFromConfig = await DiscoverFromSwaggerConfigEndpointAsync(client, baseUrl, configUrl, cancellationToken);
             if (discoveredFromConfig.Count > 0)
             {
@@ -542,11 +583,11 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
 
     private async Task<List<string>> DiscoverFromSwaggerConfigEndpointAsync(HttpClient client, string baseUrl, string configUrl, CancellationToken cancellationToken)
     {
-        _logger.RequestingSwaggerConfigEndpoint(TextSanitizer.SanitizeUrlForLogging(configUrl));
+        logger.RequestingSwaggerConfigEndpoint(TextSanitizer.SanitizeUrlForLogging(configUrl));
         using var response = await client.GetAsync(configUrl, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            _logger.SwaggerConfigEndpointReturnedStatusCode(TextSanitizer.SanitizeUrlForLogging(configUrl), (int)response.StatusCode);
+            logger.SwaggerConfigEndpointReturnedStatusCode(TextSanitizer.SanitizeUrlForLogging(configUrl), (int)response.StatusCode);
             return new List<string>();
         }
 
@@ -554,7 +595,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
         var discovered = DiscoverFromSwaggerConfigContent(content, baseUrl);
         foreach (var discoveredUrl in discovered)
         {
-            _logger.DiscoveredCandidateFromSwaggerConfig(TextSanitizer.SanitizeUrlForLogging(configUrl), TextSanitizer.SanitizeUrlForLogging(discoveredUrl));
+            logger.DiscoveredCandidateFromSwaggerConfig(TextSanitizer.SanitizeUrlForLogging(configUrl), TextSanitizer.SanitizeUrlForLogging(discoveredUrl));
         }
 
         return discovered;
@@ -788,7 +829,7 @@ public class ProfileDiscoveryService : IProfileDiscoveryService
             || string.IsNullOrWhiteSpace(configuredDefaultSchemaUrl)
             || !Uri.IsWellFormedUriString(configuredDefaultSchemaUrl, UriKind.Absolute))
         {
-            _logger.InvalidDefaultProfileVersion(TextSanitizer.SanitizeStringForLogging(configuredDefaultKey));
+            logger.InvalidDefaultProfileVersion(TextSanitizer.SanitizeStringForLogging(configuredDefaultKey));
             return false;
         }
 

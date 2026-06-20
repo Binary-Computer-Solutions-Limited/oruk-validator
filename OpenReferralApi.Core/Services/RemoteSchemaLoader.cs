@@ -3,6 +3,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json.Nodes;
+using Json.Schema;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -10,6 +11,16 @@ using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Logging;
 
 namespace OpenReferralApi.Core.Services;
+
+/// <summary>
+/// Structured record to cache compiled schemas and their parsed representation.
+/// </summary>
+public sealed record CachedSchema(
+    JsonSchema CompiledSchema,
+    JsonNode JsonRepresentation,
+    string RawJson,
+    int SizeInBytes
+);
 
 /// <summary>
 /// Internal helper class for loading remote JSON schemas with caching and authentication support.
@@ -60,9 +71,6 @@ public class RemoteSchemaLoader
         _auth = auth;
     }
 
-    /// <summary>
-    /// Loads a remote JSON schema from a URL with caching support.
-    /// </summary>
     public async Task<JsonNode?> LoadRemoteSchemaAsync(string schemaUrl, CancellationToken cancellationToken = default)
     {
         var resolvedUrl = NormalizeKnownSchemaUrl(schemaUrl) ?? schemaUrl;
@@ -71,18 +79,20 @@ public class RemoteSchemaLoader
         if (_cacheOptions.Enabled)
         {
             var cacheKey = GenerateCacheKey(resolvedUrl);
-            if (_memoryCache.TryGetValue<string>(cacheKey, out var cachedContent) && cachedContent != null)
+            if (_memoryCache.TryGetValue<CachedSchema>(cacheKey, out var cachedSchema) && cachedSchema != null)
             {
                 _logger.RetrievedSchemaFromCache(TextSanitizer.SanitizeUrlForLogging(resolvedUrl));
                 
                 try
                 {
-                    var schema = OpenReferralApi.Core.Helpers.JsonSchemaBuild.FromText(cachedContent);
-                    Json.Schema.SchemaRegistry.Global.Register(new Uri(resolvedUrl), schema);
+                    if (Json.Schema.SchemaRegistry.Global.Get(new Uri(resolvedUrl)) == null)
+                    {
+                        Json.Schema.SchemaRegistry.Global.Register(new Uri(resolvedUrl), cachedSchema.CompiledSchema);
+                    }
                 }
                 catch { /* Ignore */ }
 
-                return JsonNode.Parse(cachedContent);
+                return cachedSchema.JsonRepresentation.DeepClone();
             }
         }
 
@@ -110,42 +120,60 @@ public class RemoteSchemaLoader
             _ = response.EnsureSuccessStatusCode();
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
+            var jsonNode = JsonNode.Parse(content);
+            if (jsonNode == null)
+            {
+                throw new InvalidOperationException("Fetched content is not valid JSON.");
+            }
+
+            var cacheKey = GenerateCacheKey(resolvedUrl);
+            var cacheEntryOptions = new MemoryCacheEntryOptions
+            {
+                Size = content.Length,
+                Priority = CacheItemPriority.Normal
+            };
+
+            // Configure expiration
+            if (_cacheOptions.ExpirationMinutes > 0)
+            {
+                if (_cacheOptions.UseSlidingExpiration)
+                {
+                    cacheEntryOptions.SlidingExpiration = TimeSpan.FromMinutes(_cacheOptions.SlidingExpirationMinutes);
+                    cacheEntryOptions.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(_cacheOptions.ExpirationMinutes);
+                }
+                else
+                {
+                    cacheEntryOptions.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(_cacheOptions.ExpirationMinutes);
+                }
+            }
+
+            // Put placeholder in cache to prevent circular recursion/deadlocks during compilation
+            if (_cacheOptions.Enabled)
+            {
+                var placeholder = new CachedSchema(new JsonSchemaBuilder().Build(), jsonNode, content, content.Length);
+                _memoryCache.Set(cacheKey, placeholder, cacheEntryOptions);
+            }
+
+            var schema = OpenReferralApi.Core.Helpers.JsonSchemaBuild.FromText(content);
+
             // Store in persistent cache if caching is enabled
             if (_cacheOptions.Enabled)
             {
-                var cacheKey = GenerateCacheKey(resolvedUrl);
-                var cacheEntryOptions = new MemoryCacheEntryOptions
-                {
-                    Size = content.Length,
-                    Priority = CacheItemPriority.Normal
-                };
-
-                // Configure expiration
-                if (_cacheOptions.ExpirationMinutes > 0)
-                {
-                    if (_cacheOptions.UseSlidingExpiration)
-                    {
-                        cacheEntryOptions.SlidingExpiration = TimeSpan.FromMinutes(_cacheOptions.SlidingExpirationMinutes);
-                        cacheEntryOptions.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(_cacheOptions.ExpirationMinutes);
-                    }
-                    else
-                    {
-                        cacheEntryOptions.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(_cacheOptions.ExpirationMinutes);
-                    }
-                }
-
-                _ = _memoryCache.Set(cacheKey, content, cacheEntryOptions);
+                var cachedSchema = new CachedSchema(schema, jsonNode, content, content.Length);
+                _ = _memoryCache.Set(cacheKey, cachedSchema, cacheEntryOptions);
                 _logger.CachedSchema(TextSanitizer.SanitizeUrlForLogging(resolvedUrl), _cacheOptions.ExpirationMinutes);
             }
 
             try
             {
-                var schema = OpenReferralApi.Core.Helpers.JsonSchemaBuild.FromText(content);
-                Json.Schema.SchemaRegistry.Global.Register(new Uri(resolvedUrl), schema);
+                if (Json.Schema.SchemaRegistry.Global.Get(new Uri(resolvedUrl)) == null)
+                {
+                    Json.Schema.SchemaRegistry.Global.Register(new Uri(resolvedUrl), schema);
+                }
             }
             catch { /* Ignore registration errors if it's not a valid schema (e.g. partial component) */ }
 
-            return JsonNode.Parse(content);
+            return jsonNode.DeepClone();
         }
         catch (Exception ex)
         {

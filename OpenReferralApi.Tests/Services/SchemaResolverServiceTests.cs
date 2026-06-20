@@ -308,7 +308,7 @@ public class SchemaResolverServiceTests
 
         // Verify cache contains the schema
         var cacheKey = $"schema:{schemaUrl}";
-        Assert.That(memoryCache.TryGetValue(cacheKey, out string? _), Is.True);
+        Assert.That(memoryCache.TryGetValue(cacheKey, out CachedSchema? _), Is.True);
     }
 
     [Test]
@@ -361,7 +361,7 @@ public class SchemaResolverServiceTests
 
         // Verify cache does not contain the schema
         var cacheKey = $"schema:{schemaUrl}";
-        Assert.That(memoryCache.TryGetValue(cacheKey, out string? _), Is.False);
+        Assert.That(memoryCache.TryGetValue(cacheKey, out CachedSchema? _), Is.False);
     }
 
     [Test]

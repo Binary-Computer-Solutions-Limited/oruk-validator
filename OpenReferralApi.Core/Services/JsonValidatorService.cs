@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Reflection;
+using System.Text.Json.Nodes;
 using Json.Schema;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -1285,16 +1286,31 @@ public class JsonValidatorService : IJsonValidatorService
     /// </summary>
     private void DetectAdditionalFieldsRecursive(System.Text.Json.JsonElement jsonElement, System.Text.Json.Nodes.JsonNode? schemaNode, List<string> pathSegments, List<ValidationError> warnings)
     {
+        if (schemaNode == null)
+        {
+            return;
+        }
+
+        if (schemaNode is JsonObject obj && obj.TryGetPropertyValue("$ref", out var refNode) && refNode is JsonValue refValue)
+        {
+            var refStr = refValue.GetValue<string>();
+            var resolvedNode = Task.Run(() => _schemaResolverService.ResolveNodeRefAsync(refStr)).GetAwaiter().GetResult();
+            if (resolvedNode != null)
+            {
+                DetectAdditionalFieldsRecursive(jsonElement, resolvedNode, pathSegments, warnings);
+            }
+            return;
+        }
+
         if (jsonElement.ValueKind == System.Text.Json.JsonValueKind.Object)
         {
             var schemaObject = schemaNode as System.Text.Json.Nodes.JsonObject;
-            var schemaProperties = schemaObject?["properties"] as System.Text.Json.Nodes.JsonObject;
             var additionalPropertiesNode = schemaObject?["additionalProperties"];
 
             foreach (var property in jsonElement.EnumerateObject())
             {
                 pathSegments.Add(property.Name);
-                var hasSchemaProperty = schemaProperties?.ContainsKey(property.Name) == true;
+                var hasSchemaProperty = IsPropertyDefined(schemaNode, property.Name, out var propSchema);
 
                 if (!hasSchemaProperty)
                 {
@@ -1308,7 +1324,7 @@ public class JsonValidatorService : IJsonValidatorService
 
                 if (hasSchemaProperty)
                 {
-                    DetectAdditionalFieldsRecursive(property.Value, schemaProperties![property.Name], pathSegments, warnings);
+                    DetectAdditionalFieldsRecursive(property.Value, propSchema, pathSegments, warnings);
                 }
                 else if (additionalPropertiesNode is System.Text.Json.Nodes.JsonObject additionalPropertiesSchema)
                 {
@@ -1320,8 +1336,7 @@ public class JsonValidatorService : IJsonValidatorService
         }
         else if (jsonElement.ValueKind == System.Text.Json.JsonValueKind.Array)
         {
-            var schemaObject = schemaNode as System.Text.Json.Nodes.JsonObject;
-            var itemSchema = schemaObject?["items"];
+            var itemSchema = FindItemsSchema(schemaNode);
 
             if (itemSchema != null)
             {
@@ -1333,6 +1348,77 @@ public class JsonValidatorService : IJsonValidatorService
                 pathSegments.RemoveAt(pathSegments.Count - 1);
             }
         }
+    }
+
+    private bool IsPropertyDefined(System.Text.Json.Nodes.JsonNode? schemaNode, string propertyName, out System.Text.Json.Nodes.JsonNode? propertySchema)
+    {
+        propertySchema = null;
+        if (schemaNode == null)
+        {
+            return false;
+        }
+
+        if (schemaNode is JsonObject obj)
+        {
+            if (obj.TryGetPropertyValue("$ref", out var refNode) && refNode is JsonValue refValue)
+            {
+                var refStr = refValue.GetValue<string>();
+                var resolvedNode = Task.Run(() => _schemaResolverService.ResolveNodeRefAsync(refStr)).GetAwaiter().GetResult();
+                return IsPropertyDefined(resolvedNode, propertyName, out propertySchema);
+            }
+
+            if (obj.TryGetPropertyValue("properties", out var propsNode) && propsNode is JsonObject propsObj)
+            {
+                if (propsObj.TryGetPropertyValue(propertyName, out propertySchema))
+                {
+                    return true;
+                }
+            }
+
+            if (obj.TryGetPropertyValue("allOf", out var allOfNode) && allOfNode is JsonArray allOfArr)
+            {
+                foreach (var item in allOfArr)
+                {
+                    if (IsPropertyDefined(item, propertyName, out propertySchema))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private System.Text.Json.Nodes.JsonNode? FindItemsSchema(System.Text.Json.Nodes.JsonNode? schemaNode)
+    {
+        if (schemaNode == null) return null;
+
+        if (schemaNode is JsonObject obj)
+        {
+            if (obj.TryGetPropertyValue("$ref", out var refNode) && refNode is JsonValue refValue)
+            {
+                var refStr = refValue.GetValue<string>();
+                var resolvedNode = Task.Run(() => _schemaResolverService.ResolveNodeRefAsync(refStr)).GetAwaiter().GetResult();
+                return FindItemsSchema(resolvedNode);
+            }
+
+            if (obj.TryGetPropertyValue("items", out var itemsSchema))
+            {
+                return itemsSchema;
+            }
+
+            if (obj.TryGetPropertyValue("allOf", out var allOfNode) && allOfNode is JsonArray allOfArr)
+            {
+                foreach (var item in allOfArr)
+                {
+                    var found = FindItemsSchema(item);
+                    if (found != null) return found;
+                }
+            }
+        }
+
+        return null;
     }
 
     private static string BuildPath(List<string> segments)

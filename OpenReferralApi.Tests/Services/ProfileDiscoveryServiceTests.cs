@@ -1,9 +1,12 @@
 using System.Net;
+using System.Text.Json.Nodes;
+using Json.Schema;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using Moq.Protected;
+using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Services;
 
 namespace OpenReferralApi.Tests.Services;
@@ -32,7 +35,10 @@ public class ProfileDiscoveryServiceTests
             .Setup(f => f.CreateClient("OpenApiValidationService"))
             .Returns(_httpClient);
 
-        _memoryCache.Set("schema:https://hsds.example.org/3.0/openapi.json", CachedHsdsSchema);
+        var jsonNode = JsonNode.Parse(CachedHsdsSchema)!;
+        var compiledSchema = JsonSchemaBuild.FromText(CachedHsdsSchema);
+        var cachedSchemaObject = new CachedSchema(compiledSchema, jsonNode, CachedHsdsSchema, CachedHsdsSchema.Length);
+        _memoryCache.Set("schema:https://hsds.example.org/3.0/openapi.json", cachedSchemaObject);
     }
 
     [TearDown]
@@ -61,8 +67,12 @@ public class ProfileDiscoveryServiceTests
         var service = CreateService();
         var result = await service.DiscoverFromBaseUrlAsync(null, "https://api.example.com");
 
-        Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
-        Assert.That(result.OpenApiSchemaContent, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
+            Assert.That(result.OpenApiSchemaContent, Is.Null);
+        }
+
     }
 
     [Test]
@@ -76,8 +86,12 @@ public class ProfileDiscoveryServiceTests
         var service = CreateService();
         var result = await service.DiscoverFromBaseUrlAsync(null, "https://api.example.com");
 
-        Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
-        Assert.That(result.OpenApiSchemaContent, Does.Contain("openapi"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
+            Assert.That(result.OpenApiSchemaContent, Does.Contain("openapi"));
+        }
+
     }
 
     [Test]
@@ -91,8 +105,12 @@ public class ProfileDiscoveryServiceTests
         var service = CreateService(OwnSchemaValidationMode.None);
         var result = await service.DiscoverFromBaseUrlAsync(null, "https://api.example.com");
 
-        Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
-        Assert.That(result.OpenApiSchemaContent, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
+            Assert.That(result.OpenApiSchemaContent, Is.Null);
+        }
+
     }
 
     [Test]
@@ -108,8 +126,12 @@ public class ProfileDiscoveryServiceTests
         var service = CreateService();
         var result = await service.DiscoverFromBaseUrlAsync(null, "https://api.example.com");
 
-        Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
-        Assert.That(result.HsdsProfileSchemaContent, Is.EqualTo(expectedProfileSchema));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
+            Assert.That(result.HsdsProfileSchemaContent, Is.EqualTo(expectedProfileSchema));
+        }
+
     }
 
     [Test]
@@ -145,9 +167,13 @@ public class ProfileDiscoveryServiceTests
 
         var result = await service.DiscoverFromBaseUrlAsync(null, "https://api.example.com");
 
-        Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
-        Assert.That(result.UsedDefaultProfile, Is.True);
-        Assert.That(result.HsdsProfileReason, Does.Contain("Falling back to configured default HSDS profile version: HSDS-UK-3.0"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
+            Assert.That(result.UsedDefaultProfile, Is.True);
+            Assert.That(result.HsdsProfileReason, Does.Contain("Falling back to configured default HSDS profile version: HSDS-UK-3.0"));
+        }
+
     }
 
     [Test]
@@ -226,7 +252,7 @@ public class ProfileDiscoveryServiceTests
             _memoryCache);
     }
 
-    private void SetupHttpResponseMap(IDictionary<string, (HttpStatusCode statusCode, string content)> responses)
+    private void SetupHttpResponseMap(Dictionary<string, (HttpStatusCode statusCode, string content)> responses)
     {
         _httpMessageHandlerMock
             .Protected()
@@ -253,4 +279,5 @@ public class ProfileDiscoveryServiceTests
                 });
             });
     }
+
 }

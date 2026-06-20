@@ -502,10 +502,6 @@ public class OpenReferralUKValidationResponseMapperTests
         var memoryAfter = GC.GetTotalMemory(true);
         var memoryGrowth = memoryAfter - memoryBefore;
 
-        TestContext.Out.WriteLine($"Memory Before: {memoryBefore / 1024.0:F2} KB");
-        TestContext.Out.WriteLine($"Memory After:  {memoryAfter / 1024.0:F2} KB");
-        TestContext.Out.WriteLine($"Memory Growth: {memoryGrowth / 1024.0:F2} KB ({(memoryGrowth / 1024.0 / 1024.0):F2} MB)");
-
         // Assert: Allow for .NET GC segment fragmentation and ArrayPool retention, but fail if unbounded leaks occur
         Assert.That(memoryGrowth, Is.LessThan(5000 * 1024), $"Memory grew by {memoryGrowth} bytes, indicating a potential leak or degraded pooling optimizations.");
     }

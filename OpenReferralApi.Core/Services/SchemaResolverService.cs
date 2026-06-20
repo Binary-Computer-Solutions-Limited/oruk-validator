@@ -55,6 +55,11 @@ public interface ISchemaResolverService
     /// Returns non-fatal issues discovered during the most recent reference resolution call.
     /// </summary>
     IReadOnlyList<SchemaResolutionIssue> GetResolutionIssues();
+
+    /// <summary>
+    /// Resolves a single $ref pointer on-the-fly.
+    /// </summary>
+    Task<JsonNode?> ResolveNodeRefAsync(string refString);
 }
 
 /// <summary>
@@ -103,6 +108,61 @@ public class SchemaResolverService : ISchemaResolverService
             schemaResolutionOptions?.Value?.KnownJsonSchemaUrls,
             schemaResolutionOptions?.Value?.WarnOnUnknownJsonSchemaDraft ?? true);
         _referenceResolver = new ReferenceResolver(logger, _remoteSchemaLoader);
+        ConfigureGlobalFetch();
+    }
+
+    private void ConfigureGlobalFetch()
+    {
+        Json.Schema.SchemaRegistry.Global.Fetch = (uri, registry) =>
+        {
+            if (uri.Scheme == Uri.UriSchemeFile)
+            {
+                var localPath = uri.LocalPath;
+                if (File.Exists(localPath))
+                {
+                    try
+                    {
+                        var content = File.ReadAllText(localPath);
+                        return JsonSchema.FromText(content);
+                    }
+                    catch
+                    {
+                        return null;
+                    }
+                }
+            }
+
+            var resolvedUrl = uri.GetLeftPart(UriPartial.Path).TrimEnd('/');
+
+            // Bypass network calls for standard JSON schema drafts and OpenAPI meta-schemas
+            // to avoid ThreadPool starvation deadlocks and speed up compilation.
+            if (uri.Host.Equals("json-schema.org", StringComparison.OrdinalIgnoreCase) ||
+                uri.Host.Equals("spec.openapis.org", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            var cacheKey = $"schema:{resolvedUrl}";
+            if (_memoryCache.TryGetValue<CachedSchema>(cacheKey, out var cachedSchema) && cachedSchema != null)
+            {
+                return cachedSchema.CompiledSchema;
+            }
+
+            try
+            {
+                var node = Task.Run(() => _remoteSchemaLoader.LoadRemoteSchemaAsync(resolvedUrl)).GetAwaiter().GetResult();
+                if (_memoryCache.TryGetValue<CachedSchema>(cacheKey, out var cachedSchema2) && cachedSchema2 != null)
+                {
+                    return cachedSchema2.CompiledSchema;
+                }
+            }
+            catch
+            {
+                // Ignore
+            }
+
+            return null;
+        };
     }
 
     /// <summary>
@@ -137,16 +197,103 @@ public class SchemaResolverService : ISchemaResolverService
         var validatedAuth = IsValidAuthentication(auth) ? auth : null;
         _remoteSchemaLoader.SetAuthentication(validatedAuth);
 
-        // Initialize the reference resolver for this resolution session
+        // Initialize the reference resolver for this resolution session (needed for on-the-fly lookups)
         _referenceResolver.Initialize(schema, baseUri);
 
-        // Pass a new HashSet to track the current resolution path
-        return await _referenceResolver.ResolveAllRefsAsync(schema, new HashSet<string>());
+        // Pre-fetch all external references recursively and register them in SchemaRegistry.Global
+        await PreFetchSchemaRefsAsync(schema, baseUri, validatedAuth, CancellationToken.None);
+
+        return schema.DeepClone();
     }
 
     public IReadOnlyList<SchemaResolutionIssue> GetResolutionIssues()
     {
         return _referenceResolver.ResolutionIssues.ToList();
+    }
+
+    private async Task PreFetchSchemaRefsAsync(JsonNode rootNode, string? baseUri, DataSourceAuthentication? auth, CancellationToken cancellationToken)
+    {
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var queue = new Queue<string>();
+
+        var initialRefs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        FindExternalRefs(rootNode, baseUri, initialRefs);
+
+        foreach (var r in initialRefs)
+        {
+            if (visited.Add(r))
+            {
+                queue.Enqueue(r);
+            }
+        }
+
+        var validatedAuth = IsValidAuthentication(auth) ? auth : null;
+        _remoteSchemaLoader.SetAuthentication(validatedAuth);
+
+        while (queue.Count > 0)
+        {
+            var url = queue.Dequeue();
+            try
+            {
+                var schemaNode = await _remoteSchemaLoader.LoadRemoteSchemaAsync(url, cancellationToken);
+                if (schemaNode != null)
+                {
+                    var nestedRefs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    FindExternalRefs(schemaNode, url, nestedRefs);
+                    foreach (var nr in nestedRefs)
+                    {
+                        if (visited.Add(nr))
+                        {
+                            queue.Enqueue(nr);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to pre-fetch schema ref: {Url}", url);
+            }
+        }
+    }
+
+    private static void FindExternalRefs(JsonNode? node, string? baseUri, HashSet<string> result)
+    {
+        if (node == null) return;
+        if (node is JsonObject obj)
+        {
+            if (obj.TryGetPropertyValue("$ref", out var refNode) && refNode is JsonValue refValue)
+            {
+                var refStr = refValue.GetValue<string>();
+                if (!string.IsNullOrEmpty(refStr))
+                {
+                    var parts = refStr.Split('#');
+                    var schemaUrl = parts[0];
+                    if (!string.IsNullOrEmpty(schemaUrl))
+                    {
+                        if (schemaUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                            schemaUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                        {
+                            result.Add(schemaUrl);
+                        }
+                        else if (!string.IsNullOrEmpty(baseUri) && Uri.TryCreate(new Uri(baseUri), schemaUrl, out var absoluteUri))
+                        {
+                            result.Add(absoluteUri.GetLeftPart(UriPartial.Path).TrimEnd('/'));
+                        }
+                    }
+                }
+            }
+            foreach (var kvp in obj)
+            {
+                FindExternalRefs(kvp.Value, baseUri, result);
+            }
+        }
+        else if (node is JsonArray arr)
+        {
+            foreach (var item in arr)
+            {
+                FindExternalRefs(item, baseUri, result);
+            }
+        }
     }
 
     /// <summary>
@@ -258,6 +405,11 @@ public class SchemaResolverService : ISchemaResolverService
         var hex = Convert.ToHexString(hash).ToLowerInvariant();
 
         return $"sha256:{hex}:length:{bytes.Length}";
+    }
+
+    public async Task<JsonNode?> ResolveNodeRefAsync(string refString)
+    {
+        return await _referenceResolver.ResolveNodeRefAsync(refString);
     }
 
     private static string ExtractTopLevelSchemaId(string schemaJson)

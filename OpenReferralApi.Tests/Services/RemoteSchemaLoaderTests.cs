@@ -626,9 +626,9 @@ public class RemoteSchemaLoaderTests
         Assert.That(result, Is.Not.Null);
 
         var cacheKey = $"schema:{schemaUrl}";
-        var cached = _memoryCache.TryGetValue<string>(cacheKey, out var cachedContent);
+        var cached = _memoryCache.TryGetValue<CachedSchema>(cacheKey, out var cachedSchema);
         Assert.That(cached, Is.True, "Schema should be cached");
-        Assert.That(cachedContent, Is.EqualTo(schemaJson));
+        Assert.That(cachedSchema?.RawJson, Is.EqualTo(schemaJson));
     }
 
     [Test]
@@ -664,7 +664,7 @@ public class RemoteSchemaLoaderTests
         Assert.That(result, Is.Not.Null);
 
         var cacheKey = $"schema:{schemaUrl}";
-        var cached = _memoryCache.TryGetValue<string>(cacheKey, out var cachedContent);
+        var cached = _memoryCache.TryGetValue<CachedSchema>(cacheKey, out var cachedSchema);
         Assert.That(cached, Is.True, "Schema should be cached with sliding expiration");
     }
 
@@ -708,11 +708,11 @@ public class RemoteSchemaLoaderTests
         var canonicalCacheKey = $"schema:{canonicalUrl}";
         var rawCacheKey = $"schema:{requestedUrl}";
 
-        var hasCanonicalEntry = _memoryCache.TryGetValue<string>(canonicalCacheKey, out var canonicalContent);
-        var hasRawEntry = _memoryCache.TryGetValue<string>(rawCacheKey, out _);
+        var hasCanonicalEntry = _memoryCache.TryGetValue<CachedSchema>(canonicalCacheKey, out var cachedSchema);
+        var hasRawEntry = _memoryCache.TryGetValue<CachedSchema>(rawCacheKey, out _);
 
         Assert.That(hasCanonicalEntry, Is.True, "Known schema URL should be cached using canonical normalized URL");
-        Assert.That(canonicalContent, Is.EqualTo(schemaJson));
+        Assert.That(cachedSchema?.RawJson, Is.EqualTo(schemaJson));
         Assert.That(hasRawEntry, Is.False, "Raw URL with query/fragment should not be used as cache key");
     }
 
