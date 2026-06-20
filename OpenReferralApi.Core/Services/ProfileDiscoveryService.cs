@@ -133,7 +133,7 @@ public class ProfileDiscoveryService(
                         else
                         {
                             // Attempt scraping for indirect schema (UI/Config)
-                            discoveredSchema = await TryFetchIndirectSchemaAsync(client, content, normalizedBaseUrl, cancellationToken);
+                            discoveredSchema = await TryFetchIndirectSchemaAsync(client, content, normalizedBaseUrl, authentication, cancellationToken);
 
                             if (discoveredVersion == null && discoveredSchema != null)
                             {
@@ -521,35 +521,42 @@ public class ProfileDiscoveryService(
     }
 
     private async Task<string?> TryFetchIndirectSchemaAsync(
-    HttpClient client,
-    string content,
-    string baseUrl,
-    CancellationToken cancellationToken)
+        HttpClient client,
+        string content,
+        string baseUrl,
+        DataSourceAuthentication? authentication,
+        CancellationToken cancellationToken)
     {
         // 1. Check if the content is a Swagger Config JSON
         var configUrls = DiscoverFromSwaggerConfigContent(content, baseUrl);
         if (configUrls.Count > 0)
         {
             // Try the first URL found in the config
-            var spec = await TryFetchDiscoveredSpecContentAsync(client, configUrls[0], cancellationToken);
+            var spec = await TryFetchDiscoveredSpecContentAsync(client, configUrls[0], authentication, cancellationToken);
             if (spec != null) return spec;
         }
 
         // 2. Check if the content is HTML (Swagger UI / Redoc)
-        var htmlSpecUrl = await DiscoverFromUiHtmlAsync(client, content, baseUrl, cancellationToken);
+        var htmlSpecUrl = await DiscoverFromUiHtmlAsync(client, content, baseUrl, authentication, cancellationToken);
         if (!string.IsNullOrWhiteSpace(htmlSpecUrl))
         {
-            return await TryFetchDiscoveredSpecContentAsync(client, htmlSpecUrl, cancellationToken);
+            return await TryFetchDiscoveredSpecContentAsync(client, htmlSpecUrl, authentication, cancellationToken);
         }
 
         return null;
     }
 
-    private async Task<string?> TryFetchDiscoveredSpecContentAsync(HttpClient client, string specUrl, CancellationToken cancellationToken)
+    private async Task<string?> TryFetchDiscoveredSpecContentAsync(
+        HttpClient client,
+        string specUrl,
+        DataSourceAuthentication? authentication,
+        CancellationToken cancellationToken)
     {
         try
         {
-            using var response = await client.GetAsync(specUrl, cancellationToken);
+            using var request = new HttpRequestMessage(HttpMethod.Get, specUrl);
+            ApplyAuthentication(request, authentication);
+            using var response = await client.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
                 if (logger.IsEnabled(LogLevel.Debug))
@@ -566,7 +573,7 @@ public class ProfileDiscoveryService(
             }
 
             // If the response is not JSON or an OpenAPI spec, parse the HTML and test if it is another specification such as Swagger UI
-            var extractedSpec = await TryFetchIndirectSchemaAsync(client, content, specUrl, cancellationToken);
+            var extractedSpec = await TryFetchIndirectSchemaAsync(client, content, specUrl, authentication, cancellationToken);
             return extractedSpec;
         }
         catch (OperationCanceledException)
@@ -583,7 +590,12 @@ public class ProfileDiscoveryService(
         }
     }
 
-    private async Task<string?> DiscoverFromUiHtmlAsync(HttpClient client, string htmlContent, string baseUrl, CancellationToken cancellationToken)
+    private async Task<string?> DiscoverFromUiHtmlAsync(
+        HttpClient client,
+        string htmlContent,
+        string baseUrl,
+        DataSourceAuthentication? authentication,
+        CancellationToken cancellationToken)
     {
         var discoveredUrls = await DiscoverAllDefinitionsAsync(htmlContent, baseUrl);
         if (discoveredUrls.Count > 0)
@@ -606,7 +618,7 @@ public class ProfileDiscoveryService(
             {
                 logger.DiscoveredSwaggerConfigCandidate(TextSanitizer.SanitizeUrlForLogging(configUrl));
             }
-            var discoveredFromConfig = await DiscoverFromSwaggerConfigEndpointAsync(client, baseUrl, configUrl, cancellationToken);
+            var discoveredFromConfig = await DiscoverFromSwaggerConfigEndpointAsync(client, baseUrl, configUrl, authentication, cancellationToken);
             if (discoveredFromConfig.Count > 0)
             {
                 return discoveredFromConfig[0];
@@ -616,13 +628,20 @@ public class ProfileDiscoveryService(
         return null;
     }
 
-    private async Task<List<string>> DiscoverFromSwaggerConfigEndpointAsync(HttpClient client, string baseUrl, string configUrl, CancellationToken cancellationToken)
+    private async Task<List<string>> DiscoverFromSwaggerConfigEndpointAsync(
+        HttpClient client,
+        string baseUrl,
+        string configUrl,
+        DataSourceAuthentication? authentication,
+        CancellationToken cancellationToken)
     {
         if (logger.IsEnabled(LogLevel.Debug))
         {
             logger.RequestingSwaggerConfigEndpoint(TextSanitizer.SanitizeUrlForLogging(configUrl));
         }
-        using var response = await client.GetAsync(configUrl, cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Get, configUrl);
+        ApplyAuthentication(request, authentication);
+        using var response = await client.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             if (logger.IsEnabled(LogLevel.Debug))
