@@ -1,4 +1,4 @@
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace OpenReferralApi.Core.Models.Validation;
 
@@ -10,26 +10,26 @@ public class OpenReferralUKValidationResponse
     /// <summary>
     /// Service information and overall validation status
     /// </summary>
-    [JsonProperty("service")]
+    [JsonPropertyName("service")]
     public ServiceInfo Service { get; set; } = new();
 
     /// <summary>
     /// Collection of test suites containing endpoint validation results
     /// </summary>
-    [JsonProperty("testSuites")]
-    public List<object> TestSuites { get; set; } = new();
+    [JsonPropertyName("testSuites")]
+    public List<object> TestSuites { get; set; } = [];
 
     /// <summary>
     /// Specification-level validation findings (for example OpenAPI schema/profile comparison errors)
     /// </summary>
-    [JsonProperty("specificationValidation")]
+    [JsonPropertyName("specificationValidation")]
     public object? SpecificationValidation { get; set; }
 
     /// <summary>
     /// User-facing notifications about processing issues such as specification fetch/resolve failures
     /// </summary>
-    [JsonProperty("notifications")]
-    public List<string> Notifications { get; set; } = new();
+    [JsonPropertyName("notifications")]
+    public List<string> Notifications { get; set; } = [];
 }
 
 /// <summary>
@@ -40,24 +40,24 @@ public class ServiceInfo
     /// <summary>
     /// The base URL of the service being validated
     /// </summary>
-    [JsonProperty("url")]
+    [JsonPropertyName("url")]
     public string Url { get; set; } = string.Empty;
 
     /// <summary>
     /// Whether the service passed validation
     /// </summary>
-    [JsonProperty("isValid")]
+    [JsonPropertyName("isValid")]
     public bool IsValid { get; set; }
 
     /// <summary>
     /// The OpenAPI specification version (e.g., "3.0.0", "2.0")
     /// </summary>
-    [JsonProperty("profile")]
+    [JsonPropertyName("profile")]
     public string Profile { get; set; } = "Unknown";
 
     /// <summary>
     /// Reason or explanation for the profile version
     /// </summary>
-    [JsonProperty("profileReason")]
+    [JsonPropertyName("profileReason")]
     public string ProfileReason { get; set; } = "Unknown";
 }

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Services;
 using OpenReferralApi.Logging;
 
@@ -9,18 +10,12 @@ namespace OpenReferralApi.Controllers;
 [Route("openreferral")]
 [Produces("application/json")]
 [EnableRateLimiting("fixed")]
-internal sealed class OpenReferralController : BaseOpenApiController
+internal sealed class OpenReferralController(
+    IOpenApiValidationService openApiValidationService,
+    ILogger<OpenReferralController> logger) : BaseOpenApiController
 {
-    private readonly IOpenApiValidationService _openApiValidationService;
-    private readonly ILogger<OpenReferralController> _logger;
-
-    public OpenReferralController(
-        IOpenApiValidationService openApiValidationService,
-        ILogger<OpenReferralController> logger)
-    {
-        _openApiValidationService = openApiValidationService;
-        _logger = logger;
-    }
+    private readonly IOpenApiValidationService _openApiValidationService = openApiValidationService;
+    private readonly ILogger<OpenReferralController> _logger = logger;
 
     /// <summary>
     /// Validates an OpenAPI specification and tests all defined endpoints, returning raw results
@@ -43,7 +38,7 @@ internal sealed class OpenReferralController : BaseOpenApiController
     {
         if (_logger.IsEnabled(LogLevel.Information))
         {
-            var sanitizedBaseUrl = SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty);
+            var sanitizedBaseUrl = TextSanitizer.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty);
             OpenApiControllerLog.ReceivedValidationRequest(_logger, sanitizedBaseUrl);
         }
 
@@ -57,7 +52,7 @@ internal sealed class OpenReferralController : BaseOpenApiController
 
         if (_logger.IsEnabled(LogLevel.Information))
         {
-            var sanitizedBaseUrl = SchemaResolverService.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty);
+            var sanitizedBaseUrl = TextSanitizer.SanitizeUrlForLogging(request.BaseUrl ?? string.Empty);
             OpenApiControllerLog.ValidationCompleted(_logger, sanitizedBaseUrl);
         }
 

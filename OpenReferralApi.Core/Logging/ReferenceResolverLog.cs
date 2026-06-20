@@ -42,5 +42,8 @@ namespace OpenReferralApi.Core.Logging
 
         [LoggerMessage(EventId = 13012, Level = LogLevel.Error, Message = "Circular external schema reference detected: {Ref}. Resolution path: {Path}")]
         public static partial void CircularExternalReferenceDetectedWithPath(this ILogger logger, string @ref, string path);
+
+        [LoggerMessage(EventId = 13013, Level = LogLevel.Warning, Message = "Cyclic reference detected during on-the-fly lookup: {Ref}")]
+        public static partial void CyclicReferenceDetectedDuringLookup(this ILogger logger, string @ref);
     }
 }

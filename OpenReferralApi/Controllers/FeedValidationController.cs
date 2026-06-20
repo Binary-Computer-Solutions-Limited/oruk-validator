@@ -13,18 +13,12 @@ namespace OpenReferralApi.Controllers;
 [ApiExplorerSettings(IgnoreApi = true)]
 [Route("api/[controller]")]
 [EnableRateLimiting("fixed")]
-internal sealed class FeedValidationController : ControllerBase
+internal sealed class FeedValidationController(
+    IFeedValidationService feedValidationService,
+    ILogger<FeedValidationController> logger) : ControllerBase
 {
-    private readonly IFeedValidationService _feedValidationService;
-    private readonly ILogger<FeedValidationController> _logger;
-
-    public FeedValidationController(
-        IFeedValidationService feedValidationService,
-        ILogger<FeedValidationController> logger)
-    {
-        _feedValidationService = feedValidationService;
-        _logger = logger;
-    }
+    private readonly IFeedValidationService _feedValidationService = feedValidationService;
+    private readonly ILogger<FeedValidationController> _logger = logger;
 
     /// <summary>
     /// Get all registered feeds with their current status
@@ -129,5 +123,5 @@ internal sealed class FeedValidationSummary
     public int InvalidFeeds { get; set; }
     public double? AverageResponseTimeMs { get; set; }
     public string? Message { get; set; }
-    public List<FeedValidationResult> Results { get; set; } = new();
+    public List<FeedValidationResult> Results { get; set; } = [];
 }

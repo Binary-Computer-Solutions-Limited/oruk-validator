@@ -116,11 +116,11 @@ public class ValidationErrorNormalizerTests
         Assert.That(normalized[0].Message, Is.EqualTo("paths[/services].get.responses[].content invalid"));
     }
 
-        [Test]
-        public void NormalizeAndDeduplicateByPath_PreservesSourceIdentifier()
+    [Test]
+    public void NormalizeAndDeduplicateByPath_PreservesSourceIdentifier()
+    {
+        var errors = new[]
         {
-            var errors = new[]
-            {
                 new ValidationError
                 {
                     Path = "$.foo[0]",
@@ -131,9 +131,9 @@ public class ValidationErrorNormalizerTests
                 }
             };
 
-            var result = ValidationErrorNormalizer.NormalizeAndDeduplicateByPath(errors);
+        var result = ValidationErrorNormalizer.NormalizeAndDeduplicateByPath(errors);
 
-            Assert.That(result, Has.Count.EqualTo(1));
-            Assert.That(result[0].SourceIdentifier, Is.EqualTo("request.jsonData (object)"));
-        }
+        Assert.That(result, Has.Count.EqualTo(1));
+        Assert.That(result[0].SourceIdentifier, Is.EqualTo("request.jsonData (object)"));
+    }
 }

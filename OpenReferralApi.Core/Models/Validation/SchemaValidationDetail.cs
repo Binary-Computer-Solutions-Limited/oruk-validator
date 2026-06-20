@@ -1,4 +1,4 @@
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace OpenReferralApi.Core.Models.Validation;
 
@@ -11,14 +11,14 @@ public class SchemaValidationDetail
     /// Where this validation was applied ("request" or "response")
     /// Distinguishes between input validation and output validation results
     /// </summary>
-    [JsonProperty("location")]
+    [JsonPropertyName("location")]
     public string Location { get; set; } = string.Empty;
 
     /// <summary>
     /// Overall validation status ("Valid", "Invalid", "Skipped")
     /// Provides a quick summary of the validation outcome
     /// </summary>
-    [JsonProperty("status")]
+    [JsonPropertyName("status")]
     public string Status { get; set; } = string.Empty;
 
     /// <summary>
@@ -26,6 +26,6 @@ public class SchemaValidationDetail
     /// Details about data structure violations or type mismatches
     /// Use the Severity property on ValidationError to distinguish between errors ("Error") and warnings ("Warning")
     /// </summary>
-    [JsonProperty("errors")]
-    public List<ValidationError> Errors { get; set; } = new();
+    [JsonPropertyName("errors")]
+    public List<ValidationError> Errors { get; set; } = [];
 }

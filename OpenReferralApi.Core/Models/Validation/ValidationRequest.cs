@@ -1,61 +1,61 @@
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace OpenReferralApi.Core.Models.Validation;
 
 public class ValidationRequest
 {
-    [JsonProperty("jsonData")]
+    [JsonPropertyName("jsonData")]
     public object? JsonData { get; set; }
 
-    [JsonProperty("dataUrl")]
+    [JsonPropertyName("dataUrl")]
     public string? DataUrl { get; set; }
 
-    [JsonProperty("schema")]
+    [JsonPropertyName("schema")]
     public object? Schema { get; set; }
 
-    [JsonProperty("schemaUri")]
+    [JsonPropertyName("schemaUri")]
     public string? SchemaUri { get; set; }
 
-    [JsonProperty("options")]
+    [JsonPropertyName("options")]
     public ValidationOptions? Options { get; set; }
 }
 
 public class ValidationOptions : ValidationOptionsBase
 {
-    [JsonProperty("strictMode")]
+    [JsonPropertyName("strictMode")]
     public bool StrictMode { get; set; } = false;
 
-    [JsonProperty("allowAdditionalProperties")]
+    [JsonPropertyName("allowAdditionalProperties")]
     public bool AllowAdditionalProperties { get; set; } = true;
 
-    [JsonProperty("validateFormat")]
+    [JsonPropertyName("validateFormat")]
     public bool ValidateFormat { get; set; } = true;
 
-    [JsonProperty("maxErrors")]
+    [JsonPropertyName("maxErrors")]
     public int MaxErrors { get; set; } = 100;
 
-    [JsonProperty("useThrottling")]
+    [JsonPropertyName("useThrottling")]
     public bool UseThrottling { get; set; } = true;
 
-    [JsonProperty("retryAttempts")]
+    [JsonPropertyName("retryAttempts")]
     public int RetryAttempts { get; set; } = 3;
 
-    [JsonProperty("retryDelaySeconds")]
+    [JsonPropertyName("retryDelaySeconds")]
     public int RetryDelaySeconds { get; set; } = 1;
 
-    [JsonProperty("enableCaching")]
+    [JsonPropertyName("enableCaching")]
     public bool EnableCaching { get; set; } = true;
 
-    [JsonProperty("cacheTtlMinutes")]
+    [JsonPropertyName("cacheTtlMinutes")]
     public int CacheTtlMinutes { get; set; } = 30;
 
-    [JsonProperty("followRedirects")]
+    [JsonPropertyName("followRedirects")]
     public bool FollowRedirects { get; set; } = true;
 
-    [JsonProperty("maxRedirects")]
+    [JsonPropertyName("maxRedirects")]
     public int MaxRedirects { get; set; } = 5;
 
-    [JsonProperty("validateSslCertificate")]
+    [JsonPropertyName("validateSslCertificate")]
     public bool ValidateSslCertificate { get; set; } = true;
 
 }

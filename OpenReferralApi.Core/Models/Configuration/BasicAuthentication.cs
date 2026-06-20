@@ -1,5 +1,5 @@
 using System.ComponentModel;
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace OpenReferralApi.Core.Models.Configuration;
 
@@ -9,10 +9,10 @@ namespace OpenReferralApi.Core.Models.Configuration;
 public class BasicAuthentication
 {
     [DefaultValue("")]
-    [JsonProperty("username")]
+    [JsonPropertyName("username")]
     public string Username { get; set; } = string.Empty;
 
     [DefaultValue("")]
-    [JsonProperty("password")]
+    [JsonPropertyName("password")]
     public string Password { get; set; } = string.Empty;
 }

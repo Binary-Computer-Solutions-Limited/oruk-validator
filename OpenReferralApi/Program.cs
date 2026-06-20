@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
@@ -9,13 +10,11 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using OpenReferralApi.Core.Services;
 using OpenReferralApi.Extensions;
 using OpenReferralApi.HealthChecks;
+using OpenReferralApi.Logging;
 using OpenReferralApi.Middleware;
 using OpenReferralApi.Services;
 using OpenReferralApi.Swagger;
 using Serilog;
-
-using OpenReferralApi.Logging;
-using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -203,7 +202,7 @@ builder.Services.AddSingleton<IRequestProcessingService, RequestProcessingServic
 builder.Services.AddSingleton<ISchemaWarmupStatusTracker, SchemaWarmupStatusTracker>();
 builder.Services.AddSingleton<ISchemaWarmupStatusProvider>(sp => sp.GetRequiredService<ISchemaWarmupStatusTracker>());
 
-// Schema Resolver Service - resolves $ref in remote schema files and creates JSchema objects
+// Schema Resolver Service - resolves $ref in remote schema files for runtime schema validation
 builder.Services.AddScoped<ISchemaResolverService, SchemaResolverService>();
 builder.Services.AddHostedService<SchemaWarmupBackgroundService>();
 
@@ -211,12 +210,11 @@ builder.Services.AddScoped<IJsonValidatorService, JsonValidatorService>();
 builder.Services.AddScoped<IAuthenticationValidationService, AuthenticationValidationService>();
 builder.Services.AddScoped<IOpenApiSpecificationService, OpenApiSpecificationService>();
 builder.Services.AddScoped<IHsdsComplianceService, HsdsComplianceService>();
+builder.Services.AddScoped<IProfileResolverService, ProfileResolverService>();
 builder.Services.AddScoped<IEndpointTestingService, EndpointTestingService>();
 builder.Services.AddScoped<IOpenApiValidationService, OpenApiValidationService>();
 
-builder.Services.AddScoped<IOpenApiDiscoveryService, OpenApiDiscoveryService>();
 builder.Services.AddScoped<IProfileDiscoveryService, ProfileDiscoveryService>();
-builder.Services.AddScoped<IOpenApiBootstrapService, OpenApiBootstrapService>();
 builder.Services.AddScoped<IOpenReferralUKValidationResponseMapper, OpenReferralUKValidationResponseMapper>();
 
 // Memory Cache configuration

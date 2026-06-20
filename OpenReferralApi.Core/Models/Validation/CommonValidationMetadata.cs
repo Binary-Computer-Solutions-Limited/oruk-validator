@@ -1,4 +1,4 @@
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace OpenReferralApi.Core.Models.Validation;
 
@@ -7,45 +7,45 @@ namespace OpenReferralApi.Core.Models.Validation;
 /// </summary>
 public class CommonValidationMetadata : IMetadata
 {
-    [JsonProperty("openApiVersion")]
+    [JsonPropertyName("openApiVersion")]
     public string? OpenApiVersion { get; set; }
 
-    [JsonProperty("title")]
+    [JsonPropertyName("title")]
     public string? Title { get; set; }
 
-    [JsonProperty("version")]
+    [JsonPropertyName("version")]
     public string? Version { get; set; }
 
-    [JsonProperty("baseUrl")]
+    [JsonPropertyName("baseUrl")]
     public string? BaseUrl { get; set; }
 
-    [JsonProperty("testTimestamp")]
+    [JsonPropertyName("testTimestamp")]
     public DateTime? TestTimestamp { get; set; }
 
-    [JsonProperty("testDuration")]
+    [JsonPropertyName("testDuration")]
     public TimeSpan? TestDuration { get; set; }
 
-    [JsonProperty("userAgent")]
+    [JsonPropertyName("userAgent")]
     public string? UserAgent { get; set; }
 
-    [JsonProperty("profile")]
+    [JsonPropertyName("profile")]
     public string? Profile { get; set; }
 
     internal string? ProfileReason { get; set; }
 
-    [JsonProperty("schemaTitle")]
+    [JsonPropertyName("schemaTitle")]
     public string? SchemaTitle { get; set; }
 
-    [JsonProperty("schemaDescription")]
+    [JsonPropertyName("schemaDescription")]
     public string? SchemaDescription { get; set; }
 
-    [JsonProperty("dataSize")]
+    [JsonPropertyName("dataSize")]
     public long? DataSize { get; set; }
 
-    [JsonProperty("validationTimestamp")]
+    [JsonPropertyName("validationTimestamp")]
     public DateTime? ValidationTimestamp { get; set; }
 
-    [JsonProperty("dataSource")]
+    [JsonPropertyName("dataSource")]
     public string? DataSource { get; set; }
 
     [JsonIgnore]

@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Moq;
-using Newtonsoft.Json.Schema;
+using Json.Schema;
 using OpenReferralApi.Core.Services;
 using System.Text.Json.Nodes;
 
@@ -33,10 +33,10 @@ public class JsonValidatorServiceTests
 
         _requestProcessingServiceMock
             .Setup(service => service.ExecuteWithRetryAsync(
-                It.IsAny<Func<CancellationToken, Task<JSchema>>>(),
+                It.IsAny<Func<CancellationToken, Task<JsonSchema>>>(),
                 It.IsAny<ValidationOptions?>(),
                 It.IsAny<CancellationToken>()))
-            .Returns((Func<CancellationToken, Task<JSchema>> func, ValidationOptions? options, CancellationToken ct) => func(ct));
+            .Returns((Func<CancellationToken, Task<JsonSchema>> func, ValidationOptions? options, CancellationToken ct) => func(ct));
 
         _requestProcessingServiceMock
             .Setup(service => service.ExecuteWithRetryAsync(
@@ -57,12 +57,12 @@ public class JsonValidatorServiceTests
             .Returns((ValidationOptions? options, CancellationToken ct) => CancellationTokenSource.CreateLinkedTokenSource(ct));
 
         _schemaResolverServiceMock
-            .Setup(service => service.CreateSchemaFromJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string schemaJson, string documentUri, DataSourceAuthentication auth, CancellationToken ct) => JSchema.Parse(schemaJson));
+            .Setup(service => service.CreateSchemaFromJsonAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string schemaJson, string? documentUri, DataSourceAuthentication? auth, CancellationToken ct) => JsonSchema.FromText(schemaJson));
 
         _schemaResolverServiceMock
             .Setup(service => service.CreateSchemaFromJsonAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string schemaJson, CancellationToken ct) => JSchema.Parse(schemaJson));
+            .ReturnsAsync((string schemaJson, CancellationToken ct) => JsonSchema.FromText(schemaJson));
 
         var mockHandler = new MockHttpMessageHandler("{}", "{}");
         _httpClient = TestHttpClientFactory.CreateClient(mockHandler);
@@ -818,6 +818,36 @@ public class JsonValidatorServiceTests
             e => e.ErrorCode == "SCHEMA_STRUCTURE_VIOLATION" && e.Path.Contains("$.self", StringComparison.Ordinal)));
     }
 
+    [Test]
+    public async Task ValidateAsync_WithFormatMismatch_IncludesFailedValueInErrorMessage()
+    {
+        // Arrange
+        var schema = new
+        {
+            type = "object",
+            properties = new
+            {
+                url = new { type = "string", format = "uri" }
+            }
+        };
+
+        var request = new ValidationRequest
+        {
+            JsonData = new { url = "not-a-valid-uri" },
+            Schema = schema
+        };
+
+        // Act
+        var result = await _service.ValidateAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.False);
+        var formatError = result.Errors.FirstOrDefault(e => e.Path == "url");
+        Assert.That(formatError, Is.Not.Null);
+        Assert.That(formatError!.Message, Contains.Substring("does not match format"));
+        Assert.That(formatError.Message, Contains.Substring("(failed value: \"not-a-valid-uri\")"));
+    }
+
     private static string BuildDeepJson(int depth)
     {
         var sb = new System.Text.StringBuilder();
@@ -856,16 +886,10 @@ public class JsonValidatorServiceTests
         return mock.Object;
     }
 
-    private sealed class MockHttpMessageHandler : HttpMessageHandler
+    private sealed class MockHttpMessageHandler(string schemaJson, string dataJson) : HttpMessageHandler
     {
-        private readonly string _schemaJson;
-        private readonly string _dataJson;
-
-        public MockHttpMessageHandler(string schemaJson, string dataJson)
-        {
-            _schemaJson = schemaJson;
-            _dataJson = dataJson;
-        }
+        private readonly string _schemaJson = schemaJson;
+        private readonly string _dataJson = dataJson;
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -883,14 +907,9 @@ public class JsonValidatorServiceTests
         }
     }
 
-    private sealed class CountingHttpMessageHandler : HttpMessageHandler
+    private sealed class CountingHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> handler) : HttpMessageHandler
     {
-        private readonly Func<HttpRequestMessage, HttpResponseMessage> _handler;
-
-        public CountingHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> handler)
-        {
-            _handler = handler;
-        }
+        private readonly Func<HttpRequestMessage, HttpResponseMessage> _handler = handler;
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {

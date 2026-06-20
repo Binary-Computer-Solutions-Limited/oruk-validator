@@ -14,44 +14,31 @@ internal interface ISchemaWarmupStatusTracker : ISchemaWarmupStatusProvider
     void MarkCompleted(bool cancelled);
 }
 
-internal sealed class SchemaWarmupStatusSnapshot
+internal sealed class SchemaWarmupStatusSnapshot(
+    string state,
+    DateTimeOffset? lastStartedAtUtc,
+    DateTimeOffset? lastCompletedAtUtc,
+    int configuredUrlCount,
+    int attemptedCount,
+    int succeededCount,
+    int failedCount,
+    string? lastFailureUrl,
+    string? skipReason)
 {
-    public string State { get; }
-    public DateTimeOffset? LastStartedAtUtc { get; }
-    public DateTimeOffset? LastCompletedAtUtc { get; }
-    public int ConfiguredUrlCount { get; }
-    public int AttemptedCount { get; }
-    public int SucceededCount { get; }
-    public int FailedCount { get; }
-    public string? LastFailureUrl { get; }
-    public string? SkipReason { get; }
-
-    public SchemaWarmupStatusSnapshot(
-        string state,
-        DateTimeOffset? lastStartedAtUtc,
-        DateTimeOffset? lastCompletedAtUtc,
-        int configuredUrlCount,
-        int attemptedCount,
-        int succeededCount,
-        int failedCount,
-        string? lastFailureUrl,
-        string? skipReason)
-    {
-        State = state;
-        LastStartedAtUtc = lastStartedAtUtc;
-        LastCompletedAtUtc = lastCompletedAtUtc;
-        ConfiguredUrlCount = configuredUrlCount;
-        AttemptedCount = attemptedCount;
-        SucceededCount = succeededCount;
-        FailedCount = failedCount;
-        LastFailureUrl = lastFailureUrl;
-        SkipReason = skipReason;
-    }
+    public string State { get; } = state;
+    public DateTimeOffset? LastStartedAtUtc { get; } = lastStartedAtUtc;
+    public DateTimeOffset? LastCompletedAtUtc { get; } = lastCompletedAtUtc;
+    public int ConfiguredUrlCount { get; } = configuredUrlCount;
+    public int AttemptedCount { get; } = attemptedCount;
+    public int SucceededCount { get; } = succeededCount;
+    public int FailedCount { get; } = failedCount;
+    public string? LastFailureUrl { get; } = lastFailureUrl;
+    public string? SkipReason { get; } = skipReason;
 }
 
 internal sealed class SchemaWarmupStatusTracker : ISchemaWarmupStatusTracker
 {
-    private readonly object _sync = new();
+    private readonly Lock _sync = new();
     private string _state = "not-started";
     private DateTimeOffset? _lastStartedAtUtc;
     private DateTimeOffset? _lastCompletedAtUtc;

@@ -79,7 +79,7 @@ public class SwaggerExamplesApplierTests
     {
         var operation = new OpenApiOperation
         {
-            Responses = new OpenApiResponses()
+            Responses = []
         };
 
         if (includeRequestBody)
@@ -116,12 +116,12 @@ public class SwaggerExamplesApplierTests
             "Apply",
             BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
             binder: null,
-            types: new[] { typeof(OpenApiDocument) },
+            types: [typeof(OpenApiDocument)],
             modifiers: null);
 
         Assert.That(applyMethod, Is.Not.Null, "SwaggerExamplesApplier.Apply(OpenApiDocument) method not found.");
 
-        applyMethod!.Invoke(null, new object[] { document });
+        applyMethod!.Invoke(null, [document]);
     }
 
     private static JsonNode? GetRequestExample(OpenApiOperation operation)

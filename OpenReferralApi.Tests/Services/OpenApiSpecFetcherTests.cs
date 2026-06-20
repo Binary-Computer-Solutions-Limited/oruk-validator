@@ -2,8 +2,8 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
-using Newtonsoft.Json.Linq;
 using OpenReferralApi.Core.Services;
+using System.Text.Json.Nodes;
 
 namespace OpenReferralApi.Tests.Services;
 
@@ -39,8 +39,8 @@ public class OpenApiSpecFetcherTests
 
         // Mock ResolveAsync to return the same JSON
         _schemaResolverServiceMock
-            .Setup(s => s.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication>()))
-            .ReturnsAsync((string content, string baseUri, DataSourceAuthentication auth) => content);
+            .Setup(s => s.ResolveAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DataSourceAuthentication?>()))
+            .ReturnsAsync((string content, string? baseUri, DataSourceAuthentication? auth) => content);
     }
 
     [TearDown]
@@ -275,7 +275,7 @@ public class OpenApiSpecFetcherTests
 
         var auth = new DataSourceAuthentication
         {
-            CustomHeaders = new Dictionary<string, string>()  // Empty dictionary
+            CustomHeaders = []  // Empty dictionary
         };
 
         // Act
@@ -437,7 +437,7 @@ public class OpenApiSpecFetcherTests
 
         // Assert
         Assert.That(result, Is.Not.Null);
-        Assert.That(result, Is.InstanceOf<JObject>());
+        Assert.That(result, Is.InstanceOf<JsonObject>());
     }
 
     #endregion
@@ -547,9 +547,9 @@ public class OpenApiSpecFetcherTests
         string? capturedResolvedInput = null;
 
         _schemaResolverServiceMock
-            .Setup(s => s.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication>()))
-            .Callback<string, string, DataSourceAuthentication>((content, _, _) => capturedResolvedInput = content)
-            .ReturnsAsync((string content, string _, DataSourceAuthentication _) => content);
+            .Setup(s => s.ResolveAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DataSourceAuthentication?>()))
+            .Callback<string, string?, DataSourceAuthentication?>((content, _, _) => capturedResolvedInput = content)
+            .ReturnsAsync((string content, string? _, DataSourceAuthentication? _) => content);
 
         var handler = new MockHttpMessageHandler(async request =>
         {
@@ -663,14 +663,9 @@ paths: {}";
     /// <summary>
     /// Mock HTTP message handler for testing
     /// </summary>
-    private class MockHttpMessageHandler : HttpMessageHandler
+    private class MockHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler) : HttpMessageHandler
     {
-        private readonly Func<HttpRequestMessage, Task<HttpResponseMessage>> _handler;
-
-        public MockHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler)
-        {
-            _handler = handler;
-        }
+        private readonly Func<HttpRequestMessage, Task<HttpResponseMessage>> _handler = handler;
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {

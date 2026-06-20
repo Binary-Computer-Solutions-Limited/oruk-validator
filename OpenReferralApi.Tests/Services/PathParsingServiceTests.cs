@@ -50,7 +50,7 @@ public class PathParsingServiceTests
     public void ValidateAndParseUriAsync_WithNullUrl_ThrowsArgumentException()
     {
         // Act & Assert
-        var act = async () => await _service.ValidateAndParseUriAsync(null!);
+        async Task<Uri> act() => await _service.ValidateAndParseUriAsync(null!);
         var ex = Assert.ThrowsAsync<ArgumentException>(async () => await act());
         Assert.That(ex!.Message, Does.Contain("cannot be null or empty"));
     }
@@ -59,7 +59,7 @@ public class PathParsingServiceTests
     public void ValidateAndParseUriAsync_WithEmptyString_ThrowsArgumentException()
     {
         // Act & Assert
-        var act = async () => await _service.ValidateAndParseUriAsync("");
+        async Task<Uri> act() => await _service.ValidateAndParseUriAsync("");
         Assert.ThrowsAsync<ArgumentException>(async () => await act());
     }
 
@@ -67,7 +67,7 @@ public class PathParsingServiceTests
     public void ValidateAndParseUriAsync_WithInvalidScheme_ThrowsArgumentException()
     {
         // Act & Assert
-        var act = async () => await _service.ValidateAndParseUriAsync("ssh://example.com");
+        async Task<Uri> act() => await _service.ValidateAndParseUriAsync("ssh://example.com");
         var ex = Assert.ThrowsAsync<ArgumentException>(async () => await act());
         Assert.That(ex!.Message, Does.Contain("not supported"));
     }
@@ -76,7 +76,7 @@ public class PathParsingServiceTests
     public void ValidateAndParseUriAsync_WithMalformedUrl_ThrowsArgumentException()
     {
         // Act & Assert
-        var act = async () => await _service.ValidateAndParseUriAsync("not a valid url");
+        async Task<Uri> act() => await _service.ValidateAndParseUriAsync("not a valid url");
         var ex = Assert.ThrowsAsync<ArgumentException>(async () => await act());
         Assert.That(ex!.Message, Does.Contain("Invalid"));
     }
@@ -106,7 +106,7 @@ public class PathParsingServiceTests
         var ftpUrl = "ftp://ftp.example.com/data.json";
 
         // Act & Assert
-        var act = async () => await _service.ValidateAndParseDataUrlAsync(ftpUrl);
+        async Task<Uri> act() => await _service.ValidateAndParseDataUrlAsync(ftpUrl);
         var ex = Assert.ThrowsAsync<ArgumentException>(async () => await act());
         Assert.That(ex!.Message, Does.Contain("not supported"));
     }
@@ -343,7 +343,7 @@ public class PathParsingServiceTests
         var relativeUri = "schemas/schema.json";
 
         // Act & Assert
-        TestDelegate act = () => _service.ResolveRelativeUri(null!, relativeUri);
+        void act() => _service.ResolveRelativeUri(null!, relativeUri);
         Assert.Throws<ArgumentException>(act);
     }
 
@@ -354,7 +354,7 @@ public class PathParsingServiceTests
         var baseUri = new Uri("https://example.com/api/");
 
         // Act & Assert
-        TestDelegate act = () => _service.ResolveRelativeUri(baseUri, "");
+        void act() => _service.ResolveRelativeUri(baseUri, "");
         var ex = Assert.Throws<ArgumentException>(act);
         Assert.That(ex!.Message, Does.Contain("cannot be null or empty"));
     }
@@ -385,7 +385,7 @@ public class PathParsingServiceTests
         var urlWithDisallowedPort = "https://example.com:22/api";
 
         // Act & Assert
-        var act = async () => await _service.ValidateAndParseUriAsync(urlWithDisallowedPort);
+        async Task<Uri> act() => await _service.ValidateAndParseUriAsync(urlWithDisallowedPort);
         var ex = Assert.ThrowsAsync<ArgumentException>(async () => await act());
         Assert.That(ex!.Message, Does.Contain("disallowed port"));
     }

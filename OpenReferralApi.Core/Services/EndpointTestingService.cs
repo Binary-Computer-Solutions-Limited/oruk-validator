@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Text.Json.Nodes;
 using System.Text.Json;
 using System.Collections.Concurrent;
+using Json.Schema;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Net.Http.Headers;
@@ -10,26 +11,28 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using Newtonsoft.Json.Schema;
 using OpenReferralApi.Core.Logging;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
+using OpenReferralApi.Core.Helpers;
 
 namespace OpenReferralApi.Core.Services;
 
 public interface IEndpointTestingService
 {
     Task<List<EndpointTestResult>> TestEndpointsAsync(
-        JObject openApiSpec,
+    JsonObject openApiSpec,
         string baseUrl,
         OpenApiValidationOptions options,
         DataSourceAuthentication? authentication,
-        string? documentUri,
         CancellationToken cancellationToken = default);
 }
 
-public class EndpointTestingService : IEndpointTestingService
+public partial class EndpointTestingService(
+    ILogger<EndpointTestingService> logger,
+    IHttpClientFactory httpClientFactory,
+    IJsonValidatorService jsonValidatorService,
+    IHsdsComplianceService hsdsComplianceService,
+    IOptions<OpenApiValidationServerOptions>? openApiValidationOptions = null) : OpenApiValidationServiceBase, IEndpointTestingService
 {
     private const string EndpointTestingMetricsMeterName = "OpenReferralApi.Core.EndpointTestingService";
     private static readonly Meter EndpointTestingMetricsMeter = new(EndpointTestingMetricsMeterName, "1.0.0");
@@ -49,87 +52,104 @@ public class EndpointTestingService : IEndpointTestingService
         "openreferral.openapi.endpoint_testing.memory.working_set_delta_bytes",
         unit: "By",
         description: "Process working set delta between endpoint testing memory checkpoints");
-    private readonly ILogger<EndpointTestingService> _logger;
-    private readonly IHttpClientFactory _httpClientFactory;
-    private readonly IJsonValidatorService _jsonValidatorService;
-    private readonly IHsdsComplianceService _hsdsComplianceService;
-    private readonly OpenApiValidationServerOptions? _openApiValidationOptions;
-    private readonly ConcurrentDictionary<string, JToken> _validationSchemaCache = new(StringComparer.Ordinal);
-    private static readonly ConcurrentDictionary<string, JSchema> CompiledValidationSchemaCache = new(StringComparer.Ordinal);
-
-    public EndpointTestingService(
-        ILogger<EndpointTestingService> logger,
-        IHttpClientFactory httpClientFactory,
-        IJsonValidatorService jsonValidatorService,
-        IHsdsComplianceService hsdsComplianceService,
-        IOptions<OpenApiValidationServerOptions>? openApiValidationOptions = null)
+    private readonly ILogger<EndpointTestingService> _logger = logger;
+    private readonly IHttpClientFactory _httpClientFactory = httpClientFactory;
+    private readonly IJsonValidatorService _jsonValidatorService = jsonValidatorService;
+    private readonly IHsdsComplianceService _hsdsComplianceService = hsdsComplianceService;
+    private readonly OpenApiValidationServerOptions? _openApiValidationOptions = openApiValidationOptions?.Value;
+    private readonly ConcurrentDictionary<string, JsonSchema> _validationSchemaCache = new(StringComparer.Ordinal);
+    
+    private static readonly string[][] TotalPagesPaths =
+    [
+        ["total_pages"],
+        ["totalPages"],
+        ["pagination", "total_pages"],
+        ["pagination", "totalPages"],
+        ["meta", "total_pages"],
+        ["meta", "totalPages"]
+    ];
+    private static readonly string[] CollectionPropertyNames = ["data", "items", "results", "content", "contents"];
+    private static readonly string[] ItemCountPropertyNames = ["size", "count", "length"];
+    private static readonly string[] FallbackIdNames = ["id", "Id", "ID", "uuid", "guid"];
+    private static readonly string[] SchemaCombiners = ["allOf", "anyOf", "oneOf"];
+    private static readonly HashSet<string> ValidHttpMethods = new(StringComparer.OrdinalIgnoreCase) { "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TRACE" };
+    public async Task<List<EndpointTestResult>> TestEndpointsAsync(JsonObject openApiSpec, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, CancellationToken cancellationToken = default)
     {
-        _logger = logger;
-        _httpClientFactory = httpClientFactory;
-        _jsonValidatorService = jsonValidatorService;
-        _hsdsComplianceService = hsdsComplianceService;
-        _openApiValidationOptions = openApiValidationOptions?.Value;
+        return await TestEndpointsInternalAsync(openApiSpec, baseUrl, options, authentication, cancellationToken);
     }
-    public async Task<List<EndpointTestResult>> TestEndpointsAsync(JObject openApiSpec, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, string? documentUri, CancellationToken cancellationToken = default)
+
+    private async Task<List<EndpointTestResult>> TestEndpointsInternalAsync(JsonObject openApiSpec, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, CancellationToken cancellationToken = default)
     {
         var results = new List<EndpointTestResult>();
-        var compiledValidationSchemaCache = CompiledValidationSchemaCache;
         var parsedResponseJsonByResult = new ConcurrentDictionary<HttpTestResult, JsonDocument>();
         var extractedIds = new ConcurrentDictionary<string, List<string>>();
         var stopwatch = Stopwatch.StartNew();
-        var lastManagedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
-        var lastWorkingSetBytes = Environment.WorkingSet;
+        var memoryCheckpointTracker = new MemoryCheckpointTracker(stopwatch);
 
         void LogMemoryCheckpoint(string stage, string groupName)
         {
-            var managedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
-            var managedHeapDeltaBytes = managedHeapBytes - lastManagedHeapBytes;
-            var processWorkingSetBytes = Environment.WorkingSet;
-            var processWorkingSetDeltaBytes = processWorkingSetBytes - lastWorkingSetBytes;
+            if (!(_openApiValidationOptions?.EnableMemoryCheckpointLogging ?? true))
+            {
+                return;
+            }
 
-            _logger.EndpointTestingMemoryCheckpoint(
-                stage,
-                TextSanitizer.SanitizeForLogging(groupName),
-                Activity.Current?.TraceId.ToString() ?? Activity.Current?.Id ?? "n/a",
-                SchemaResolverService.SanitizeUrlForLogging(baseUrl),
-                managedHeapBytes,
-                managedHeapDeltaBytes,
-                processWorkingSetBytes,
-                processWorkingSetDeltaBytes,
-                stopwatch.Elapsed.TotalMilliseconds,
-                results.Count);
+            var snapshot = memoryCheckpointTracker.Capture();
+            const int compiledSchemaCacheEntryCount = 0;
+            const long compiledSchemaCacheTotalKeyChars = 0;
+            var (parsedJsonDocumentsInFlight,
+                 retainedResponseBodies,
+                 retainedResponseBodyChars,
+                 extractedIdRoots,
+                 extractedIdValues,
+                 validationSchemaCacheEntries) = GetEndpointRetentionSnapshot(
+                    results,
+                    parsedResponseJsonByResult,
+                    extractedIds,
+                    _validationSchemaCache);
+
+            var payload = CreateMemoryCheckpointPayload(
+                service: nameof(EndpointTestingService),
+                stage: stage,
+                sanitizedBaseUrl: TextSanitizer.SanitizeUrlForLogging(baseUrl),
+                snapshot: snapshot,
+                groupName: TextSanitizer.SanitizeForLogging(groupName),
+                accumulatedEndpointResults: results.Count) with
+            {
+                CompiledSchemaCacheEntryCount = compiledSchemaCacheEntryCount,
+                CompiledSchemaCacheTotalKeyChars = compiledSchemaCacheTotalKeyChars,
+                ParsedJsonDocumentsInFlight = parsedJsonDocumentsInFlight,
+                RetainedResponseBodies = retainedResponseBodies,
+                RetainedResponseBodyChars = retainedResponseBodyChars,
+                ExtractedIdRoots = extractedIdRoots,
+                ExtractedIdValues = extractedIdValues,
+                ValidationSchemaCacheEntries = validationSchemaCacheEntries
+            };
+
+            _logger.UnifiedMemoryCheckpoint(payload);
 
             var tags = new TagList
             {
                 { "stage", stage }
             };
-            EndpointTestingManagedHeapBytesHistogram.Record(managedHeapBytes, tags);
-            EndpointTestingManagedHeapDeltaBytesHistogram.Record(managedHeapDeltaBytes, tags);
-            EndpointTestingWorkingSetBytesHistogram.Record(processWorkingSetBytes, tags);
-            EndpointTestingWorkingSetDeltaBytesHistogram.Record(processWorkingSetDeltaBytes, tags);
+            EndpointTestingManagedHeapBytesHistogram.Record(snapshot.ManagedHeapBytes, tags);
+            EndpointTestingManagedHeapDeltaBytesHistogram.Record(snapshot.ManagedHeapDeltaBytes, tags);
+            EndpointTestingWorkingSetBytesHistogram.Record(snapshot.ProcessWorkingSetBytes, tags);
+            EndpointTestingWorkingSetDeltaBytesHistogram.Record(snapshot.ProcessWorkingSetDeltaBytes, tags);
 
-            var compiledSchemaCacheState = GetCompiledSchemaCacheState(compiledValidationSchemaCache);
             _logger.CompiledEndpointSchemaCacheState(
                 stage,
-                compiledSchemaCacheState.EntryCount,
-                compiledSchemaCacheState.TotalKeyChars);
+                compiledSchemaCacheEntryCount,
+                compiledSchemaCacheTotalKeyChars);
 
-            var retentionSnapshot = GetEndpointRetentionSnapshot(
-                results,
-                parsedResponseJsonByResult,
-                extractedIds,
-                _validationSchemaCache);
             _logger.EndpointTestingRetentionSnapshot(
                 stage,
-                retentionSnapshot.ParsedJsonDocumentsInFlight,
-                retentionSnapshot.RetainedResponseBodies,
-                retentionSnapshot.RetainedResponseBodyChars,
-                retentionSnapshot.ExtractedIdRoots,
-                retentionSnapshot.ExtractedIdValues,
-                retentionSnapshot.ValidationSchemaCacheEntries);
+                parsedJsonDocumentsInFlight,
+                retainedResponseBodies,
+                retainedResponseBodyChars,
+                extractedIdRoots,
+                extractedIdValues,
+                validationSchemaCacheEntries);
 
-            lastManagedHeapBytes = managedHeapBytes;
-            lastWorkingSetBytes = processWorkingSetBytes;
         }
 
         try
@@ -137,21 +157,20 @@ public class EndpointTestingService : IEndpointTestingService
             _logger.TestingEndpointsWithDependencyOrdering();
             LogMemoryCheckpoint("start", "all");
 
-            // We already have a JObject, so use it directly
+            // Guard on paths at the JsonObject boundary first.
             if (!openApiSpec.ContainsKey("paths"))
             {
                 _logger.NoPathsFound();
                 return results;
             }
 
-            var paths = openApiSpec["paths"];
-            if (paths is not JObject pathsObject)
+            if (openApiSpec["paths"] is not JsonObject pathsObject)
             {
                 return results;
             }
 
             // Group and order endpoints with intelligent dependency handling
-            var endpointGroups = GroupEndpointsByDependencies(pathsObject, options);
+            var endpointGroups = GroupEndpointsByDependencies(pathsObject);
 
             _logger.FoundEndpointGroups(endpointGroups.Count);
             LogMemoryCheckpoint("grouping-complete", "all");
@@ -159,7 +178,10 @@ public class EndpointTestingService : IEndpointTestingService
             // Test endpoints in dependency order - collection endpoints first, then parameterized
             foreach (var group in endpointGroups)
             {
-                _logger.TestingEndpointGroup(TextSanitizer.SanitizeForLogging(group.RootPath), group.Endpoints.Count);
+                if (_logger.IsEnabled(LogLevel.Information))
+                {
+                    _logger.TestingEndpointGroup(TextSanitizer.SanitizeForLogging(group.RootPath), group.Endpoints.Count);
+                }
                 LogMemoryCheckpoint("group-start", group.RootPath);
 
                 var semaphore = new SemaphoreSlim(options.MaxConcurrentRequests, options.MaxConcurrentRequests);
@@ -169,7 +191,7 @@ public class EndpointTestingService : IEndpointTestingService
                 foreach (var endpoint in group.CollectionEndpoints)
                 {
                     var result = await TestSingleEndpointWithIdExtractionAsync(endpoint.Path, endpoint.Method, endpoint.Operation,
-                        baseUrl, options, authentication, extractedIds, semaphore, openApiSpec, documentUri, endpoint.PathItem, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+                        baseUrl, options, authentication, extractedIds, semaphore, openApiSpec, endpoint.PathItem, parsedResponseJsonByResult, cancellationToken);
                     results.Add(result);
                 }
 
@@ -181,7 +203,7 @@ public class EndpointTestingService : IEndpointTestingService
                 foreach (var endpoint in group.ParameterizedEndpoints)
                 {
                     var task = TestSingleEndpointWithIdSubstitutionAsync(endpoint.Path, endpoint.Method, endpoint.Operation,
-                        baseUrl, options, authentication, extractedIds, semaphore, openApiSpec, documentUri, endpoint.PathItem, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+                        baseUrl, options, authentication, extractedIds, semaphore, openApiSpec, endpoint.PathItem, parsedResponseJsonByResult, cancellationToken);
                     parameterizedTasks.Add(task);
                 }
 
@@ -190,7 +212,10 @@ public class EndpointTestingService : IEndpointTestingService
 
                 semaphore.Dispose();
 
-                _logger.CompletedEndpointGroup(TextSanitizer.SanitizeForLogging(group.RootPath), group.CollectionEndpoints.Count, group.ParameterizedEndpoints.Count);
+                if (_logger.IsEnabled(LogLevel.Information))
+                {
+                    _logger.CompletedEndpointGroup(TextSanitizer.SanitizeForLogging(group.RootPath), group.CollectionEndpoints.Count, group.ParameterizedEndpoints.Count);
+                }
                 LogMemoryCheckpoint("group-complete", group.RootPath);
             }
 
@@ -205,12 +230,12 @@ public class EndpointTestingService : IEndpointTestingService
         return results;
     }
 
-    private async Task<EndpointTestResult> TestSingleEndpointAsync(string path, string method, JObject operation, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, SemaphoreSlim semaphore, JObject openApiDocument, string? documentUri, JObject pathItem, ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken, string? testedId = null)
+    private async Task<EndpointTestResult> TestSingleEndpointAsync(string path, string method, JsonObject operation, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, SemaphoreSlim semaphore, JsonObject openApiDocument, JsonObject pathItem, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken, string? testedId = null, bool retainResponseJson = false)
     {
         await semaphore.WaitAsync(cancellationToken);
 
         // Resolve all parameter references upfront (includes path-level and operation-level params)
-        var resolvedParams = ResolveOperationParameters(operation, pathItem, openApiDocument);
+        var resolvedParams = ResolveOperationParameters(operation, pathItem);
 
         var result = new EndpointTestResult
         {
@@ -234,20 +259,26 @@ public class EndpointTestingService : IEndpointTestingService
             }
 
             // Check if this endpoint has pagination support
-            _logger.CheckingPaginationSupport(SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path));
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.CheckingPaginationSupport(TextSanitizer.SanitizeStringForLogging(method), TextSanitizer.SanitizeStringForLogging(path));
+            }
             bool hasPagination = method == "GET" && HasPageParameter(resolvedParams);
-            _logger.PaginationCheckResult(SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path), hasPagination);
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.PaginationCheckResult(TextSanitizer.SanitizeStringForLogging(method), TextSanitizer.SanitizeStringForLogging(path), hasPagination);
+            }
 
             if (hasPagination)
             {
                 // Test pagination: first page, middle page(s), last page
-                await TestPaginatedEndpointAsync(result, path, method, operation, baseUrl, options, authentication, resolvedParams, openApiDocument, documentUri, pathItem, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+                await TestPaginatedEndpointAsync(result, path, method, operation, baseUrl, options, authentication, resolvedParams, openApiDocument, pathItem, parsedResponseJsonByResult, cancellationToken, retainFirstPageResponseJson: retainResponseJson);
             }
             else
             {
                 // Standard single-request testing
-                var fullUrl = BuildFullUrl(baseUrl, path, resolvedParams, options);
-                var testResult = await ExecuteHttpRequestAsync(fullUrl, method, operation, options, authentication, parsedResponseJsonByResult, cancellationToken, testedId);
+                var fullUrl = BuildFullUrl(baseUrl, path, resolvedParams);
+                var testResult = await ExecuteHttpRequestAsync(fullUrl, method, options, authentication, parsedResponseJsonByResult, cancellationToken, testedId);
 
                 result.TestResults.Add(testResult);
                 result.IsTested = true;
@@ -255,60 +286,61 @@ public class EndpointTestingService : IEndpointTestingService
                 // Check for non-success status codes and handle based on endpoint requirements
                 if (!testResult.IsSuccessStatusCode)
                 {
-                    var isOptionalEndpoint = pathItem.IsOptionalEndpoint();
-                    var statusCode = testResult.ResponseStatusCode ?? 0;
-                    var errorMessage = $"Endpoint returned {statusCode} status code";
-
-                    if (isOptionalEndpoint)
+                    if (testResult.ResponseStatusCode == null && !string.IsNullOrEmpty(testResult.ErrorMessage))
                     {
-                        // For optional endpoints, add validation warning instead of error
-                        if (testResult.ValidationResult == null)
-                        {
-                            testResult.ValidationResult = new ValidationResult
-                            {
-                                IsValid = false,
-                                Errors = new List<ValidationError>(),
-                                SchemaVersion = string.Empty,
-                                Duration = TimeSpan.Zero
-                            };
-                        }
-                        testResult.ValidationResult.Errors.Add(new ValidationError
-                        {
-                            Path = path,
-                            Message = $"Optional endpoint {method} {path} returned non-success status {statusCode}. This may indicate the endpoint is not implemented, which is acceptable for optional endpoints.",
-                            ErrorCode = "OPTIONAL_ENDPOINT_NON_SUCCESS",
-                            Severity = "Warning"
-                        });
-                        result.Status = EndpointTestStatus.PassedWithWarnings;
+                        result.Status = EndpointTestStatus.Error;
                     }
                     else
                     {
-                        // For required endpoints, add validation error
-                        if (testResult.ValidationResult == null)
+                        var isOptionalEndpoint = pathItem.IsOptionalEndpoint();
+                        var statusCode = testResult.ResponseStatusCode ?? 0;
+                        var errorMessage = $"Endpoint returned {statusCode} status code";
+
+                        if (isOptionalEndpoint)
                         {
-                            testResult.ValidationResult = new ValidationResult
+                            // For optional endpoints, add validation warning instead of error
+                            testResult.ValidationResult ??= new ValidationResult
                             {
                                 IsValid = false,
-                                Errors = new List<ValidationError>(),
+                                Errors = [],
                                 SchemaVersion = string.Empty,
                                 Duration = TimeSpan.Zero
                             };
+                            testResult.ValidationResult.Errors.Add(new ValidationError
+                            {
+                                Path = path,
+                                Message = $"Optional endpoint {method} {path} returned non-success status {statusCode}. This may indicate the endpoint is not implemented, which is acceptable for optional endpoints.",
+                                ErrorCode = "OPTIONAL_ENDPOINT_NON_SUCCESS",
+                                Severity = "Warning"
+                            });
+                            result.Status = EndpointTestStatus.PassedWithWarnings;
                         }
-                        testResult.ValidationResult.Errors.Add(new ValidationError
+                        else
                         {
-                            Path = path,
-                            Message = $"Required endpoint {method} {path} returned non-success status {statusCode}. Expected 2xx status code.",
-                            ErrorCode = "REQUIRED_ENDPOINT_FAILED",
-                            Severity = "Error"
-                        });
-                        result.Status = EndpointTestStatus.FailedValidation;
+                            // For required endpoints, add validation error
+                            testResult.ValidationResult ??= new ValidationResult
+                            {
+                                IsValid = false,
+                                Errors = [],
+                                SchemaVersion = string.Empty,
+                                Duration = TimeSpan.Zero
+                            };
+                            testResult.ValidationResult.Errors.Add(new ValidationError
+                            {
+                                Path = path,
+                                Message = $"Required endpoint {method} {path} returned non-success status {statusCode}. Expected 2xx status code.",
+                                ErrorCode = "REQUIRED_ENDPOINT_FAILED",
+                                Severity = "Error"
+                            });
+                            result.Status = EndpointTestStatus.FailedValidation;
+                        }
                     }
                 }
 
                 // Validate response if schema is defined
                 if (testResult.IsSuccessStatusCode && HasResponsePayload(testResult, parsedResponseJsonByResult))
                 {
-                    await ValidateResponseAsync(testResult, operation, openApiDocument, documentUri, options, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+                    await ValidateResponseAsync(testResult, operation, openApiDocument, options, parsedResponseJsonByResult, cancellationToken);
 
                     var validationResult = testResult.ValidationResult;
                     if (validationResult == null || (validationResult.Errors.Count == 0 && !validationResult.IsValid))
@@ -362,7 +394,7 @@ public class EndpointTestingService : IEndpointTestingService
         }
         catch (Exception ex)
         {
-            _logger.ErrorTestingEndpoint(ex, SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path));
+            _logger.ErrorTestingEndpoint(ex, TextSanitizer.SanitizeStringForLogging(method), TextSanitizer.SanitizeStringForLogging(path));
             result.TestResults.Add(new HttpTestResult
             {
                 RequestUrl = $"{baseUrl}{path}",
@@ -375,7 +407,7 @@ public class EndpointTestingService : IEndpointTestingService
         }
         finally
         {
-      _ = semaphore.Release();
+            _ = semaphore.Release();
         }
 
         return result;
@@ -389,56 +421,68 @@ public class EndpointTestingService : IEndpointTestingService
         EndpointTestResult result,
         string path,
         string method,
-        JObject operation,
+        JsonObject operation,
         string baseUrl,
         OpenApiValidationOptions options,
         DataSourceAuthentication? auth,
-        JArray resolvedParams,
-        JObject openApiDocument,
-        string? documentUri,
-        JObject pathItem,
-        ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache,
+        JsonArray resolvedParams,
+        JsonObject openApiDocument,
+        JsonObject pathItem,
         ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool retainFirstPageResponseJson = false)
     {
-        _logger.TestingPaginatedEndpoint(SchemaResolverService.SanitizeStringForLogging(method), SchemaResolverService.SanitizeStringForLogging(path));
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.TestingPaginatedEndpoint(TextSanitizer.SanitizeStringForLogging(method), TextSanitizer.SanitizeStringForLogging(path));
+        }
 
         result.IsTested = true;
 
         // Test first page (page=1)
-        _logger.TestingFirstPage(TextSanitizer.SanitizeForLogging(path));
-        var firstPageUrl = BuildFullUrl(baseUrl, path, resolvedParams, options, pageNumber: 1);
-        var firstPageResult = await ExecuteHttpRequestAsync(firstPageUrl, method, operation, options, auth, parsedResponseJsonByResult, cancellationToken);
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            _logger.TestingFirstPage(TextSanitizer.SanitizeForLogging(path));
+        }
+        var firstPageUrl = BuildFullUrl(baseUrl, path, resolvedParams, pageNumber: 1);
+        var firstPageResult = await ExecuteHttpRequestAsync(firstPageUrl, method, options, auth, parsedResponseJsonByResult, cancellationToken);
         result.TestResults.Add(firstPageResult);
 
         if (!firstPageResult.IsSuccessStatusCode)
         {
-            var isOptionalEndpoint = pathItem.IsOptionalEndpoint();
-            var statusCode = firstPageResult.ResponseStatusCode ?? 0;
-
-            if (isOptionalEndpoint)
+            if (firstPageResult.ResponseStatusCode == null && !string.IsNullOrEmpty(firstPageResult.ErrorMessage))
             {
-                firstPageResult.ValidationResult!.Errors.Add(new ValidationError
-                {
-                    Path = path,
-                    Message = $"Optional endpoint {method} {path} returned non-success status {statusCode}. This may indicate the endpoint is not implemented, which is acceptable for optional endpoints.",
-                    ErrorCode = "OPTIONAL_ENDPOINT_NON_SUCCESS",
-                    Severity = "Warning"
-                });
-                NormalizeValidationResultErrors(firstPageResult.ValidationResult);
-                result.Status = EndpointTestStatus.PassedWithWarnings;
+                result.Status = EndpointTestStatus.Error;
             }
             else
             {
-                firstPageResult.ValidationResult!.Errors.Add(new ValidationError
+                var isOptionalEndpoint = pathItem.IsOptionalEndpoint();
+                var statusCode = firstPageResult.ResponseStatusCode ?? 0;
+
+                if (isOptionalEndpoint)
                 {
-                    Path = path,
-                    Message = $"Required endpoint {method} {path} returned non-success status {statusCode}. Expected 2xx status code.",
-                    ErrorCode = "REQUIRED_ENDPOINT_FAILED",
-                    Severity = "Error"
-                });
-                NormalizeValidationResultErrors(firstPageResult.ValidationResult);
-                result.Status = EndpointTestStatus.FailedValidation;
+                    firstPageResult.ValidationResult!.Errors.Add(new ValidationError
+                    {
+                        Path = path,
+                        Message = $"Optional endpoint {method} {path} returned non-success status {statusCode}. This may indicate the endpoint is not implemented, which is acceptable for optional endpoints.",
+                        ErrorCode = "OPTIONAL_ENDPOINT_NON_SUCCESS",
+                        Severity = "Warning"
+                    });
+                    NormalizeValidationResultErrors(firstPageResult.ValidationResult);
+                    result.Status = EndpointTestStatus.PassedWithWarnings;
+                }
+                else
+                {
+                    firstPageResult.ValidationResult!.Errors.Add(new ValidationError
+                    {
+                        Path = path,
+                        Message = $"Required endpoint {method} {path} returned non-success status {statusCode}. Expected 2xx status code.",
+                        ErrorCode = "REQUIRED_ENDPOINT_FAILED",
+                        Severity = "Error"
+                    });
+                    NormalizeValidationResultErrors(firstPageResult.ValidationResult);
+                    result.Status = EndpointTestStatus.FailedValidation;
+                }
             }
             return;
         }
@@ -446,17 +490,21 @@ public class EndpointTestingService : IEndpointTestingService
         // Validate first page response schema
         if (HasResponsePayload(firstPageResult, parsedResponseJsonByResult))
         {
-            await ValidateResponseAsync(firstPageResult, operation, openApiDocument, documentUri, options, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+            await ValidateResponseAsync(firstPageResult, operation, openApiDocument, options, parsedResponseJsonByResult, cancellationToken);
         }
 
         // Try to determine total pages and check for empty feed
-        var paginationInfo = ExtractPaginationInfo(firstPageResult, parsedResponseJsonByResult);
+        var (totalPages, itemCount) = ExtractPaginationInfo(firstPageResult, parsedResponseJsonByResult);
 
-        // Release the first page's parsed JSON document now that validation and pagination info extraction are complete.
-        ReleaseParsedResponseJsonDocuments([firstPageResult], parsedResponseJsonByResult);
+        // Release the first page's parsed JSON document now that validation and pagination info extraction are complete,
+        // unless we need to retain it for extracting IDs in dependency testing.
+        if (!retainFirstPageResponseJson)
+        {
+            ReleaseParsedResponseJsonDocuments([firstPageResult], parsedResponseJsonByResult);
+        }
 
         // Warn if feed returns no rows
-        if (paginationInfo.ItemCount == 0)
+        if (itemCount == 0)
         {
             firstPageResult.ValidationResult!.Errors.Add(new ValidationError
             {
@@ -468,27 +516,36 @@ public class EndpointTestingService : IEndpointTestingService
             NormalizeValidationResultErrors(firstPageResult.ValidationResult);
             firstPageResult.ValidationResult.IsValid = false;
             result.Status = EndpointTestStatus.PassedWithWarnings;
-            _logger.PaginatedEndpointReturnedEmpty(TextSanitizer.SanitizeForLogging(path));
+            if (_logger.IsEnabled(LogLevel.Warning))
+            {
+                _logger.PaginatedEndpointReturnedEmpty(TextSanitizer.SanitizeForLogging(path));
+            }
             return; // No further pagination testing needed for empty feeds
         }
 
-        if (paginationInfo.TotalPages.HasValue && paginationInfo.TotalPages.Value > 1)
+        if (totalPages.HasValue && totalPages.Value > 1)
         {
-            var totalPages = paginationInfo.TotalPages.Value;
-            _logger.TestingPaginationPages(TextSanitizer.SanitizeForLogging(path), totalPages);
+            var pages = totalPages.Value;
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.TestingPaginationPages(TextSanitizer.SanitizeForLogging(path), pages);
+            }
 
             // Test middle page if there are more than 2 pages
-            if (totalPages > 2)
+            if (pages > 2)
             {
-                var middlePage = totalPages / 2;
-                _logger.TestingMiddlePage(middlePage, TextSanitizer.SanitizeForLogging(path));
-                var middlePageUrl = BuildFullUrl(baseUrl, path, resolvedParams, options, pageNumber: middlePage);
-                var middlePageResult = await ExecuteHttpRequestAsync(middlePageUrl, method, operation, options, auth, parsedResponseJsonByResult, cancellationToken);
+                var middlePage = pages / 2;
+                if (_logger.IsEnabled(LogLevel.Debug))
+                {
+                    _logger.TestingMiddlePage(middlePage, TextSanitizer.SanitizeForLogging(path));
+                }
+                var middlePageUrl = BuildFullUrl(baseUrl, path, resolvedParams, pageNumber: middlePage);
+                var middlePageResult = await ExecuteHttpRequestAsync(middlePageUrl, method, options, auth, parsedResponseJsonByResult, cancellationToken);
                 result.TestResults.Add(middlePageResult);
 
                 if (middlePageResult.IsSuccessStatusCode && HasResponsePayload(middlePageResult, parsedResponseJsonByResult))
                 {
-                    await ValidateResponseAsync(middlePageResult, operation, openApiDocument, documentUri, options, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+                    await ValidateResponseAsync(middlePageResult, operation, openApiDocument, options, parsedResponseJsonByResult, cancellationToken);
                 }
 
                 // Release the middle page's parsed JSON document after validation is complete.
@@ -496,14 +553,17 @@ public class EndpointTestingService : IEndpointTestingService
             }
 
             // Test last page
-            _logger.TestingLastPage(totalPages, TextSanitizer.SanitizeForLogging(path));
-            var lastPageUrl = BuildFullUrl(baseUrl, path, resolvedParams, options, pageNumber: totalPages);
-            var lastPageResult = await ExecuteHttpRequestAsync(lastPageUrl, method, operation, options, auth, parsedResponseJsonByResult, cancellationToken);
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.TestingLastPage(pages, TextSanitizer.SanitizeForLogging(path));
+            }
+            var lastPageUrl = BuildFullUrl(baseUrl, path, resolvedParams, pageNumber: pages);
+            var lastPageResult = await ExecuteHttpRequestAsync(lastPageUrl, method, options, auth, parsedResponseJsonByResult, cancellationToken);
             result.TestResults.Add(lastPageResult);
 
             if (lastPageResult.IsSuccessStatusCode && HasResponsePayload(lastPageResult, parsedResponseJsonByResult))
             {
-                await ValidateResponseAsync(lastPageResult, operation, openApiDocument, documentUri, options, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+                await ValidateResponseAsync(lastPageResult, operation, openApiDocument, options, parsedResponseJsonByResult, cancellationToken);
             }
 
             // Release the last page's parsed JSON document after validation is complete.
@@ -511,7 +571,10 @@ public class EndpointTestingService : IEndpointTestingService
         }
         else
         {
-            _logger.SkippingAdditionalPageTests(TextSanitizer.SanitizeForLogging(path));
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.SkippingAdditionalPageTests(TextSanitizer.SanitizeForLogging(path));
+            }
         }
 
         foreach (var testResult in result.TestResults)
@@ -532,7 +595,7 @@ public class EndpointTestingService : IEndpointTestingService
 
     private static EndpointTestStatus DeterminePaginatedEndpointStatus(EndpointTestResult result)
     {
-        if (!result.TestResults.Any())
+        if (result.TestResults.Count == 0)
         {
             return EndpointTestStatus.NotTested;
         }
@@ -566,7 +629,7 @@ public class EndpointTestingService : IEndpointTestingService
         return EndpointTestStatus.PassedValidation;
     }
 
-    private (int? TotalPages, int ItemCount) ExtractPaginationInfo(HttpTestResult response, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult)
+    private static (int? TotalPages, int ItemCount) ExtractPaginationInfo(HttpTestResult response, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult)
     {
         if (parsedResponseJsonByResult.TryGetValue(response, out var parsedJson))
         {
@@ -576,20 +639,11 @@ public class EndpointTestingService : IEndpointTestingService
         return (null, 0);
     }
 
-    private (int? TotalPages, int ItemCount) ExtractPaginationInfo(JsonElement json)
+    private static (int? TotalPages, int ItemCount) ExtractPaginationInfo(JsonElement json)
     {
         int? totalPages = null;
-        var totalPagesPaths = new[]
-        {
-            new[] { "total_pages" },
-            new[] { "totalPages" },
-            new[] { "pagination", "total_pages" },
-            new[] { "pagination", "totalPages" },
-            new[] { "meta", "total_pages" },
-            new[] { "meta", "totalPages" }
-        };
 
-        foreach (var path in totalPagesPaths)
+        foreach (var path in TotalPagesPaths)
         {
             if (TryGetNestedPropertyIgnoreCase(json, path, out var totalPagesElement)
                 && TryParseInt32(totalPagesElement, out var pages))
@@ -606,7 +660,7 @@ public class EndpointTestingService : IEndpointTestingService
         }
         else if (json.ValueKind == JsonValueKind.Object)
         {
-            foreach (var propName in new[] { "data", "items", "results", "content", "contents" })
+            foreach (var propName in CollectionPropertyNames)
             {
                 if (TryGetPropertyIgnoreCase(json, propName, out var itemsElement)
                     && itemsElement.ValueKind == JsonValueKind.Array)
@@ -618,7 +672,7 @@ public class EndpointTestingService : IEndpointTestingService
 
             if (itemCount == 0)
             {
-                foreach (var propName in new[] { "size", "count", "length" })
+                foreach (var propName in ItemCountPropertyNames)
                 {
                     if (TryGetPropertyIgnoreCase(json, propName, out var sizeElement)
                         && TryParseInt32(sizeElement, out var size))
@@ -633,7 +687,7 @@ public class EndpointTestingService : IEndpointTestingService
         return (totalPages, itemCount);
     }
 
-    private string BuildFullUrl(string baseUrl, string path, JArray resolvedParams, OpenApiValidationOptions options, int? pageNumber = null)
+    private string BuildFullUrl(string baseUrl, string path, JsonArray resolvedParams, int? pageNumber = null)
     {
         var url = $"{baseUrl.TrimEnd('/')}{path}";
 
@@ -651,16 +705,22 @@ public class EndpointTestingService : IEndpointTestingService
     /// Checks if the resolved parameters array contains a 'page' query parameter.
     /// Parameters should already be resolved (references expanded, path and operation params merged).
     /// </summary>
-    private bool HasPageParameter(JArray resolvedParams)
+    private bool HasPageParameter(JsonArray resolvedParams)
     {
-        _logger.CheckingPageParameter(resolvedParams.Count);
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            _logger.CheckingPageParameter(resolvedParams.Count);
+        }
         foreach (var param in resolvedParams)
         {
-            if (param is JObject paramObj)
+            if (param is JsonObject paramObj)
             {
                 var name = paramObj["name"]?.ToString();
                 var inLocation = paramObj["in"]?.ToString();
-                _logger.CheckingParam(SchemaResolverService.SanitizeStringForLogging(name ?? string.Empty), SchemaResolverService.SanitizeStringForLogging(inLocation ?? string.Empty));
+                if (_logger.IsEnabled(LogLevel.Debug))
+                {
+                    _logger.CheckingParam(TextSanitizer.SanitizeStringForLogging(name ?? string.Empty), TextSanitizer.SanitizeStringForLogging(inLocation ?? string.Empty));
+                }
 
                 if (name?.Equals("page", StringComparison.OrdinalIgnoreCase) == true &&
                     inLocation?.Equals("query", StringComparison.OrdinalIgnoreCase) == true)
@@ -676,38 +736,50 @@ public class EndpointTestingService : IEndpointTestingService
 
     /// <summary>
     /// Merges path-level and operation-level parameters.
-    /// Returns a JArray of parameter objects (references already resolved upstream).
+    /// Returns a JsonArray of parameter objects (references already resolved upstream).
     /// </summary>
-    private JArray ResolveOperationParameters(JObject operation, JObject pathItem, JObject openApiDocument)
+    private JsonArray ResolveOperationParameters(JsonObject operation, JsonObject pathItem)
     {
-        var resolvedParams = new JArray();
+        var resolvedParams = new JsonArray();
 
         // Add path-level parameters first (these are inherited by all operations)
-        if (pathItem["parameters"] is JArray pathParams)
+        if (pathItem["parameters"] is JsonArray pathParams)
         {
-            _logger.FoundPathLevelParameters(pathParams.Count);
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.FoundPathLevelParameters(pathParams.Count);
+            }
             foreach (var param in pathParams)
             {
-                resolvedParams.Add(param);
-                if (param is JObject paramObj)
+                resolvedParams.Add(param?.DeepClone());
+                if (param is JsonObject paramObj)
                 {
                     var paramName = paramObj["name"]?.ToString();
-                    _logger.PathLevelParam(SchemaResolverService.SanitizeStringForLogging(paramName ?? string.Empty));
+                    if (_logger.IsEnabled(LogLevel.Debug))
+                    {
+                        _logger.PathLevelParam(TextSanitizer.SanitizeStringForLogging(paramName ?? string.Empty));
+                    }
                 }
             }
         }
 
         // Add operation-level parameters (these can override path-level params)
-        if (operation["parameters"] is JArray operationParams)
+        if (operation["parameters"] is JsonArray operationParams)
         {
-            _logger.FoundOperationLevelParameters(operationParams.Count);
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.FoundOperationLevelParameters(operationParams.Count);
+            }
             foreach (var param in operationParams)
             {
-                resolvedParams.Add(param);
-                if (param is JObject paramObj)
+                resolvedParams.Add(param?.DeepClone());
+                if (param is JsonObject paramObj)
                 {
                     var paramName = paramObj["name"]?.ToString();
-                    _logger.OperationLevelParam(SchemaResolverService.SanitizeStringForLogging(paramName ?? string.Empty));
+                    if (_logger.IsEnabled(LogLevel.Debug))
+                    {
+                        _logger.OperationLevelParam(TextSanitizer.SanitizeStringForLogging(paramName ?? string.Empty));
+                    }
                 }
             }
         }
@@ -716,7 +788,7 @@ public class EndpointTestingService : IEndpointTestingService
         return resolvedParams;
     }
 
-    private async Task<HttpTestResult> ExecuteHttpRequestAsync(string url, string method, JObject operation, OpenApiValidationOptions options, DataSourceAuthentication? authentication, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken, string? testedId = null)
+    private async Task<HttpTestResult> ExecuteHttpRequestAsync(string url, string method, OpenApiValidationOptions options, DataSourceAuthentication? authentication, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken, string? testedId = null)
     {
         var testResult = new HttpTestResult
         {
@@ -768,25 +840,16 @@ public class EndpointTestingService : IEndpointTestingService
             // Stream response content to avoid materialising a full string on every request.
             // On the retain path (FullHsdsRuntime / IncludeResponseBody) we still need the string;
             // on the fast path we stream directly into a JsonDocument with no string allocation.
-            string? responseBody = null;
+            byte[]? responseBody = null;
             JsonDocument? parsedResponseJson = null;
+            var contentReadCanceled = false;
             var contentTransferStopwatch = System.Diagnostics.Stopwatch.StartNew();
             try
             {
                 if (ShouldRetainResponseBodies(options))
                 {
-                    // Retain path: buffer via ArrayPool to avoid MemoryStream doubling,
-                    // then decode to string for ResponseBody output.
-                    var (rentedBuffer, bufferLength) = await CopyToRentedBufferAsync(response.Content, cts.Token);
-                    try
-                    {
-                        parsedResponseJson = TryParseJsonDocumentFromBuffer(rentedBuffer, bufferLength);
-                        responseBody = Encoding.UTF8.GetString(rentedBuffer, 0, bufferLength);
-                    }
-                    finally
-                    {
-                        ArrayPool<byte>.Shared.Return(rentedBuffer);
-                    }
+                    responseBody = await response.Content.ReadAsByteArrayAsync(cts.Token);
+                    parsedResponseJson = TryParseJsonDocumentFromBuffer(responseBody);
                 }
                 else
                 {
@@ -797,7 +860,27 @@ public class EndpointTestingService : IEndpointTestingService
             }
             catch (OperationCanceledException)
             {
+                contentReadCanceled = true;
                 contentTransferStopwatch.Stop();
+            }
+
+            if (contentReadCanceled)
+            {
+                sendStart.Stop();
+                testResult.ResponseTime = timeToHeaders + contentTransferStopwatch.Elapsed;
+                testResult.ResponseStatusCode = 408;
+                testResult.IsSuccessStatusCode = false;
+                testResult.ErrorMessage = "Response body read timed out or was canceled before completion.";
+                testResult.PerformanceMetrics = new EndpointPerformanceMetrics
+                {
+                    DnsLookup = dnsLookup,
+                    TcpConnection = tcpConnection,
+                    TlsHandshake = tlsHandshake,
+                    ServerProcessing = timeToHeaders,
+                    ContentTransfer = contentTransferStopwatch.Elapsed
+                };
+
+                return testResult;
             }
 
             // Stop the overall timers
@@ -834,99 +917,84 @@ public class EndpointTestingService : IEndpointTestingService
         return testResult;
     }
 
-    private async Task ValidateResponseAsync(HttpTestResult testResult, JObject operation, JObject openApiDocument, string? documentUri, OpenApiValidationOptions options, ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken)
+    private async Task ValidateResponseAsync(HttpTestResult testResult, JsonObject operation, JsonObject openApiDocument, OpenApiValidationOptions options, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken)
     {
         try
         {
-            if (operation.ContainsKey("responses"))
+            if (operation["responses"] is JsonObject responsesObject)
             {
-                var responses = operation["responses"];
-                if (responses is JObject responsesObject)
+                var statusCode = testResult.ResponseStatusCode?.ToString() ?? "default";
+                var responseSchema = responsesObject[statusCode] ?? responsesObject["default"];
+
+                if (responseSchema is JsonObject responseSchemaObject
+                    && responseSchemaObject["content"] is JsonObject contentObject)
                 {
-                    var statusCode = testResult.ResponseStatusCode?.ToString() ?? "default";
-                    var responseSchema = responsesObject[statusCode] ?? responsesObject["default"];
-
-                    if (responseSchema is JObject responseSchemaObject && responseSchemaObject.ContainsKey("content"))
+                    JsonObject? jsonContentObject = null;
+                    foreach (var contentEntry in contentObject)
                     {
-                        var content = responseSchemaObject["content"];
-                        if (content is JObject contentObject)
+                        if (contentEntry.Key.Contains("application/json", StringComparison.OrdinalIgnoreCase)
+                            && contentEntry.Value is JsonObject candidate)
                         {
-                            // Find JSON content type
-                            var jsonContent = contentObject.Properties()
-                                .FirstOrDefault(p => p.Name.Contains("application/json"));
-
-                            if (jsonContent?.Value is JObject jsonContentObject && jsonContentObject.ContainsKey("schema"))
-                            {
-                                var schema = jsonContentObject["schema"];
-                                if (schema != null)
-                                {
-                                    var schemaForValidation = GetValidationSchemaForResponse(schema, openApiDocument);
-                                    var compiledSchema = GetCompiledValidationSchemaForResponse(
-                                        schemaForValidation,
-                                        documentUri,
-                                        schema.Path,
-                                        compiledValidationSchemaCache);
-                                    // Build schema in full OpenAPI context so internal refs like
-                                    // #/components/schemas/* can be pre-resolved before JSchema creation.
-                                    var validationRequest = new ValidationRequest
-                                    {
-                                        JsonData = parsedResponseJsonByResult.TryGetValue(testResult, out var parsedJson)
-                                            ? (object)parsedJson
-                                            : (testResult.ResponseBody ?? "{}"),
-                                        Schema = compiledSchema,
-                                        Options = new ValidationOptions
-                                        {
-                                            MaxErrors = ResolveMaxValidationErrorsPerResponse(),
-                                            ReportAdditionalFields = (options?.ReportAdditionalFields ?? false)
-                                                || ((_openApiValidationOptions?.OwnSchemaValidation
-                                                     ?? OwnSchemaValidationMode.StrictOwnSchemaValidation)
-                                                    == OwnSchemaValidationMode.StrictOwnSchemaValidation)
-                                        }
-                                    };
-                                    var validationResult = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
-                                    _hsdsComplianceService.ApplyAdditionalFieldPolicy(validationResult, options?.ReportAdditionalFields ?? false);
-                                    testResult.ValidationResult = validationResult;
-                                    NormalizeValidationResultErrors(testResult.ValidationResult);
-                                }
-                            }
+                            jsonContentObject = candidate;
+                            break;
                         }
+                    }
+
+                    if (jsonContentObject? ["schema"] is JsonNode schema)
+                    {
+                        var schemaForValidation = GetValidationSchemaForResponse(schema, openApiDocument);
+
+                        object? jsonDataForValidation = null;
+                        if (parsedResponseJsonByResult.TryGetValue(testResult, out var parsedJson))
+                        {
+                            jsonDataForValidation = parsedJson;
+                        }
+                        else if (testResult.ResponseBody != null && testResult.ResponseBody.Length > 0)
+                        {
+                            jsonDataForValidation = testResult.ResponseBody;
+                        }
+
+                        if (jsonDataForValidation is null)
+                        {
+                            return;
+                        }
+
+                        // Build schema in full OpenAPI context so internal refs like
+                        // #/components/schemas/* are pre-resolved before runtime validation.
+                        var validationRequest = new ValidationRequest
+                        {
+                            JsonData = jsonDataForValidation,
+                            Schema = schemaForValidation,
+                            Options = new ValidationOptions
+                            {
+                                MaxErrors = ResolveMaxValidationErrorsPerResponse(),
+                                ReportAdditionalFields = (options?.ReportAdditionalFields ?? false)
+                                    || ((_openApiValidationOptions?.OwnSchemaValidation
+                                         ?? OwnSchemaValidationMode.StrictOwnSchemaValidation)
+                                        == OwnSchemaValidationMode.StrictOwnSchemaValidation)
+                            }
+                        };
+                        var validationResult = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
+                        _hsdsComplianceService.ApplyAdditionalFieldPolicy(validationResult, options?.ReportAdditionalFields ?? false);
+                        testResult.ValidationResult = validationResult;
+                        NormalizeValidationResultErrors(testResult.ValidationResult);
                     }
                 }
             }
         }
         catch (Exception ex)
         {
-            _logger.CouldNotValidateResponse(ex, SchemaResolverService.SanitizeUrlForLogging(testResult.RequestUrl ?? string.Empty));
+            _logger.CouldNotValidateResponse(ex, TextSanitizer.SanitizeUrlForLogging(testResult.RequestUrl ?? string.Empty));
         }
     }
 
-    private JToken GetValidationSchemaForResponse(JToken schema, JObject openApiDocument)
+    private JsonSchema GetValidationSchemaForResponse(JsonNode schema, JsonObject openApiDocument)
     {
-        if (string.IsNullOrWhiteSpace(schema.Path))
-        {
-            return BuildValidationSchemaWithComponentsContext(schema, openApiDocument);
-        }
-
+        var schemaNode = schema.DeepClone();
+        var cacheKey = ComputeSha256Hex(schemaNode.ToJsonString());
         return _validationSchemaCache.GetOrAdd(
-            schema.Path,
-            _ => BuildValidationSchemaWithComponentsContext(schema, openApiDocument));
-    }
-
-    private JSchema GetCompiledValidationSchemaForResponse(
-        JToken schemaForValidation,
-        string? documentUri,
-        string schemaPath,
-        ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache)
-    {
-        var schemaJson = schemaForValidation.ToString(Formatting.None);
-        var schemaHash = ComputeSha256Hex(schemaJson);
-        var cacheKey = string.IsNullOrWhiteSpace(documentUri)
-            ? $"{schemaPath}::{schemaHash}"
-            : $"{documentUri}::{schemaPath}::{schemaHash}";
-
-        return compiledValidationSchemaCache.GetOrAdd(
             cacheKey,
-            _ => JSchema.Parse(schemaJson));
+            _ => BuildValidationSchemaWithComponentsContext(schemaNode, openApiDocument));
     }
 
     private static string ComputeSha256Hex(string value)
@@ -934,13 +1002,6 @@ public class EndpointTestingService : IEndpointTestingService
         var bytes = Encoding.UTF8.GetBytes(value);
         var hashBytes = SHA256.HashData(bytes);
         return Convert.ToHexString(hashBytes);
-    }
-
-    private static (int EntryCount, long TotalKeyChars) GetCompiledSchemaCacheState(ConcurrentDictionary<string, JSchema> cache)
-    {
-        return (
-            cache.Count,
-            cache.Keys.Sum(static key => (long)key.Length));
     }
 
     private static (
@@ -953,7 +1014,7 @@ public class EndpointTestingService : IEndpointTestingService
             IEnumerable<EndpointTestResult> endpointResults,
             ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult,
             ConcurrentDictionary<string, List<string>> extractedIds,
-            ConcurrentDictionary<string, JToken> validationSchemaCache)
+            ConcurrentDictionary<string, JsonSchema> validationSchemaCache)
     {
         int retainedResponseBodies = 0;
         long retainedResponseBodyChars = 0;
@@ -962,7 +1023,7 @@ public class EndpointTestingService : IEndpointTestingService
         {
             foreach (var httpResult in endpointResult.TestResults)
             {
-                if (string.IsNullOrEmpty(httpResult.ResponseBody))
+                if (httpResult.ResponseBody == null || httpResult.ResponseBody.Length == 0)
                 {
                     continue;
                 }
@@ -993,42 +1054,16 @@ public class EndpointTestingService : IEndpointTestingService
         }
     }
 
-    private static JsonDocument? TryParseJsonDocumentFromBuffer(byte[] buffer, int length)
+    private static JsonDocument? TryParseJsonDocumentFromBuffer(byte[] buffer)
     {
         try
         {
-            return JsonDocument.Parse(buffer.AsMemory(0, length));
+            return JsonDocument.Parse(buffer.AsMemory());
         }
         catch (System.Text.Json.JsonException)
         {
             return null;
         }
-    }
-
-    /// <summary>
-    /// Copies HTTP content to a pooled byte array, growing it as needed.
-    /// The caller is responsible for returning the rented buffer to <see cref="ArrayPool{T}.Shared"/>.
-    /// </summary>
-    private static async Task<(byte[] RentedBuffer, int Length)> CopyToRentedBufferAsync(
-        HttpContent content, CancellationToken cancellationToken)
-    {
-        const int InitialCapacity = 16 * 1024;
-        var buffer = ArrayPool<byte>.Shared.Rent(InitialCapacity);
-        int total = 0;
-        await using var stream = await content.ReadAsStreamAsync(cancellationToken);
-        int read;
-        while ((read = await stream.ReadAsync(buffer.AsMemory(total), cancellationToken)) > 0)
-        {
-            total += read;
-            if (total + 4096 > buffer.Length)
-            {
-                var larger = ArrayPool<byte>.Shared.Rent(buffer.Length * 2);
-                buffer.AsSpan(0, total).CopyTo(larger);
-                ArrayPool<byte>.Shared.Return(buffer);
-                buffer = larger;
-            }
-        }
-        return (buffer, total);
     }
 
     private static bool TryGetPropertyIgnoreCase(JsonElement element, string propertyName, out JsonElement value)
@@ -1083,7 +1118,7 @@ public class EndpointTestingService : IEndpointTestingService
 
     private static bool HasResponsePayload(HttpTestResult response, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult)
     {
-        return parsedResponseJsonByResult.ContainsKey(response) || !string.IsNullOrWhiteSpace(response.ResponseBody);
+        return parsedResponseJsonByResult.ContainsKey(response) || (response.ResponseBody != null && response.ResponseBody.Length > 0);
     }
 
     private static void ReleaseParsedResponseJsonDocuments(IEnumerable<HttpTestResult> testResults, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult)
@@ -1097,45 +1132,56 @@ public class EndpointTestingService : IEndpointTestingService
         }
     }
 
-    private static JToken BuildValidationSchemaWithComponentsContext(JToken schema, JObject openApiDocument)
+    private static JsonSchema BuildValidationSchemaWithComponentsContext(JsonNode schema, JsonObject openApiDocument)
     {
-        if (!RequiresComponentsContext(schema)
-            || openApiDocument["components"] is not JObject components)
-        {
-            return schema.DeepClone();
-        }
+        JsonNode schemaToCompile = schema.DeepClone();
 
-        // Keep the response schema at document root and attach components so refs like
-        // #/components/schemas/* remain resolvable without introducing synthetic wrapper refs.
-        if (schema is JObject schemaObject)
+        if (RequiresComponentsContext(schema)
+            && openApiDocument["components"] is JsonObject components
+            && schema is JsonObject schemaObject)
         {
-            var schemaWithComponents = (JObject)schemaObject.DeepClone();
+            // Keep the response schema at document root and attach components so refs like
+            // #/components/schemas/* remain resolvable without introducing synthetic wrapper refs.
+            var schemaWithComponents = (JsonObject)schemaObject.DeepClone();
             if (!schemaWithComponents.ContainsKey("components"))
             {
                 schemaWithComponents["components"] = components.DeepClone();
             }
 
-            return schemaWithComponents;
+            schemaToCompile = schemaWithComponents;
         }
 
-        return schema.DeepClone();
+        return JsonSchemaBuild.FromText(schemaToCompile.ToJsonString());
     }
 
-    private static bool RequiresComponentsContext(JToken schema)
+    private static bool RequiresComponentsContext(JsonNode schema)
     {
-        if (schema is JObject schemaObject
-            && schemaObject.TryGetValue("$ref", out var refToken)
-            && refToken.Type == JTokenType.String
+        if (schema is JsonObject schemaObject
+            && schemaObject.TryGetPropertyValue("$ref", out var refToken)
+            && refToken is not null
             && refToken.ToString().StartsWith("#/components/", StringComparison.Ordinal))
         {
             return true;
         }
 
-        foreach (var child in schema.Children())
+        if (schema is JsonObject objectNode)
         {
-            if (RequiresComponentsContext(child))
+            foreach (var child in objectNode)
             {
-                return true;
+                if (child.Value is not null && RequiresComponentsContext(child.Value))
+                {
+                    return true;
+                }
+            }
+        }
+        else if (schema is JsonArray arrayNode)
+        {
+            foreach (var child in arrayNode)
+            {
+                if (child is not null && RequiresComponentsContext(child))
+                {
+                    return true;
+                }
             }
         }
 
@@ -1166,38 +1212,37 @@ public class EndpointTestingService : IEndpointTestingService
             : 100;
     }
 
-    private List<EndpointGroup> GroupEndpointsByDependencies(JObject pathsObject, OpenApiValidationOptions options)
+    private static List<EndpointGroup> GroupEndpointsByDependencies(JsonObject pathsObject)
     {
         var endpoints = new List<EndpointInfo>();
-        var validHttpMethods = new HashSet<string> { "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TRACE" };
 
         // Extract all endpoints
-        foreach (var pathProperty in pathsObject.Properties())
+        foreach (var pathProperty in pathsObject)
         {
-            var path = pathProperty.Name;
+            var path = pathProperty.Key;
             var pathItem = pathProperty.Value;
 
-            if (pathItem is JObject pathItemObject)
+            if (pathItem is JsonObject pathItemObject)
             {
-                foreach (var methodProperty in pathItemObject.Properties())
+                foreach (var methodProperty in pathItemObject)
                 {
-                    var method = methodProperty.Name.ToUpperInvariant();
+                    var method = methodProperty.Key.ToUpperInvariant();
 
                     // Skip non-HTTP method properties like "parameters", "summary", "$ref", "servers", etc.
-                    if (!validHttpMethods.Contains(method))
+                    if (!ValidHttpMethods.Contains(method))
                     {
                         continue;
                     }
 
                     var operation = methodProperty.Value;
-                    if (operation is JObject operationObject)
+                    if (operation is JsonObject operationObject)
                     {
                         endpoints.Add(new EndpointInfo
                         {
                             Path = path,
                             Method = method,
-                            Operation = operationObject,
-                            PathItem = pathItemObject  // Add path item for optional endpoint checking
+                            Operation = (JsonObject)operationObject.DeepClone(),
+                            PathItem = (JsonObject)pathItemObject.DeepClone()  // Add path item for optional endpoint checking
                         });
                     }
                 }
@@ -1210,10 +1255,10 @@ public class EndpointTestingService : IEndpointTestingService
             .Select(g => new EndpointGroup
             {
                 RootPath = g.Key,
-                CollectionEndpoints = g.Where(e => !e.IsParameterized && e.Method == "GET").ToList(),
-                ParameterizedEndpoints = g.Where(e => e.IsParameterized).ToList()
+                CollectionEndpoints = [.. g.Where(e => !e.IsParameterized && e.Method == "GET")],
+                ParameterizedEndpoints = [.. g.Where(e => e.IsParameterized)]
             })
-            .Where(g => g.Endpoints.Any())
+            .Where(g => g.Endpoints.Count > 0)
             .ToList();
 
         return groups;
@@ -1234,12 +1279,12 @@ public class EndpointTestingService : IEndpointTestingService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The endpoint test result with extracted IDs stored in the shared dictionary</returns>
     private async Task<EndpointTestResult> TestSingleEndpointWithIdExtractionAsync(
-        string path, string method, JObject operation, string baseUrl,
+        string path, string method, JsonObject operation, string baseUrl,
         OpenApiValidationOptions options, DataSourceAuthentication? authentication,
         ConcurrentDictionary<string, List<string>> extractedIds, SemaphoreSlim semaphore,
-        JObject openApiDocument, string? documentUri, JObject pathItem, ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken)
+        JsonObject openApiDocument, JsonObject pathItem, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken)
     {
-        var result = await TestSingleEndpointAsync(path, method, operation, baseUrl, options, authentication, semaphore, openApiDocument, documentUri, pathItem, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken);
+        var result = await TestSingleEndpointAsync(path, method, operation, baseUrl, options, authentication, semaphore, openApiDocument, pathItem, parsedResponseJsonByResult, cancellationToken, retainResponseJson: true);
 
         // Extract IDs from successful GET responses for dependency testing
         if (method == "GET" && result.TestResults.Any(r => r.IsSuccessStatusCode && HasResponsePayload(r, parsedResponseJsonByResult)))
@@ -1247,26 +1292,38 @@ public class EndpointTestingService : IEndpointTestingService
             var rootPath = EndpointInfo.GetRootPath(path);
             var successfulResponse = result.TestResults.First(r => r.IsSuccessStatusCode);
 
-            _logger.ProcessingHttpResponse(
-                SchemaResolverService.SanitizeUrlForLogging(successfulResponse.RequestUrl ?? string.Empty),
-                successfulResponse.ResponseStatusCode ?? 0,
-                successfulResponse.ResponseBody?.Length ?? 0);
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.ProcessingHttpResponse(
+                    TextSanitizer.SanitizeUrlForLogging(successfulResponse.RequestUrl ?? string.Empty),
+                    successfulResponse.ResponseStatusCode ?? 0,
+                    successfulResponse.ResponseBody?.Length ?? 0);
+            }
 
-            _logger.ResponseContentLength(successfulResponse.ResponseBody?.Length ?? 0);
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.ResponseContentLength(successfulResponse.ResponseBody?.Length ?? 0);
+            }
 
             var ids = ExtractIdsFromResponse(successfulResponse, rootPath, operation, openApiDocument, parsedResponseJsonByResult);
 
-            if (ids.Any())
+            if (ids.Count > 0)
             {
                 // Store extracted IDs in the shared dictionary for use by dependent endpoints
                 // Note: ConcurrentDictionary is a reference type, so this modification persists to the caller
                 extractedIds[rootPath] = ids;
-                _logger.SuccessfullyExtractedIds(ids.Count, TextSanitizer.SanitizeForLogging(path), TextSanitizer.SanitizeForLogging(rootPath));
+                if (_logger.IsEnabled(LogLevel.Information))
+                {
+                    _logger.SuccessfullyExtractedIds(ids.Count, TextSanitizer.SanitizeForLogging(path), TextSanitizer.SanitizeForLogging(rootPath));
+                }
 
                 // Verify the IDs were stored correctly
                 if (extractedIds.TryGetValue(rootPath, out var storedIds))
                 {
-                    _logger.VerifiedIdsStored(storedIds.Count, TextSanitizer.SanitizeForLogging(rootPath));
+                    if (_logger.IsEnabled(LogLevel.Debug))
+                    {
+                        _logger.VerifiedIdsStored(storedIds.Count, TextSanitizer.SanitizeForLogging(rootPath));
+                    }
                 }
                 else
                 {
@@ -1308,28 +1365,37 @@ public class EndpointTestingService : IEndpointTestingService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The endpoint test result using extracted IDs for parameters</returns>
     private async Task<EndpointTestResult> TestSingleEndpointWithIdSubstitutionAsync(
-        string path, string method, JObject operation, string baseUrl,
+        string path, string method, JsonObject operation, string baseUrl,
         OpenApiValidationOptions options, DataSourceAuthentication? authentication,
         ConcurrentDictionary<string, List<string>> extractedIds, SemaphoreSlim semaphore,
-        JObject openApiDocument, string? documentUri, JObject pathItem, ConcurrentDictionary<string, JSchema> compiledValidationSchemaCache, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken)
+        JsonObject openApiDocument, JsonObject pathItem, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken)
     {
         var rootPath = EndpointInfo.GetRootPath(path);
 
-        _logger.LookingForExtractedIds(TextSanitizer.SanitizeForLogging(rootPath), extractedIds.Keys.Count);
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LookingForExtractedIds(TextSanitizer.SanitizeForLogging(rootPath), extractedIds.Keys.Count);
+        }
 
         // Try to retrieve extracted IDs from the shared dictionary populated by collection endpoint tests
-        if (extractedIds.TryGetValue(rootPath, out var availableIds) && availableIds.Any())
+        if (extractedIds.TryGetValue(rootPath, out var availableIds) && availableIds.Count > 0)
         {
-            _logger.FoundExtractedIds(availableIds.Count, TextSanitizer.SanitizeForLogging(rootPath));
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.FoundExtractedIds(availableIds.Count, TextSanitizer.SanitizeForLogging(rootPath));
+            }
 
             // Test up to 10 random IDs from the available IDs
             var maxIdsToTest = Math.Min(10, availableIds.Count);
             var random = new Random();
-            var idsToTest = availableIds.Count <= 10
-                ? availableIds.ToList()
-                : availableIds.OrderBy(_ => random.Next()).Take(10).ToList();
+            List<string> idsToTest = availableIds.Count <= 10
+                ? [.. availableIds]
+                : [.. availableIds.OrderBy(_ => random.Next()).Take(10)];
 
-            _logger.TestingRandomIds(idsToTest.Count, TextSanitizer.SanitizeForLogging(path));
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.TestingRandomIds(idsToTest.Count, TextSanitizer.SanitizeForLogging(path));
+            }
 
             // Create a composite result that combines all test results
             var compositeResult = new EndpointTestResult
@@ -1352,7 +1418,7 @@ public class EndpointTestingService : IEndpointTestingService
                 var substitutedPath = SubstitutePathParametersWithSpecificId(path, id);
                 _logger.TestingEndpointWithExtractedId();
 
-                var singleResult = await TestSingleEndpointAsync(substitutedPath, method, operation, baseUrl, options, authentication, semaphore, openApiDocument, documentUri, pathItem, compiledValidationSchemaCache, parsedResponseJsonByResult, cancellationToken, testedId: id);
+                var singleResult = await TestSingleEndpointAsync(substitutedPath, method, operation, baseUrl, options, authentication, semaphore, openApiDocument, pathItem, parsedResponseJsonByResult, cancellationToken, testedId: id);
 
                 // Aggregate the results
                 compositeResult.TestResults.AddRange(singleResult.TestResults);
@@ -1374,10 +1440,10 @@ public class EndpointTestingService : IEndpointTestingService
                 ReleaseParsedResponseJsonDocuments(singleResult.TestResults, parsedResponseJsonByResult);
             }
 
-            compositeResult.IsTested = compositeResult.TestResults.Any();
+            compositeResult.IsTested = compositeResult.TestResults.Count > 0;
 
             // Set the composite status based on all test results
-            if (compositeResult.TestResults.Any())
+            if (compositeResult.TestResults.Count > 0)
             {
                 if (allTestsSuccessful)
                 {
@@ -1412,7 +1478,7 @@ public class EndpointTestingService : IEndpointTestingService
             _logger.NoExtractedIdsAvailable(TextSanitizer.SanitizeForLogging(rootPath), extractedIds.Count, TextSanitizer.SanitizeForLogging(path));
 
             // Log available keys for debugging
-            if (extractedIds.Any())
+            if (!extractedIds.IsEmpty)
             {
                 _logger.AvailableIdKeysCount(extractedIds.Keys.Count);
             }
@@ -1428,27 +1494,29 @@ public class EndpointTestingService : IEndpointTestingService
                 IsOptional = operation.IsOptionalEndpoint(),
                 Status = EndpointTestStatus.NotTested,
                 IsTested = false,
-                TestResults = new List<HttpTestResult>(){
+                TestResults =
+                [
                     new() {
                         IsSuccessStatusCode = false,
+                        RequestMethod = method,
                         RequestUrl = $"{baseUrl}{path}",
                         ErrorMessage = "No extracted IDs available for parameter substitution. Endpoint was not tested.",
-                        ValidationResult= new ValidationResult
+                        ValidationResult = new ValidationResult
                         {
                             IsValid = false,
-                            Errors = new List<ValidationError>
-                            {
-                                new ValidationError
+                            Errors =
+                            [
+                                new()
                                 {
                                     Path = path,
                                     Message = "No extracted IDs available for parameter substitution. Endpoint was not tested.",
                                     ErrorCode = "NO_IDS_AVAILABLE",
                                     Severity = "Warning"
                                 }
-                            }
+                            ]
                         }
                     }
-                }
+                ]
             };
 
             NormalizeValidationResultErrors(notTestedResult.TestResults.FirstOrDefault()?.ValidationResult);
@@ -1459,15 +1527,18 @@ public class EndpointTestingService : IEndpointTestingService
     /// <summary>
     /// Extracts IDs from a JSON response using OpenAPI schema information to identify ID field locations
     /// </summary>
-    private List<string> ExtractIdsFromResponse(HttpTestResult response, string rootPath, JObject operation, JObject openApiDocument, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult)
+    private List<string> ExtractIdsFromResponse(HttpTestResult response, string rootPath, JsonObject operation, JsonObject openApiDocument, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult)
     {
         var ids = new List<string>();
 
-        _logger.StartingIdExtraction(TextSanitizer.SanitizeForLogging(rootPath));
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.StartingIdExtraction(TextSanitizer.SanitizeForLogging(rootPath));
+        }
 
         // First, try to extract ID field names from the OpenAPI schema
         var schemaIdFields = ExtractIdFieldsFromSchema(operation, openApiDocument);
-        if (schemaIdFields.Any())
+        if (schemaIdFields.Count > 0)
         {
             _logger.FoundIdFieldsFromSchema(schemaIdFields.Count);
         }
@@ -1478,7 +1549,10 @@ public class EndpointTestingService : IEndpointTestingService
 
         if (parsedResponseJsonByResult.TryGetValue(response, out var parsedJson))
         {
-            _logger.ParsedJsonType(parsedJson.RootElement.ValueKind.ToString());
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.ParsedJsonType(parsedJson.RootElement.ValueKind.ToString());
+            }
             try
             {
                 ExtractIdsFromJsonElement(parsedJson.RootElement, schemaIdFields, operation, openApiDocument, ids);
@@ -1489,14 +1563,17 @@ public class EndpointTestingService : IEndpointTestingService
             }
         }
 
-        return ids.Distinct().ToList();
+        return [.. ids.Distinct()];
     }
 
-    private void ExtractIdsFromJsonElement(JsonElement json, List<string> schemaIdFields, JObject operation, JObject openApiDocument, List<string> ids)
+    private void ExtractIdsFromJsonElement(JsonElement json, List<string> schemaIdFields, JsonObject operation, JsonObject openApiDocument, List<string> ids)
     {
         if (json.ValueKind == JsonValueKind.Array)
         {
-            _logger.FoundJsonArray(json.GetArrayLength());
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.FoundJsonArray(json.GetArrayLength());
+            }
 
             foreach (var item in json.EnumerateArray())
             {
@@ -1517,7 +1594,7 @@ public class EndpointTestingService : IEndpointTestingService
         }
 
         var collectionProps = ExtractCollectionPropertiesFromSchema(operation, openApiDocument);
-        if (collectionProps.Any())
+        if (collectionProps.Count > 0)
         {
             var sanitizedProps = string.Join(", ", collectionProps.Select(p => TextSanitizer.SanitizeForLogging(p)));
             _logger.FoundCollectionProperties(sanitizedProps);
@@ -1527,7 +1604,10 @@ public class EndpointTestingService : IEndpointTestingService
                 if (TryGetPropertyIgnoreCase(json, propName, out var itemsElement)
                     && itemsElement.ValueKind == JsonValueKind.Array)
                 {
-                    _logger.ProcessingCollectionProperty(TextSanitizer.SanitizeForLogging(propName), itemsElement.GetArrayLength());
+                    if (_logger.IsEnabled(LogLevel.Debug))
+                    {
+                        _logger.ProcessingCollectionProperty(TextSanitizer.SanitizeForLogging(propName), itemsElement.GetArrayLength());
+                    }
                     foreach (var item in itemsElement.EnumerateArray())
                     {
                         var id = ExtractIdFromElement(item, schemaIdFields);
@@ -1542,14 +1622,17 @@ public class EndpointTestingService : IEndpointTestingService
             }
         }
 
-        if (!ids.Any())
+        if (ids.Count == 0)
         {
-            foreach (var propName in new[] { "data", "items", "results", "content", "contents" })
+            foreach (var propName in CollectionPropertyNames)
             {
                 if (TryGetPropertyIgnoreCase(json, propName, out var itemsElement)
                     && itemsElement.ValueKind == JsonValueKind.Array)
                 {
-                    _logger.ProcessingFallbackCollectionProperty(TextSanitizer.SanitizeForLogging(propName), itemsElement.GetArrayLength());
+                    if (_logger.IsEnabled(LogLevel.Debug))
+                    {
+                        _logger.ProcessingFallbackCollectionProperty(TextSanitizer.SanitizeForLogging(propName), itemsElement.GetArrayLength());
+                    }
                     foreach (var item in itemsElement.EnumerateArray())
                     {
                         var id = ExtractIdFromElement(item, schemaIdFields);
@@ -1564,7 +1647,7 @@ public class EndpointTestingService : IEndpointTestingService
             }
         }
 
-        if (!ids.Any())
+        if (ids.Count == 0)
         {
             var id = ExtractIdFromElement(json, schemaIdFields);
             if (!string.IsNullOrEmpty(id))
@@ -1594,7 +1677,7 @@ public class EndpointTestingService : IEndpointTestingService
             }
         }
 
-        foreach (var fallbackName in new[] { "id", "Id", "ID", "uuid", "guid" })
+        foreach (var fallbackName in FallbackIdNames)
         {
             if (TryGetPropertyIgnoreCase(item, fallbackName, out var fieldValue)
                 && fieldValue.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined)
@@ -1610,37 +1693,36 @@ public class EndpointTestingService : IEndpointTestingService
         return null;
     }
 
-    /// <summary>
-    /// Extracts an ID from a JSON object using OpenAPI schema-identified ID fields, with fallback to common names
-    /// </summary>
-    private static string? ExtractIdFromObject(JToken item, List<string> schemaIdFields)
+    private static JsonNode? ResolveLocalRef(string refStr, JsonObject openApiDocument)
     {
-        if (item is not JObject obj)
+        if (string.IsNullOrWhiteSpace(refStr) || !refStr.StartsWith("#/", StringComparison.Ordinal))
+        {
             return null;
-
-        // First try fields identified from the OpenAPI schema
-        foreach (var idField in schemaIdFields)
-        {
-            var idValue = obj[idField]?.ToString();
-            if (!string.IsNullOrWhiteSpace(idValue))
-                return idValue;
         }
 
-        // Fallback to common ID field names if schema-based extraction failed
-        foreach (var idField in new[] { "id", "_id", "uid", "uuid", "identifier", "key" })
+        var parts = refStr[2..].Split('/');
+        JsonNode? current = openApiDocument;
+
+        foreach (var part in parts)
         {
-            var idValue = obj[idField]?.ToString();
-            if (!string.IsNullOrWhiteSpace(idValue))
-                return idValue;
+            var decodedPart = Uri.UnescapeDataString(part).Replace("~1", "/").Replace("~0", "~");
+            if (current is JsonObject obj && obj.TryGetPropertyValue(decodedPart, out var nextNode))
+            {
+                current = nextNode;
+            }
+            else
+            {
+                return null;
+            }
         }
 
-        return null;
+        return current;
     }
 
     /// <summary>
     /// Extracts ID field names from the OpenAPI response schema
     /// </summary>
-    private List<string> ExtractIdFieldsFromSchema(JObject operation, JObject openApiDocument)
+    private List<string> ExtractIdFieldsFromSchema(JsonObject operation, JsonObject openApiDocument)
     {
         var idFields = new List<string>();
 
@@ -1650,7 +1732,7 @@ public class EndpointTestingService : IEndpointTestingService
             var responseSchema = operation["responses"]?["200"]?["content"]?["application/json"]?["schema"];
             if (responseSchema != null)
             {
-                ExtractIdFieldsFromSchemaRecursive(responseSchema, idFields);
+                ExtractIdFieldsFromSchemaRecursive(responseSchema, idFields, openApiDocument, new HashSet<JsonNode>(System.Collections.Generic.ReferenceEqualityComparer.Instance));
             }
         }
         catch (Exception ex)
@@ -1658,13 +1740,13 @@ public class EndpointTestingService : IEndpointTestingService
             _logger.FailedToExtractIdFieldsFromSchema(ex);
         }
 
-        return idFields.Distinct().ToList();
+        return [.. idFields.Distinct()];
     }
 
     /// <summary>
     /// Extracts collection property names from the OpenAPI response schema
     /// </summary>
-    private List<string> ExtractCollectionPropertiesFromSchema(JObject operation, JObject openApiDocument)
+    private List<string> ExtractCollectionPropertiesFromSchema(JsonObject operation, JsonObject openApiDocument)
     {
         var collectionProps = new List<string>();
 
@@ -1674,7 +1756,7 @@ public class EndpointTestingService : IEndpointTestingService
             var responseSchema = operation["responses"]?["200"]?["content"]?["application/json"]?["schema"];
             if (responseSchema != null)
             {
-                ExtractCollectionPropertiesFromSchemaRecursive(responseSchema, collectionProps);
+                ExtractCollectionPropertiesFromSchemaRecursive(responseSchema, collectionProps, openApiDocument, new HashSet<JsonNode>(System.Collections.Generic.ReferenceEqualityComparer.Instance));
             }
         }
         catch (Exception ex)
@@ -1682,22 +1764,39 @@ public class EndpointTestingService : IEndpointTestingService
             _logger.FailedToExtractCollectionProperties(ex);
         }
 
-        return collectionProps.Distinct().ToList();
+        return [.. collectionProps.Distinct()];
     }
 
     /// <summary>
     /// Recursively extracts ID field names from a schema structure
     /// </summary>
-    private static void ExtractIdFieldsFromSchemaRecursive(JToken schema, List<string> idFields)
+    private static void ExtractIdFieldsFromSchemaRecursive(JsonNode schema, List<string> idFields, JsonObject openApiDocument, HashSet<JsonNode> visited)
     {
-        if (schema is JObject schemaObj)
+        if (schema == null || !visited.Add(schema))
         {
-            // Check if this schema has properties
-            if (schemaObj["properties"] is JObject properties)
+            return;
+        }
+
+        if (schema is JsonObject schemaObj)
+        {
+            // Check if this schema has a reference
+            if (schemaObj.TryGetPropertyValue("$ref", out var refToken) && refToken is not null)
             {
-                foreach (var prop in properties.Properties())
+                var refStr = refToken.ToString();
+                var resolved = ResolveLocalRef(refStr, openApiDocument);
+                if (resolved != null)
                 {
-                    var propName = prop.Name;
+                    ExtractIdFieldsFromSchemaRecursive(resolved, idFields, openApiDocument, visited);
+                }
+                return;
+            }
+
+            // Check if this schema has properties
+            if (schemaObj["properties"] is JsonObject properties)
+            {
+                foreach (var prop in properties)
+                {
+                    var propName = prop.Key;
                     var propSchema = prop.Value;
 
                     // Check if this looks like an ID field
@@ -1707,24 +1806,30 @@ public class EndpointTestingService : IEndpointTestingService
                     }
 
                     // Recursively check nested properties
-                    ExtractIdFieldsFromSchemaRecursive(propSchema, idFields);
+                    if (propSchema != null)
+                    {
+                        ExtractIdFieldsFromSchemaRecursive(propSchema, idFields, openApiDocument, visited);
+                    }
                 }
             }
 
             // Check array items
-            if (schemaObj["items"] is JToken itemsSchema)
+            if (schemaObj["items"] is JsonNode itemsSchema)
             {
-                ExtractIdFieldsFromSchemaRecursive(itemsSchema, idFields);
+                ExtractIdFieldsFromSchemaRecursive(itemsSchema, idFields, openApiDocument, visited);
             }
 
             // Check allOf, anyOf, oneOf
-            foreach (var combiner in new[] { "allOf", "anyOf", "oneOf" })
+            foreach (var combiner in SchemaCombiners)
             {
-                if (schemaObj[combiner] is JArray combinerArray)
+                if (schemaObj[combiner] is JsonArray combinerArray)
                 {
                     foreach (var item in combinerArray)
                     {
-                        ExtractIdFieldsFromSchemaRecursive(item, idFields);
+                        if (item != null)
+                        {
+                            ExtractIdFieldsFromSchemaRecursive(item, idFields, openApiDocument, visited);
+                        }
                     }
                 }
             }
@@ -1734,47 +1839,71 @@ public class EndpointTestingService : IEndpointTestingService
     /// <summary>
     /// Recursively extracts collection property names from a schema structure
     /// </summary>
-    private static void ExtractCollectionPropertiesFromSchemaRecursive(JToken schema, List<string> collectionProps)
+    private static void ExtractCollectionPropertiesFromSchemaRecursive(JsonNode schema, List<string> collectionProps, JsonObject openApiDocument, HashSet<JsonNode> visited)
     {
-        if (schema is JObject schemaObj)
+        if (schema == null || !visited.Add(schema))
         {
-            // Check if this schema has properties
-            if (schemaObj["properties"] is JObject properties)
+            return;
+        }
+
+        if (schema is JsonObject schemaObj)
+        {
+            // Check if this schema has a reference
+            if (schemaObj.TryGetPropertyValue("$ref", out var refToken) && refToken is not null)
             {
-                foreach (var prop in properties.Properties())
+                var refStr = refToken.ToString();
+                var resolved = ResolveLocalRef(refStr, openApiDocument);
+                if (resolved != null)
                 {
-                    var propName = prop.Name;
+                    ExtractCollectionPropertiesFromSchemaRecursive(resolved, collectionProps, openApiDocument, visited);
+                }
+                return;
+            }
+
+            // Check if this schema has properties
+            if (schemaObj["properties"] is JsonObject properties)
+            {
+                foreach (var prop in properties)
+                {
+                    var propName = prop.Key;
                     var propSchema = prop.Value;
 
                     // Check if this property is an array (collection)
-                    if (propSchema is JObject propObj && propObj["type"]?.ToString() == "array")
+                    if (propSchema is JsonObject propObj && propObj["type"]?.ToString() == "array")
                     {
                         collectionProps.Add(propName);
                     }
 
                     // Recursively check nested properties
-                    ExtractCollectionPropertiesFromSchemaRecursive(propSchema, collectionProps);
+                    if (propSchema != null)
+                    {
+                        ExtractCollectionPropertiesFromSchemaRecursive(propSchema, collectionProps, openApiDocument, visited);
+                    }
                 }
             }
 
             // Check allOf, anyOf, oneOf
             foreach (var combiner in new[] { "allOf", "anyOf", "oneOf" })
             {
-                if (schemaObj[combiner] is JArray combinerArray)
+                if (schemaObj[combiner] is JsonArray combinerArray)
                 {
                     foreach (var item in combinerArray)
                     {
-                        ExtractCollectionPropertiesFromSchemaRecursive(item, collectionProps);
+                        if (item != null)
+                        {
+                            ExtractCollectionPropertiesFromSchemaRecursive(item, collectionProps, openApiDocument, visited);
+                        }
                     }
                 }
             }
         }
     }
 
+
     /// <summary>
     /// Determines if a property name and schema indicate an ID field
     /// </summary>
-    private static bool IsIdField(string propName, JToken? propSchema)
+    private static bool IsIdField(string propName, JsonNode? propSchema)
     {
         // Check property name patterns
         var nameLower = propName.ToLowerInvariant();
@@ -1786,7 +1915,7 @@ public class EndpointTestingService : IEndpointTestingService
         }
 
         // Check schema properties for ID indicators
-        if (propSchema is JObject schemaObj)
+        if (propSchema is JsonObject schemaObj)
         {
             var description = schemaObj["description"]?.ToString().ToLowerInvariant();
             if (!string.IsNullOrEmpty(description) &&
@@ -1806,42 +1935,14 @@ public class EndpointTestingService : IEndpointTestingService
     }
 
     /// <summary>
-    /// Helper method to extract a schema from a given path in the OpenAPI document
-    /// This is used by parameter resolution to resolve parameter references
-    /// </summary>
-    private static JToken? GetSchemaFromPath(JObject document, string path)
-    {
-        var parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        JToken? current = document;
-
-        foreach (var part in parts)
-        {
-            if (current is JObject obj && obj.ContainsKey(part))
-            {
-                current = obj[part];
-            }
-            else if (current is JArray array && int.TryParse(part, out var index) && index >= 0 && index < array.Count)
-            {
-                current = array[index];
-            }
-            else
-            {
-                return null; // Path not found
-            }
-        }
-
-        return current;
-    }
-
-    /// <summary>
     /// Substitutes path parameters with a specific ID value
     /// </summary>
-    private string SubstitutePathParametersWithSpecificId(string path, string id)
+    private static string SubstitutePathParametersWithSpecificId(string path, string id)
     {
         var substitutedPath = path;
 
         // Find all path parameters and replace with the specific ID
-        var matches = Regex.Matches(path, @"\{([^}]+)\}");
+        var matches = PathParameterRegex().Matches(path);
 
         foreach (Match match in matches)
         {
@@ -1868,7 +1969,7 @@ public class EndpointTestingService : IEndpointTestingService
                 continue;
             }
 
-            if (allowedHeaderTokenSymbols.IndexOf(c) >= 0)
+            if (allowedHeaderTokenSymbols.Contains(c))
             {
                 continue;
             }
@@ -1903,7 +2004,7 @@ public class EndpointTestingService : IEndpointTestingService
     /// </summary>
     /// <param name="request">The HTTP request message to apply authentication to</param>
     /// <param name="authentication">The authentication configuration containing credentials and auth type</param>
-    private void ApplyAuthenticationHeaders(HttpRequestMessage request, IAuthenticationConfig authentication)
+    private void ApplyAuthenticationHeaders(HttpRequestMessage request, DataSourceAuthentication authentication)
     {
         // Apply API Key authentication
         if (!string.IsNullOrEmpty(authentication.ApiKey))
@@ -1912,7 +2013,10 @@ public class EndpointTestingService : IEndpointTestingService
             if (IsValidHttpHeaderName(headerName) && IsSafeHeaderValue(authentication.ApiKey))
             {
                 request.Headers.Add(headerName, authentication.ApiKey);
-                _logger.AppliedApiKeyAuthenticationWithHeader(TextSanitizer.SanitizeForLogging(headerName));
+                if (_logger.IsEnabled(LogLevel.Debug))
+                {
+                    _logger.AppliedApiKeyAuthenticationWithHeader(TextSanitizer.SanitizeForLogging(headerName));
+                }
             }
             else
             {
@@ -1941,11 +2045,14 @@ public class EndpointTestingService : IEndpointTestingService
             var credentials = Convert.ToBase64String(
                 Encoding.ASCII.GetBytes($"{authentication.BasicAuth.Username}:{authentication.BasicAuth.Password ?? string.Empty}"));
             request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
-            _logger.AppliedBasicAuthentication(TextSanitizer.SanitizeForLogging(authentication.BasicAuth.Username));
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.AppliedBasicAuthentication(TextSanitizer.SanitizeForLogging(authentication.BasicAuth.Username));
+            }
         }
 
         // Apply Custom Headers
-        if (authentication.CustomHeaders != null && authentication.CustomHeaders.Any())
+        if (authentication.CustomHeaders != null && authentication.CustomHeaders.Count > 0)
         {
             foreach (var header in authentication.CustomHeaders)
             {
@@ -1955,7 +2062,10 @@ public class EndpointTestingService : IEndpointTestingService
                     IsSafeHeaderValue(header.Value))
                 {
                     request.Headers.Add(header.Key, header.Value);
-                    EndpointTestingLog.AppliedCustomHeader(_logger, TextSanitizer.SanitizeForLogging(header.Key));
+                    if (_logger.IsEnabled(LogLevel.Debug))
+                    {
+                        EndpointTestingLog.AppliedCustomHeader(_logger, TextSanitizer.SanitizeForLogging(header.Key));
+                    }
                 }
                 else
                 {
@@ -1964,4 +2074,7 @@ public class EndpointTestingService : IEndpointTestingService
             }
         }
     }
+
+    [GeneratedRegex(@"\{([^}]+)\}")]
+    private static partial Regex PathParameterRegex();
 }

@@ -74,3 +74,5 @@ test-result.txt
 **/.DS_Store
 
 AGENTS.md
+
+*.lscache

@@ -22,5 +22,5 @@ public class SecurityOptions
     /// Use "*" to allow all origins (not recommended for production)
     /// Default: ["*"]
     /// </summary>
-    public string[] AllowedCorsOrigins { get; set; } = new[] { "*" };
+    public string[] AllowedCorsOrigins { get; set; } = ["*"];
 }

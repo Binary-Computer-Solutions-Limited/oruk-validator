@@ -16,7 +16,7 @@ public class ServiceFeedMapperTests
 
         var withoutServiceUrl = new ServiceFeed
         {
-            Service = new BsonDocument(),
+            Service = [],
             UrlField = "https://from-url-field.example"
         };
 

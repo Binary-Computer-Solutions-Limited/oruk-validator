@@ -1,7 +1,8 @@
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json.Linq;
+using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Logging;
 using YamlDotNet.Serialization;
 
@@ -11,24 +12,16 @@ namespace OpenReferralApi.Core.Services;
 /// Internal helper class for fetching and parsing OpenAPI specifications from remote URLs.
 /// Handles authentication and reference resolution.
 /// </summary>
-public class OpenApiSpecFetcher
+public class OpenApiSpecFetcher(
+    IHttpClientFactory httpClientFactory,
+    ILogger logger,
+    ISchemaResolverService schemaResolverService,
+    bool allowUserSuppliedAuth)
 {
-    private readonly IHttpClientFactory _httpClientFactory;
-    private readonly ILogger _logger;
-    private readonly ISchemaResolverService _schemaResolverService;
-    private readonly bool _allowUserSuppliedAuth;
-
-    public OpenApiSpecFetcher(
-        IHttpClientFactory httpClientFactory,
-        ILogger logger,
-        ISchemaResolverService schemaResolverService,
-        bool allowUserSuppliedAuth)
-    {
-        _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _schemaResolverService = schemaResolverService ?? throw new ArgumentNullException(nameof(schemaResolverService));
-        _allowUserSuppliedAuth = allowUserSuppliedAuth;
-    }
+    private readonly IHttpClientFactory _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
+    private readonly ILogger _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    private readonly ISchemaResolverService _schemaResolverService = schemaResolverService ?? throw new ArgumentNullException(nameof(schemaResolverService));
+    private readonly bool _allowUserSuppliedAuth = allowUserSuppliedAuth;
 
     /// <summary>
     /// Validates user-supplied authentication according to server-side policy.
@@ -75,8 +68,8 @@ public class OpenApiSpecFetcher
     /// <param name="auth">Optional authentication credentials</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <param name="resolveReferences">Whether to resolve $ref references (true by default)</param>
-    /// <returns>The parsed OpenAPI specification as JObject</returns>
-    public async Task<JObject> FetchOpenApiSpecFromUrlAsync(
+    /// <returns>The parsed OpenAPI specification as JsonObject</returns>
+    public async Task<JsonObject> FetchOpenApiSpecFromUrlAsync(
         string specUrl,
         DataSourceAuthentication? auth,
         CancellationToken cancellationToken,
@@ -84,7 +77,7 @@ public class OpenApiSpecFetcher
     {
         try
         {
-            var safeSpecUrl = SchemaResolverService.SanitizeUrlForLogging(specUrl);
+            var safeSpecUrl = TextSanitizer.SanitizeUrlForLogging(specUrl);
             _logger.FetchingOpenApiSpec(safeSpecUrl);
 
             if (!Uri.IsWellFormedUriString(specUrl, UriKind.Absolute))
@@ -125,7 +118,7 @@ public class OpenApiSpecFetcher
 
             var httpClient = _httpClientFactory.CreateClient(nameof(OpenApiValidationService));
             using var response = await httpClient.SendAsync(request, cancellationToken);
-      _ = response.EnsureSuccessStatusCode();
+            _ = response.EnsureSuccessStatusCode();
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
             var normalizedContent = EnsureJson(content);
@@ -136,15 +129,15 @@ public class OpenApiSpecFetcher
             if (resolveReferences)
             {
                 var resolvedContent = await _schemaResolverService.ResolveAsync(normalizedContent, specUrl, validatedAuth);
-                return JObject.Parse(EnsureJson(resolvedContent));
+                return ParseJsonObject(EnsureJson(resolvedContent));
             }
 
             // Return unresolved document for spec validation or later lazy resolution
-            return JObject.Parse(normalizedContent);
+            return ParseJsonObject(normalizedContent);
         }
         catch (Exception ex)
         {
-            var sanitizedSpecUrl = SchemaResolverService.SanitizeUrlForLogging(specUrl);
+            var sanitizedSpecUrl = TextSanitizer.SanitizeUrlForLogging(specUrl);
             _logger.FailedToFetchOpenApiSpec(ex, sanitizedSpecUrl);
             throw new InvalidOperationException($"Failed to fetch OpenAPI specification from URL: {sanitizedSpecUrl}", ex);
         }
@@ -186,7 +179,7 @@ public class OpenApiSpecFetcher
         }
 
         // Simple length limits to avoid abuse
-        bool IsTooLong(string? value, int maxLength) =>
+        static bool IsTooLong(string? value, int maxLength) =>
             !string.IsNullOrEmpty(value) && value.Length > maxLength;
 
         const int MaxTokenLength = 4096;
@@ -260,15 +253,22 @@ public class OpenApiSpecFetcher
         }
 
         var trimmedContent = rawContent.TrimStart();
-        if (trimmedContent.StartsWith("{", StringComparison.Ordinal) ||
-            trimmedContent.StartsWith("[", StringComparison.Ordinal))
+        if (trimmedContent.StartsWith('{') ||
+            trimmedContent.StartsWith('['))
         {
             return rawContent;
         }
 
+        // Fast path to reject obvious HTML/XML without throwing Yaml exceptions
+        if (trimmedContent.StartsWith('<'))
+        {
+            throw new FormatException("OpenAPI spec content appears to be HTML/XML.");
+        }
+
         try
         {
-            var deserializer = new DeserializerBuilder().Build();
+            var deserializer = new DeserializerBuilder()
+                .Build();
             var yamlObject = deserializer.Deserialize(new StringReader(rawContent));
 
             var serializer = new SerializerBuilder()
@@ -283,16 +283,29 @@ public class OpenApiSpecFetcher
         }
     }
 
+    private static JsonObject ParseJsonObject(string json)
+    {
+        if (JsonNode.Parse(json) is not JsonObject obj)
+        {
+            throw new FormatException("OpenAPI spec content must be a JSON object.");
+        }
+
+        return obj;
+    }
+
     /// <summary>
     /// Applies authentication credentials to an HTTP request.
     /// </summary>
-    private void ApplyAuthentication(HttpRequestMessage request, IAuthenticationConfig auth)
+    private void ApplyAuthentication(HttpRequestMessage request, DataSourceAuthentication auth)
     {
         // Apply API Key authentication
         if (!string.IsNullOrEmpty(auth.ApiKey))
         {
             request.Headers.Add(auth.ApiKeyHeader, auth.ApiKey);
-            _logger.AppliedApiKeyAuthentication(SchemaResolverService.SanitizeStringForLogging(auth.ApiKeyHeader));
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.AppliedApiKeyAuthentication(TextSanitizer.SanitizeStringForLogging(auth.ApiKeyHeader));
+            }
         }
 
         // Apply Bearer Token authentication
@@ -318,7 +331,10 @@ public class OpenApiSpecFetcher
             foreach (var header in auth.CustomHeaders)
             {
                 request.Headers.Add(header.Key, header.Value);
-                OpenApiSpecFetcherLog.AppliedCustomHeader(_logger, SchemaResolverService.SanitizeStringForLogging(header.Key));
+                if (_logger.IsEnabled(LogLevel.Debug))
+                {
+                    OpenApiSpecFetcherLog.AppliedCustomHeader(_logger, TextSanitizer.SanitizeStringForLogging(header.Key));
+                }
             }
         }
     }

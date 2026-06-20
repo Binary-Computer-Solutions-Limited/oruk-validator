@@ -65,7 +65,7 @@ public class OpenApiControllerTests
         var validationResult = new OpenApiValidationResult
         {
             IsValid = false,
-            Notifications = new List<string> { expectedNotification }
+            Notifications = [expectedNotification]
         };
 
         _validationServiceMock

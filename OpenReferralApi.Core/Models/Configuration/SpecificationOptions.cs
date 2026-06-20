@@ -27,4 +27,10 @@ public class SpecificationOptions
     /// When provided, it must match one of the configured Urls keys.
     /// </summary>
     public string? DefaultProfileVersion { get; set; }
+
+    /// <summary>
+    /// Map of target known profile versions to an array of alias/discovered versions that should map to them.
+    /// For example, "HSDS-UK-3.0": ["V3"].
+    /// </summary>
+    public Dictionary<string, string[]> ProfileVersionMappings { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }

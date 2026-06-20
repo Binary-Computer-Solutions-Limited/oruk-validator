@@ -1,7 +1,7 @@
+using OpenReferralApi.Telemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
-using OpenReferralApi.Telemetry;
 
 namespace OpenReferralApi.Extensions;
 

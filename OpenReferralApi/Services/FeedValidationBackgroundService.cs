@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Options;
-using OpenReferralApi.Core.Services;
 using OpenReferralApi.Core.Logging;
+using OpenReferralApi.Core.Services;
 using OpenReferralApi.Logging;
 
 namespace OpenReferralApi.Services;
@@ -9,27 +9,16 @@ namespace OpenReferralApi.Services;
 /// <summary>
 /// Background service that validates registered feeds every 24 hours at midnight
 /// </summary>
-internal sealed class FeedValidationBackgroundService : BackgroundService
+internal sealed class FeedValidationBackgroundService(
+    IServiceProvider serviceProvider,
+    IOptions<FeedValidationOptions> options,
+    ILogger<FeedValidationBackgroundService> logger) : BackgroundService
 {
-    private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger<FeedValidationBackgroundService> _logger;
-    private readonly TimeSpan _validationInterval;
-    private readonly bool _runAtMidnight;
-    private readonly bool _enabled;
-
-    public FeedValidationBackgroundService(
-        IServiceProvider serviceProvider,
-        IOptions<FeedValidationOptions> options,
-        ILogger<FeedValidationBackgroundService> logger)
-    {
-        _serviceProvider = serviceProvider;
-        _logger = logger;
-
-        // Read configuration from options
-        _enabled = options.Value.Enabled;
-        _validationInterval = TimeSpan.FromHours(options.Value.IntervalHours);
-        _runAtMidnight = options.Value.RunAtMidnight;
-    }
+    private readonly IServiceProvider _serviceProvider = serviceProvider;
+    private readonly ILogger<FeedValidationBackgroundService> _logger = logger;
+    private readonly TimeSpan _validationInterval = TimeSpan.FromHours(options.Value.IntervalHours);
+    private readonly bool _runAtMidnight = options.Value.RunAtMidnight;
+    private readonly bool _enabled = options.Value.Enabled;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -50,6 +39,7 @@ internal sealed class FeedValidationBackgroundService : BackgroundService
             {
                 _logger.ScheduledValidationStarted(DateTime.UtcNow);
                 await ValidateAllFeedsAsync(stoppingToken).ConfigureAwait(false);
+                stoppingToken.ThrowIfCancellationRequested();
                 _logger.ScheduledValidationCompleted(DateTime.UtcNow);
             }
             catch (OperationCanceledException)
@@ -60,6 +50,11 @@ internal sealed class FeedValidationBackgroundService : BackgroundService
             // Remove catch-all Exception handler to comply with analyzer
             // If you want to log unexpected exceptions, consider rethrowing after logging
 
+            if (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+
             // Wait for next scheduled run
             await WaitForNextScheduledRunAsync(stoppingToken).ConfigureAwait(false);
         }
@@ -67,6 +62,11 @@ internal sealed class FeedValidationBackgroundService : BackgroundService
 
     private async Task WaitForNextScheduledRunAsync(CancellationToken cancellationToken)
     {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
         TimeSpan delay;
 
         if (_runAtMidnight)
@@ -97,6 +97,8 @@ internal sealed class FeedValidationBackgroundService : BackgroundService
 
     private async Task ValidateAllFeedsAsync(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         var stopwatch = Stopwatch.StartNew();
 
         using var scope = _serviceProvider.CreateScope();
@@ -107,6 +109,8 @@ internal sealed class FeedValidationBackgroundService : BackgroundService
             // Get all registered feeds
             var feeds = await feedValidationService.GetAllFeedsAsync(cancellationToken).ConfigureAwait(false);
 
+            cancellationToken.ThrowIfCancellationRequested();
+
             _logger.FoundFeedsToValidate(feeds.Count);
 
             if (feeds.Count == 0)
@@ -115,6 +119,8 @@ internal sealed class FeedValidationBackgroundService : BackgroundService
                 return;
             }
             var results = await feedValidationService.ValidateAndUpdateFeedsAsync(feeds, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            cancellationToken.ThrowIfCancellationRequested();
 
             // Log summary
             var successCount = results.Count(r => r.IsUp);

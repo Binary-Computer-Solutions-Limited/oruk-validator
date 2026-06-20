@@ -82,13 +82,13 @@ public class ResourceUtilizationMetrics
 /// <summary>
 /// Service for managing concurrent request processing, throttling, and resource management
 /// </summary>
-public class RequestProcessingService : IRequestProcessingService, IDisposable
+public class RequestProcessingService(ILogger<RequestProcessingService> logger) : IRequestProcessingService, IDisposable
 {
-    private readonly ILogger<RequestProcessingService> _logger;
-    private readonly SemaphoreSlim _concurrencyLimiter;
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _namedSemaphores;
-    private readonly ConcurrentQueue<DateTime> _requestTimes;
-    private readonly object _metricsLock = new();
+    private readonly ILogger<RequestProcessingService> _logger = logger;
+    private readonly SemaphoreSlim _concurrencyLimiter = new(DefaultMaxConcurrentRequests, DefaultMaxConcurrentRequests);
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _namedSemaphores = new();
+    private readonly ConcurrentQueue<DateTime> _requestTimes = new();
+    private readonly Lock _metricsLock = new();
 
     private int _activeRequests;
     private int _totalRequestsProcessed;
@@ -101,14 +101,6 @@ public class RequestProcessingService : IRequestProcessingService, IDisposable
     private const int DefaultRetryAttempts = 3;
     private const int DefaultRetryDelaySeconds = 1;
     private const int DefaultTimeoutSeconds = 30;
-
-    public RequestProcessingService(ILogger<RequestProcessingService> logger)
-    {
-        _logger = logger;
-        _concurrencyLimiter = new SemaphoreSlim(DefaultMaxConcurrentRequests, DefaultMaxConcurrentRequests);
-        _namedSemaphores = new ConcurrentDictionary<string, SemaphoreSlim>();
-        _requestTimes = new ConcurrentQueue<DateTime>();
-    }
 
     public async Task<T> ExecuteWithConcurrencyControlAsync<T>(
         Func<CancellationToken, Task<T>> function,
@@ -135,7 +127,7 @@ public class RequestProcessingService : IRequestProcessingService, IDisposable
 
         try
         {
-      _ = Interlocked.Increment(ref _activeRequests);
+            _ = Interlocked.Increment(ref _activeRequests);
             _lastRequestTime = DateTime.UtcNow;
 
             _logger.ExecutingWithConcurrencyControl(_activeRequests, maxConcurrent);
@@ -148,21 +140,21 @@ public class RequestProcessingService : IRequestProcessingService, IDisposable
             _requestTimes.Enqueue(DateTime.UtcNow);
             CleanupOldRequestTimes();
 
-      _ = Interlocked.Increment(ref _totalRequestsProcessed);
+            _ = Interlocked.Increment(ref _totalRequestsProcessed);
 
             _logger.FunctionExecutedSuccessfully(stopwatch.ElapsedMilliseconds);
             return result;
         }
         catch (Exception ex)
         {
-      _ = Interlocked.Increment(ref _failedRequests);
+            _ = Interlocked.Increment(ref _failedRequests);
             _logger.FunctionExecutionFailed(ex);
             throw;
         }
         finally
         {
-      _ = Interlocked.Decrement(ref _activeRequests);
-      _ = semaphore.Release();
+            _ = Interlocked.Decrement(ref _activeRequests);
+            _ = semaphore.Release();
         }
     }
 
@@ -172,9 +164,9 @@ public class RequestProcessingService : IRequestProcessingService, IDisposable
         CancellationToken cancellationToken = default)
     {
         var functionList = functions.ToList();
-        if (!functionList.Any())
+        if (functionList.Count == 0)
         {
-            return Enumerable.Empty<T>();
+            return [];
         }
 
         _logger.ExecutingFunctionsConcurrently(functionList.Count);
@@ -295,7 +287,7 @@ public class RequestProcessingService : IRequestProcessingService, IDisposable
         var cutoff = DateTime.UtcNow.AddMinutes(-5); // Keep last 5 minutes
         while (_requestTimes.TryPeek(out var time) && time < cutoff)
         {
-      _ = _requestTimes.TryDequeue(out _);
+            _ = _requestTimes.TryDequeue(out _);
         }
     }
 
@@ -315,7 +307,7 @@ public class RequestProcessingService : IRequestProcessingService, IDisposable
         return recent;
     }
 
-    private double CalculateAverageResponseTime(List<DateTime> requestTimes)
+    private static double CalculateAverageResponseTime(List<DateTime> requestTimes)
     {
         if (requestTimes.Count < 2)
         {
@@ -362,5 +354,6 @@ public class RequestProcessingService : IRequestProcessingService, IDisposable
 
         _namedSemaphores.Clear();
         _disposed = true;
+        GC.SuppressFinalize(this);
     }
 }

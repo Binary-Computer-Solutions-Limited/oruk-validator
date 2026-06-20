@@ -1,10 +1,11 @@
 using System.Collections.Concurrent;
 using System.Reflection;
+using System.Text.Json.Nodes;
+using Json.Pointer;
+using Json.Schema;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using Newtonsoft.Json.Schema;
+using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Logging;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
 
@@ -22,6 +23,12 @@ public class JsonValidatorService : IJsonValidatorService
 {
     private const int MaxAllowedJsonDepth = 64;
     private static readonly ConcurrentDictionary<string, CachedExternalSchemaDocument> ExternalSchemaUriCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, ResolvedSchemaDetails> CompiledSchemaCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly string ArrayIndexToken = "[]";
+    private static readonly System.Text.Json.JsonSerializerOptions DefaultSerializerOptions = new()
+    {
+        MaxDepth = MaxAllowedJsonDepth
+    };
 
     private readonly ILogger<JsonValidatorService> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -108,9 +115,10 @@ public class JsonValidatorService : IJsonValidatorService
             var schema = await schemaTask;
 
             // Fail fast: check for required root properties (example: "type")
-            if (schema.Required != null && schema.Required.Count > 0)
+            var requiredProperties = GetRequiredRootProperties(schema.SchemaNode);
+            if (requiredProperties.Count > 0)
             {
-                foreach (var requiredProp in schema.Required)
+                foreach (var requiredProp in requiredProperties)
                 {
                     if (!jsonDataDoc.RootElement.TryGetProperty(requiredProp, out _))
                     {
@@ -128,17 +136,15 @@ public class JsonValidatorService : IJsonValidatorService
                 }
             }
 
-            // Convert JsonDocument to JToken once via a UTF-8 stream — avoids the large UTF-16
-            // string that GetRawText() would allocate and then re-parse twice below.
-            var (dataToken, dataSize) = JsonDocumentToJToken(jsonDataDoc);
+            var dataSize = GetJsonDocumentUtf8Size(jsonDataDoc);
 
             // Selective parsing: only validate properties present in schema
-            var validationErrors = await ValidateJsonAgainstSchemaAsync(dataToken, schema, request.Options);
+            var validationErrors = await ValidateJsonAgainstSchemaAsync(jsonDataDoc, schema, request.Options);
 
             // Report additional fields if requested
             if (request.Options?.ReportAdditionalFields == true)
             {
-                var additionalFieldWarnings = DetectAdditionalFields(dataToken, schema);
+                var additionalFieldWarnings = DetectAdditionalFields(jsonDataDoc.RootElement, schema.SchemaNode);
                 validationErrors.AddRange(additionalFieldWarnings);
             }
 
@@ -203,12 +209,15 @@ public class JsonValidatorService : IJsonValidatorService
             _logger.StartingSchemaValidation();
 
             var schemaJson = System.Text.Json.JsonSerializer.Serialize(schema);
-            var jsonSchema = await _schemaResolverService.CreateSchemaFromJsonAsync(schemaJson, cancellationToken);
+            _ = await _schemaResolverService.CreateSchemaFromJsonAsync(schemaJson, cancellationToken);
+            var resolvedSchemaJson = await _schemaResolverService.ResolveAsync(schemaJson);
+            var effectiveSchemaJson = string.IsNullOrWhiteSpace(resolvedSchemaJson) ? schemaJson : resolvedSchemaJson;
+            var schemaDetails = BuildSchemaDetails(effectiveSchemaJson);
 
             // Basic schema validation
             var schemaValidationErrors = new List<ValidationError>();
 
-            if (jsonSchema.Type == null)
+            if (!HasRootTypeKeyword(schemaDetails.SchemaNode))
             {
                 schemaValidationErrors.Add(new ValidationError
                 {
@@ -219,13 +228,13 @@ public class JsonValidatorService : IJsonValidatorService
                 });
             }
 
-            result.IsValid = !schemaValidationErrors.Any();
+            result.IsValid = schemaValidationErrors.Count == 0;
             result.Errors = schemaValidationErrors;
             result.SchemaVersion = "2020-12";
             result.Metadata = new CommonValidationMetadata
             {
-                SchemaTitle = GetSchemaTitleFromObject(schema) ?? jsonSchema.Title,
-                SchemaDescription = GetSchemaDescriptionFromObject(schema) ?? jsonSchema.Description,
+                SchemaTitle = GetSchemaTitleFromObject(schema) ?? schemaDetails.Title,
+                SchemaDescription = GetSchemaDescriptionFromObject(schema) ?? schemaDetails.Description,
                 ValidationTimestamp = DateTime.UtcNow
             };
 
@@ -271,6 +280,19 @@ public class JsonValidatorService : IJsonValidatorService
                 throw new JsonStructureViolationException(JsonStructureViolationSource.UserProvidedJson, sourceIdentifier, ex);
             }
         }
+        else if (request.JsonData is byte[] jsonBytes)
+        {
+            try
+            {
+                return System.Text.Json.JsonDocument.Parse(jsonBytes.AsMemory());
+            }
+            catch (System.Text.Json.JsonException ex) when (IsCycleOrDepthViolation(ex))
+            {
+                const string sourceIdentifier = "request.jsonData (byte[])";
+                _logger.UserJsonCycleOrDepthLimitExceeded(ex, MaxAllowedJsonDepth, sourceIdentifier);
+                throw new JsonStructureViolationException(JsonStructureViolationSource.UserProvidedJson, sourceIdentifier, ex);
+            }
+        }
         else if (request.JsonData is System.Text.Json.JsonDocument doc)
         {
             return doc;
@@ -281,23 +303,11 @@ public class JsonValidatorService : IJsonValidatorService
             // false cycle detection; parse from its JSON representation instead.
             return System.Text.Json.JsonDocument.Parse(jsonNode.ToJsonString());
         }
-        else if (request.JsonData is JToken jToken)
-        {
-            // JToken is already a parsed JSON tree. Convert directly to JSON text to avoid
-            // object-graph traversal over framework internals.
-            return System.Text.Json.JsonDocument.Parse(jToken.ToString(Formatting.None));
-        }
         else if (request.JsonData != null)
         {
-            var options = new System.Text.Json.JsonSerializerOptions
-            {
-                MaxDepth = MaxAllowedJsonDepth
-            };
-
             try
             {
-                var json = System.Text.Json.JsonSerializer.Serialize(request.JsonData, options);
-                return System.Text.Json.JsonDocument.Parse(json);
+                return System.Text.Json.JsonSerializer.SerializeToDocument(request.JsonData, DefaultSerializerOptions);
             }
             catch (System.Text.Json.JsonException ex) when (IsCycleOrDepthViolation(ex))
             {
@@ -313,15 +323,19 @@ public class JsonValidatorService : IJsonValidatorService
         }
     }
 
-    private async Task<JSchema> GetSchemaAsync(ValidationRequest request, CancellationToken cancellationToken)
+    private async Task<ResolvedSchemaDetails> GetSchemaAsync(ValidationRequest request, CancellationToken cancellationToken)
     {
         if (!string.IsNullOrEmpty(request.SchemaUri))
         {
             return await LoadSchemaFromUriAsync(request.SchemaUri, request.Options, cancellationToken);
         }
-        else if (request.Schema is JSchema compiledSchema)
+        else if (request.Schema is JsonSchema compiledSchema)
         {
-            return compiledSchema;
+            return BuildSchemaDetails(System.Text.Json.JsonSerializer.Serialize(compiledSchema));
+        }
+        else if (request.Schema is string schemaString)
+        {
+            return await CreateSchemaFromJsonAsync(schemaString);
         }
         else if (request.Schema != null)
         {
@@ -333,7 +347,7 @@ public class JsonValidatorService : IJsonValidatorService
         }
     }
 
-    private async Task<JSchema> LoadSchemaFromUriAsync(string schemaUri, ValidationOptions? options, CancellationToken cancellationToken)
+    private async Task<ResolvedSchemaDetails> LoadSchemaFromUriAsync(string schemaUri, ValidationOptions? options, CancellationToken cancellationToken)
     {
         Uri validatedUri;
         try
@@ -353,7 +367,9 @@ public class JsonValidatorService : IJsonValidatorService
             _logger.UsingCachedSchemaDocument(normalizedSchemaUri);
             try
             {
-                return await _schemaResolverService.CreateSchemaFromJsonAsync(cachedSchemaJson, normalizedSchemaUri, null, cancellationToken);
+                var resolvedSchemaJson = await _schemaResolverService.ResolveAsync(cachedSchemaJson, normalizedSchemaUri, null);
+                var effectiveSchemaJson = string.IsNullOrWhiteSpace(resolvedSchemaJson) ? cachedSchemaJson : resolvedSchemaJson;
+                return BuildSchemaDetails(effectiveSchemaJson);
             }
             catch (System.Text.Json.JsonException ex) when (IsCycleOrDepthViolation(ex))
             {
@@ -362,7 +378,7 @@ public class JsonValidatorService : IJsonValidatorService
             }
         }
 
-        return await _requestProcessingService.ExecuteWithRetryAsync(async (ct) =>
+        var retryResult = await _requestProcessingService.ExecuteWithRetryAsync(async (ct) =>
         {
             try
             {
@@ -370,7 +386,7 @@ public class JsonValidatorService : IJsonValidatorService
 
                 var httpClient = _httpClientFactory.CreateClient();
                 using var response = await httpClient.GetAsync(validatedUri, ct);
-            _ = response.EnsureSuccessStatusCode();
+                _ = response.EnsureSuccessStatusCode();
                 var schemaJson = await response.Content.ReadAsStringAsync(ct);
 
                 if (_externalSchemaUriCacheEnabled)
@@ -381,8 +397,9 @@ public class JsonValidatorService : IJsonValidatorService
                         DateTime.UtcNow.Add(_externalSchemaUriCacheTtl));
                 }
 
-                // Pass the validated URI as documentUri so JSchemaUrlResolver can resolve relative references
-                return await _schemaResolverService.CreateSchemaFromJsonAsync(schemaJson, normalizedSchemaUri, null, ct);
+                var resolvedSchemaJson = await _schemaResolverService.ResolveAsync(schemaJson, normalizedSchemaUri, null);
+                var effectiveSchemaJson = string.IsNullOrWhiteSpace(resolvedSchemaJson) ? schemaJson : resolvedSchemaJson;
+                return (object)BuildSchemaDetails(effectiveSchemaJson);
             }
             catch (Exception ex)
             {
@@ -390,6 +407,8 @@ public class JsonValidatorService : IJsonValidatorService
                 throw new InvalidOperationException($"Failed to load schema from URI: {normalizedSchemaUri}", ex);
             }
         }, options, cancellationToken);
+
+        return (ResolvedSchemaDetails)retryResult;
     }
 
     private bool TryGetCachedSchemaJson(string schemaUri, out string schemaJson)
@@ -408,7 +427,7 @@ public class JsonValidatorService : IJsonValidatorService
 
         if (cachedEntry.ExpiresAtUtc <= DateTime.UtcNow || string.IsNullOrWhiteSpace(cachedEntry.SchemaJson))
         {
-      _ = ExternalSchemaUriCache.TryRemove(schemaUri, out _);
+            _ = ExternalSchemaUriCache.TryRemove(schemaUri, out _);
             return false;
         }
 
@@ -430,19 +449,18 @@ public class JsonValidatorService : IJsonValidatorService
         }
     }
 
-    private async Task<JSchema> CreateSchemaFromObjectAsync(object schema)
+    private async Task<ResolvedSchemaDetails> CreateSchemaFromObjectAsync(object schema)
     {
         try
         {
-            // Endpoint validation commonly passes a JObject/JToken schema.
-            // Serialize those with Newtonsoft to avoid object-graph cycle checks on JToken internals.
-            var schemaJson = schema is JToken token
-                ? token.ToString(Formatting.None)
-                : System.Text.Json.JsonSerializer.Serialize(schema, new System.Text.Json.JsonSerializerOptions
-                {
-                    MaxDepth = MaxAllowedJsonDepth
-                });
-            return await _schemaResolverService.CreateSchemaFromJsonAsync(schemaJson);
+            var schemaNode = schema switch
+            {
+                System.Text.Json.Nodes.JsonNode node => node.DeepClone(),
+                System.Text.Json.JsonDocument doc => System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.Nodes.JsonNode>(doc, DefaultSerializerOptions),
+                System.Text.Json.JsonElement element => System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.Nodes.JsonNode>(element, DefaultSerializerOptions),
+                _ => System.Text.Json.JsonSerializer.SerializeToNode(schema, DefaultSerializerOptions)
+            } ?? throw new InvalidOperationException("Failed to serialize schema object to JsonNode.");
+            return await CreateSchemaFromNodeAsync(schemaNode);
         }
         catch (System.Text.Json.JsonException ex) when (IsCycleOrDepthViolation(ex))
         {
@@ -458,24 +476,206 @@ public class JsonValidatorService : IJsonValidatorService
         }
     }
 
-    /// <summary>
-    /// Converts a <see cref="System.Text.Json.JsonDocument"/> to a Newtonsoft <see cref="JToken"/>
-    /// via a UTF-8 byte stream, avoiding the large UTF-16 string that
-    /// <c>RootElement.GetRawText()</c> would allocate. Returns the token and the UTF-8 byte count
-    /// (used as a proxy for DataSize in validation metadata).
-    /// </summary>
-    private static (JToken Token, int DataSize) JsonDocumentToJToken(System.Text.Json.JsonDocument doc)
+    private async Task<ResolvedSchemaDetails> CreateSchemaFromNodeAsync(System.Text.Json.Nodes.JsonNode schemaNode, string? documentUri = null)
     {
-        using var ms = new MemoryStream();
-        using (var writer = new System.Text.Json.Utf8JsonWriter(ms))
+        var resolvedSchemaNode = await _schemaResolverService.ResolveAsync(schemaNode, documentUri, auth: null);
+        var effectiveSchemaNode = resolvedSchemaNode ?? schemaNode;
+
+        var schemaJson = effectiveSchemaNode.ToJsonString();
+        var cacheKey = ComputeSha256Hex(schemaJson);
+        if (CompiledSchemaCache.TryGetValue(cacheKey, out var cached))
+        {
+            return cached;
+        }
+
+        var details = BuildSchemaDetailsFromNode(effectiveSchemaNode);
+
+        if (CompiledSchemaCache.Count > 10000) CompiledSchemaCache.Clear();
+        CompiledSchemaCache[cacheKey] = details;
+
+        return details;
+    }
+
+    private async Task<ResolvedSchemaDetails> CreateSchemaFromJsonAsync(string schemaJson, string? documentUri = null)
+    {
+        var resolvedSchemaJson = await _schemaResolverService.ResolveAsync(schemaJson, documentUri, auth: null);
+        var effectiveSchemaJson = string.IsNullOrWhiteSpace(resolvedSchemaJson) ? schemaJson : resolvedSchemaJson;
+        return BuildSchemaDetails(effectiveSchemaJson);
+    }
+
+    private static ResolvedSchemaDetails BuildSchemaDetails(string schemaJson)
+    {
+        var cacheKey = ComputeSha256Hex(schemaJson);
+        if (CompiledSchemaCache.TryGetValue(cacheKey, out var cached))
+        {
+            return cached;
+        }
+
+        var schemaNode = System.Text.Json.Nodes.JsonNode.Parse(schemaJson) ?? throw new InvalidOperationException("Schema JSON could not be parsed");
+        var details = BuildSchemaDetailsFromNode(schemaNode);
+
+        if (CompiledSchemaCache.Count > 10000) CompiledSchemaCache.Clear();
+        CompiledSchemaCache[cacheKey] = details;
+
+        return details;
+    }
+
+    private static ResolvedSchemaDetails BuildSchemaDetailsFromNode(System.Text.Json.Nodes.JsonNode schemaNode)
+    {
+        // Accept common OpenAPI-style schema keywords by normalizing them to JSON Schema.
+        NormalizeSchemaNodeForDialect(schemaNode);
+
+        var normalizedSchemaJson = schemaNode.ToJsonString();
+        var builtSchema = JsonSchemaBuild.FromText(normalizedSchemaJson);
+        var title = TryReadSchemaStringField(schemaNode, "title");
+        var description = TryReadSchemaStringField(schemaNode, "description");
+        return new ResolvedSchemaDetails(builtSchema, schemaNode, title, description);
+    }
+
+    private static void NormalizeSchemaNodeForDialect(System.Text.Json.Nodes.JsonNode node)
+    {
+        if (node is System.Text.Json.Nodes.JsonObject obj)
+        {
+            if (obj.TryGetPropertyValue("example", out var exampleValue))
+            {
+                if (!obj.ContainsKey("examples"))
+                {
+                    var examples = new System.Text.Json.Nodes.JsonArray();
+                    if (exampleValue != null)
+                    {
+                        examples.Add(exampleValue.DeepClone());
+                    }
+
+                    obj["examples"] = examples;
+                }
+
+                _ = obj.Remove("example");
+            }
+
+            _ = obj.Remove("name");
+
+            var properties = obj.ToList();
+            foreach (var (key, value) in properties)
+            {
+                if (value == null)
+                {
+                    continue;
+                }
+
+                if (IsSchemaMapKeyword(key) && value is System.Text.Json.Nodes.JsonObject schemaMap)
+                {
+                    foreach (var (_, mappedSchema) in schemaMap.ToList())
+                    {
+                        if (mappedSchema != null)
+                        {
+                            NormalizeSchemaNodeForDialect(mappedSchema);
+                        }
+                    }
+
+                    continue;
+                }
+
+                if (IsSchemaArrayKeyword(key) && value is System.Text.Json.Nodes.JsonArray schemaArray)
+                {
+                    foreach (var item in schemaArray)
+                    {
+                        if (item != null)
+                        {
+                            NormalizeSchemaNodeForDialect(item);
+                        }
+                    }
+
+                    continue;
+                }
+
+                if (IsSchemaObjectKeyword(key) && value is System.Text.Json.Nodes.JsonObject nestedSchema)
+                {
+                    NormalizeSchemaNodeForDialect(nestedSchema);
+                }
+            }
+
+            return;
+        }
+
+        if (node is System.Text.Json.Nodes.JsonArray array)
+        {
+            foreach (var item in array)
+            {
+                if (item != null)
+                {
+                    NormalizeSchemaNodeForDialect(item);
+                }
+            }
+        }
+    }
+
+    private static bool IsSchemaMapKeyword(string keyword)
+    {
+        return keyword is "properties"
+            or "patternProperties"
+            or "$defs"
+            or "definitions"
+            or "dependentSchemas";
+    }
+
+    private static bool IsSchemaArrayKeyword(string keyword)
+    {
+        return keyword is "allOf"
+            or "anyOf"
+            or "oneOf"
+            or "prefixItems";
+    }
+
+    private static bool IsSchemaObjectKeyword(string keyword)
+    {
+        return keyword is "items"
+            or "contains"
+            or "if"
+            or "then"
+            or "else"
+            or "not"
+            or "propertyNames"
+            or "additionalProperties"
+            or "unevaluatedItems"
+            or "unevaluatedProperties"
+            or "contentSchema";
+    }
+
+    private static string? TryReadSchemaStringField(System.Text.Json.Nodes.JsonNode? node, string fieldName)
+    {
+        if (node is not System.Text.Json.Nodes.JsonObject obj)
+        {
+            return null;
+        }
+
+        return obj[fieldName]?.GetValue<string>();
+    }
+
+    private static string ComputeSha256Hex(string value)
+    {
+        var maxByteCount = System.Text.Encoding.UTF8.GetMaxByteCount(value.Length);
+        var rentedBuffer = System.Buffers.ArrayPool<byte>.Shared.Rent(maxByteCount);
+        try
+        {
+            var byteCount = System.Text.Encoding.UTF8.GetBytes(value, rentedBuffer);
+            Span<byte> hashBytes = stackalloc byte[32]; // SHA256 hash is always 32 bytes
+            System.Security.Cryptography.SHA256.HashData(rentedBuffer.AsSpan(0, byteCount), hashBytes);
+            return Convert.ToHexString(hashBytes);
+        }
+        finally
+        {
+            System.Buffers.ArrayPool<byte>.Shared.Return(rentedBuffer);
+        }
+    }
+
+    private static int GetJsonDocumentUtf8Size(System.Text.Json.JsonDocument doc)
+    {
+        var bufferWriter = new System.Buffers.ArrayBufferWriter<byte>();
+        using (var writer = new System.Text.Json.Utf8JsonWriter(bufferWriter))
         {
             doc.RootElement.WriteTo(writer);
         }
-        var dataSize = (int)ms.Length;
-        ms.Position = 0;
-        using var sr = new StreamReader(ms, System.Text.Encoding.UTF8, leaveOpen: false);
-        using var jr = new JsonTextReader(sr);
-        return (JToken.Load(jr), dataSize);
+        return bufferWriter.WrittenCount;
     }
 
     private static bool IsCycleOrDepthViolation(System.Text.Json.JsonException exception)
@@ -592,7 +792,7 @@ public class JsonValidatorService : IJsonValidatorService
 
     private static string BuildChildPath(string parentPath, string segment, Type childType)
     {
-        var isArrayIndex = segment.StartsWith("[", StringComparison.Ordinal);
+        var isArrayIndex = segment.StartsWith('[');
         if (isArrayIndex)
         {
             return $"{parentPath}{segment}";
@@ -739,59 +939,39 @@ public class JsonValidatorService : IJsonValidatorService
         Depth
     }
 
-    private sealed class JsonStructureViolationException : Exception
+    private sealed class JsonStructureViolationException(JsonValidatorService.JsonStructureViolationSource sourceType, string sourceIdentifier, System.Text.Json.JsonException innerException, string? detectedPath = null) : Exception("JSON structure violates cycle/depth constraints.", innerException)
     {
-        public JsonStructureViolationException(JsonStructureViolationSource sourceType, string sourceIdentifier, System.Text.Json.JsonException innerException, string? detectedPath = null)
-            : base("JSON structure violates cycle/depth constraints.", innerException)
-        {
-            SourceType = sourceType;
-            SourceIdentifier = sourceIdentifier;
-            JsonPath = !string.IsNullOrWhiteSpace(detectedPath) ? detectedPath : innerException.Path;
-            LineNumber = innerException.LineNumber;
-            BytePositionInLine = innerException.BytePositionInLine;
-            ViolationKind = GetViolationKind(innerException);
-        }
-
-        public JsonStructureViolationSource SourceType { get; }
-        public string SourceIdentifier { get; }
-        public string? JsonPath { get; }
-        public long? LineNumber { get; }
-        public long? BytePositionInLine { get; }
-        public JsonStructureViolationKind ViolationKind { get; }
+        public JsonStructureViolationSource SourceType { get; } = sourceType;
+        public string SourceIdentifier { get; } = sourceIdentifier;
+        public string? JsonPath { get; } = !string.IsNullOrWhiteSpace(detectedPath) ? detectedPath : innerException.Path;
+        public long? LineNumber { get; } = innerException.LineNumber;
+        public long? BytePositionInLine { get; } = innerException.BytePositionInLine;
+        public JsonStructureViolationKind ViolationKind { get; } = GetViolationKind(innerException);
     }
 
-    private Task<List<ValidationError>> ValidateJsonAgainstSchemaAsync(JToken dataToken, JSchema schema, ValidationOptions? options)
+    private static Task<List<ValidationError>> ValidateJsonAgainstSchemaAsync(System.Text.Json.JsonDocument dataDocument, ResolvedSchemaDetails schema, ValidationOptions? options)
     {
         var errors = new List<ValidationError>();
         var maxErrors = options?.MaxErrors ?? 100;
 
         try
         {
-            // dataToken is already a parsed JToken — no further parsing needed.
-            var jsonToken = dataToken;
-
-            // Only validate properties present in schema (selective parsing)
-            bool isValid = jsonToken.IsValid(schema, out IList<string> errorMessages);
-
-            if (!isValid)
+            var evaluationOptions = new EvaluationOptions
             {
-                // Use JSchema.Validate to get detailed validation errors
-                var validationErrors = new List<ValidationError>();
-                jsonToken.Validate(schema, (sender, args) =>
-                {
-                    var isAdditionalProp = args.ValidationError?.ErrorType == ErrorType.AdditionalProperties;
-                    validationErrors.Add(new ValidationError
-                    {
-                        Path = args.Path ?? "",
-                        Message = args.Message,
-                        ErrorCode = isAdditionalProp ? "ADDITIONAL_FIELD" : "VALIDATION_ERROR",
-                        Severity = isAdditionalProp ? "Info" : "Error"
-                    });
-                });
-                errors.AddRange(validationErrors.Take(maxErrors));
+                OutputFormat = OutputFormat.List,
+                RequireFormatValidation = options?.ValidateFormat ?? true
+
+            };
+
+            var evaluation = schema.Schema.Evaluate(dataDocument.RootElement, evaluationOptions);
+            if (evaluation.IsValid)
+            {
+                return Task.FromResult(errors);
             }
+
+            errors.AddRange(FlattenEvaluationErrors(evaluation, dataDocument.RootElement).Take(maxErrors));
         }
-        catch (JsonReaderException ex)
+        catch (System.Text.Json.JsonException ex)
         {
             errors.Add(new ValidationError
             {
@@ -801,8 +981,172 @@ public class JsonValidatorService : IJsonValidatorService
                 Severity = "Error"
             });
         }
+        catch (RefResolutionException ex)
+        {
+            errors.Add(new ValidationError
+            {
+                Path = "",
+                Message = $"Schema reference could not be resolved: {TextSanitizer.SanitizeExceptionMessage(ex.Message)}",
+                ErrorCode = "SCHEMA_REFERENCE_UNRESOLVED",
+                Severity = "Error"
+            });
+        }
+        catch (Exception ex)
+        {
+            errors.Add(new ValidationError
+            {
+                Path = "",
+                Message = $"Validation failed: {TextSanitizer.SanitizeExceptionMessage(ex.Message)}",
+                ErrorCode = "VALIDATION_ERROR",
+                Severity = "Error"
+            });
+        }
 
         return Task.FromResult(errors);
+    }
+
+    private static IEnumerable<ValidationError> FlattenEvaluationErrors(EvaluationResults root, System.Text.Json.JsonElement rootElement)
+    {
+        var stack = new Stack<EvaluationResults>();
+        stack.Push(root);
+
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+
+            if (current.Errors != null)
+            {
+                foreach (var error in current.Errors)
+                {
+                    var evaluationPath = current.EvaluationPath.ToString();
+                    var isAdditionalProperty = error.Key.Contains("additionalProperties", StringComparison.OrdinalIgnoreCase)
+                        || error.Value.Contains("additional properties", StringComparison.OrdinalIgnoreCase)
+                        || evaluationPath.Contains("additionalProperties", StringComparison.OrdinalIgnoreCase);
+
+                    var message = error.Value;
+                    if (message.Contains("does not match format", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var failedValue = current.InstanceLocation.Evaluate(rootElement);
+                        if (failedValue.HasValue)
+                        {
+                            var valueStr = GetJsonElementRawOrStringValue(failedValue.Value);
+                            message = $"{message} (failed value: \"{valueStr}\")";
+                        }
+                    }
+
+                    yield return new ValidationError
+                    {
+                        Path = ConvertJsonPointerToPath(current.InstanceLocation.ToString()),
+                        Message = message,
+                        ErrorCode = isAdditionalProperty ? "ADDITIONAL_FIELD" : "VALIDATION_ERROR",
+                        Severity = isAdditionalProperty ? "Info" : "Error"
+                    };
+                }
+            }
+
+            if (current.Details == null)
+            {
+                continue;
+            }
+
+            for (var i = current.Details.Count - 1; i >= 0; i--)
+            {
+                stack.Push(current.Details[i]);
+            }
+        }
+    }
+
+    private static string GetJsonElementRawOrStringValue(System.Text.Json.JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            System.Text.Json.JsonValueKind.String => element.GetString() ?? string.Empty,
+            System.Text.Json.JsonValueKind.Number => element.GetRawText(),
+            System.Text.Json.JsonValueKind.True => "true",
+            System.Text.Json.JsonValueKind.False => "false",
+            System.Text.Json.JsonValueKind.Null => "null",
+            _ => element.GetRawText()
+        };
+    }
+
+    private static string ConvertJsonPointerToPath(string jsonPointer)
+    {
+        if (string.IsNullOrWhiteSpace(jsonPointer) || jsonPointer == "/")
+        {
+            return string.Empty;
+        }
+
+        var span = jsonPointer.AsSpan();
+        if (span.StartsWith('/'))
+        {
+            span = span[1..];
+        }
+
+        var pathBuilder = new System.Text.StringBuilder(span.Length);
+
+        while (!span.IsEmpty)
+        {
+            int slashIndex = span.IndexOf('/');
+            var segment = slashIndex < 0 ? span : span[..slashIndex];
+
+            if (segment.Length == 0)
+            {
+                if (slashIndex < 0)
+                {
+                    break;
+                }
+                span = span[(slashIndex + 1)..];
+                continue;
+            }
+
+            if (int.TryParse(segment, out _))
+            {
+                pathBuilder.Append('[');
+                AppendUnescaped(pathBuilder, segment);
+                pathBuilder.Append(']');
+            }
+            else
+            {
+                if (pathBuilder.Length > 0)
+                {
+                    pathBuilder.Append('.');
+                }
+                AppendUnescaped(pathBuilder, segment);
+            }
+
+            if (slashIndex < 0)
+            {
+                break;
+            }
+            
+            span = span[(slashIndex + 1)..];
+        }
+
+        return pathBuilder.ToString();
+    }
+
+    private static void AppendUnescaped(System.Text.StringBuilder builder, ReadOnlySpan<char> segment)
+    {
+        for (int i = 0; i < segment.Length; i++)
+        {
+            // Translate the RFC 6901 JSON Pointer escape characters manually
+            if (segment[i] == '~' && i + 1 < segment.Length)
+            {
+                if (segment[i + 1] == '1')
+                {
+                    builder.Append('/');
+                    i++;
+                    continue;
+                }
+                if (segment[i + 1] == '0')
+                {
+                    builder.Append('~');
+                    i++;
+                    continue;
+                }
+            }
+            builder.Append(segment[i]);
+        }
     }
 
     private async Task<System.Text.Json.JsonDocument> FetchJsonDataFromUrlAsync(string dataUrl, ValidationOptions? options, CancellationToken cancellationToken)
@@ -839,82 +1183,58 @@ public class JsonValidatorService : IJsonValidatorService
         }, options, cancellationToken);
     }
 
-    private string? GetSchemaTitle(ValidationRequest request, JSchema schema)
+    private string? GetSchemaTitle(ValidationRequest request, ResolvedSchemaDetails schema)
     {
-        // First try to get the title from the original schema object
-        if (request.Schema != null)
-        {
-            try
-            {
-                var jObject = JObject.FromObject(request.Schema);
-                var title = jObject["title"]?.ToString();
-                if (!string.IsNullOrEmpty(title))
-                {
-                    return title;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.FailedToExtractTitleFromOriginalSchema(ex);
-            }
-        }
-
-        // Fall back to JSchema title
-        return schema.Title;
+        return TryGetSchemaStringFieldFromObject(request.Schema, "title") ?? schema.Title;
     }
 
-    private string? GetSchemaDescription(ValidationRequest request, JSchema schema)
+    private string? GetSchemaDescription(ValidationRequest request, ResolvedSchemaDetails schema)
     {
-        // First try to get the description from the original schema object
-        if (request.Schema != null)
-        {
-            try
-            {
-                var jObject = JObject.FromObject(request.Schema);
-                var description = jObject["description"]?.ToString();
-                if (!string.IsNullOrEmpty(description))
-                {
-                    return description;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.FailedToExtractDescriptionFromOriginalSchema(ex);
-            }
-        }
-
-        // Fall back to JSchema description
-        return schema.Description;
+        return TryGetSchemaStringFieldFromObject(request.Schema, "description") ?? schema.Description;
     }
 
     private string? GetSchemaTitleFromObject(object? schemaObject)
     {
-        if (schemaObject == null) return null;
-
-        try
-        {
-            var jObject = JObject.FromObject(schemaObject);
-            return jObject["title"]?.ToString();
-        }
-        catch (Exception ex)
-        {
-            _logger.FailedToExtractTitleFromSchema(ex);
-            return null;
-        }
+        return TryGetSchemaStringFieldFromObject(schemaObject, "title");
     }
 
     private string? GetSchemaDescriptionFromObject(object? schemaObject)
     {
-        if (schemaObject == null) return null;
+        return TryGetSchemaStringFieldFromObject(schemaObject, "description");
+    }
+
+    private string? TryGetSchemaStringFieldFromObject(object? schemaObject, string fieldName)
+    {
+        if (schemaObject == null)
+        {
+            return null;
+        }
 
         try
         {
-            var jObject = JObject.FromObject(schemaObject);
-            return jObject["description"]?.ToString();
+            var schemaJson = schemaObject switch
+            {
+                string schemaString => schemaString,
+                System.Text.Json.Nodes.JsonNode schemaNode => schemaNode.ToJsonString(),
+                System.Text.Json.JsonDocument schemaDocument => schemaDocument.RootElement.GetRawText(),
+                System.Text.Json.JsonElement schemaElement => schemaElement.GetRawText(),
+                _ => System.Text.Json.JsonSerializer.Serialize(schemaObject, DefaultSerializerOptions)
+            };
+
+            var schemaNodeText = System.Text.Json.Nodes.JsonNode.Parse(schemaJson);
+            return TryReadSchemaStringField(schemaNodeText, fieldName);
         }
         catch (Exception ex)
         {
-            _logger.FailedToExtractDescriptionFromSchema(ex);
+            if (fieldName == "title")
+            {
+                _logger.FailedToExtractTitleFromSchema(ex);
+            }
+            else if (fieldName == "description")
+            {
+                _logger.FailedToExtractDescriptionFromSchema(ex);
+            }
+
             return null;
         }
     }
@@ -924,30 +1244,28 @@ public class JsonValidatorService : IJsonValidatorService
     /// Returns a list of validation warnings for each additional field found.
     /// Normalizes array index segments (for example "items[0]" -> "items") and returns only unique results.
     /// </summary>
-    private List<ValidationError> DetectAdditionalFields(JToken dataToken, JSchema schema)
+    private List<ValidationError> DetectAdditionalFields(System.Text.Json.JsonElement dataElement, System.Text.Json.Nodes.JsonNode? schemaNode)
     {
         var warnings = new List<ValidationError>();
 
         try
         {
-            // dataToken is already parsed — reuse directly, no re-parse needed.
-            DetectAdditionalFieldsRecursive(dataToken, schema, "", warnings);
+            var pathSegments = new List<string>();
+            DetectAdditionalFieldsRecursive(dataElement, schemaNode, pathSegments, warnings);
 
             // Normalize paths and keep only unique warnings by normalized path
             var uniqueWarnings = new Dictionary<string, ValidationError>();
 
             foreach (var warning in warnings)
             {
-                var normalizedPath = ValidationPathNormalizer.NormalizeArrayIndexes(warning.Path);
-                if (!uniqueWarnings.ContainsKey(normalizedPath))
+                if (!uniqueWarnings.ContainsKey(warning.Path))
                 {
-                    warning.Path = normalizedPath;
-                    warning.Message = BuildAdditionalFieldMessage(normalizedPath);
-                    uniqueWarnings[normalizedPath] = warning;
+                    warning.Message = BuildAdditionalFieldMessage(warning.Path);
+                    uniqueWarnings[warning.Path] = warning;
                 }
             }
 
-            return uniqueWarnings.Values.ToList();
+            return [.. uniqueWarnings.Values];
         }
         catch (Exception ex)
         {
@@ -960,58 +1278,180 @@ public class JsonValidatorService : IJsonValidatorService
     /// <summary>
     /// Recursively traverses the JSON data and schema to detect fields not defined in the schema.
     /// </summary>
-    private void DetectAdditionalFieldsRecursive(JToken jsonToken, JSchema schema, string currentPath, List<ValidationError> warnings)
+    private void DetectAdditionalFieldsRecursive(System.Text.Json.JsonElement jsonElement, System.Text.Json.Nodes.JsonNode? schemaNode, List<string> pathSegments, List<ValidationError> warnings)
     {
-        // Handle objects
-        if (jsonToken.Type == JTokenType.Object && jsonToken is JObject jObject)
+        if (schemaNode == null)
         {
-            // Get the properties defined in the schema
-            var schemaProperties = schema.Properties ?? new Dictionary<string, JSchema>();
-            var additionalPropertiesAllowed = schema.AllowAdditionalProperties;
-            var additionalPropertiesSchema = schema.AdditionalProperties;
+            return;
+        }
 
-            foreach (var property in jObject.Properties())
+        if (schemaNode is JsonObject obj && obj.TryGetPropertyValue("$ref", out var refNode) && refNode is JsonValue refValue)
+        {
+            var refStr = refValue.GetValue<string>();
+            var resolvedNode = Task.Run(() => _schemaResolverService.ResolveNodeRefAsync(refStr)).GetAwaiter().GetResult();
+            if (resolvedNode != null)
             {
-                var propertyPath = string.IsNullOrEmpty(currentPath) ? property.Name : $"{currentPath}.{property.Name}";
+                DetectAdditionalFieldsRecursive(jsonElement, resolvedNode, pathSegments, warnings);
+            }
+            return;
+        }
 
-                // Check if this property is defined in the schema
-                if (!schemaProperties.ContainsKey(property.Name))
+        if (jsonElement.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            var schemaObject = schemaNode as System.Text.Json.Nodes.JsonObject;
+            var additionalPropertiesNode = schemaObject?["additionalProperties"];
+
+            foreach (var property in jsonElement.EnumerateObject())
+            {
+                pathSegments.Add(property.Name);
+                var hasSchemaProperty = IsPropertyDefined(schemaNode, property.Name, out var propSchema);
+
+                if (!hasSchemaProperty)
                 {
-                    // Property not defined in schema - report it
                     warnings.Add(new ValidationError
                     {
-                        Path = propertyPath,
-                        Message = BuildAdditionalFieldMessage(propertyPath),
+                        Path = BuildPath(pathSegments),
                         ErrorCode = "ADDITIONAL_FIELD",
                         Severity = "Info"
                     });
                 }
 
-                // Recursively check nested properties if there's a schema definition
-                if (schemaProperties.TryGetValue(property.Name, out var propertySchema))
+                if (hasSchemaProperty)
                 {
-                    DetectAdditionalFieldsRecursive(property.Value, propertySchema, propertyPath, warnings);
+                    DetectAdditionalFieldsRecursive(property.Value, propSchema, pathSegments, warnings);
                 }
-                else if (additionalPropertiesSchema != null)
+                else if (additionalPropertiesNode is System.Text.Json.Nodes.JsonObject additionalPropertiesSchema)
                 {
-                    // If there's an additionalProperties schema, use it for validation
-                    DetectAdditionalFieldsRecursive(property.Value, additionalPropertiesSchema, propertyPath, warnings);
+                    DetectAdditionalFieldsRecursive(property.Value, additionalPropertiesSchema, pathSegments, warnings);
                 }
+
+                pathSegments.RemoveAt(pathSegments.Count - 1);
             }
         }
-        // Handle arrays
-        else if (jsonToken.Type == JTokenType.Array && jsonToken is JArray jArray)
+        else if (jsonElement.ValueKind == System.Text.Json.JsonValueKind.Array)
         {
-            var itemsSchema = schema.Items?.FirstOrDefault();
-            if (itemsSchema != null)
+            var itemSchema = FindItemsSchema(schemaNode);
+
+            if (itemSchema != null)
             {
-                for (int i = 0; i < jArray.Count; i++)
+                pathSegments.Add(ArrayIndexToken);
+                foreach (var item in jsonElement.EnumerateArray())
                 {
-                    var itemPath = $"{currentPath}[{i}]";
-                    DetectAdditionalFieldsRecursive(jArray[i], itemsSchema, itemPath, warnings);
+                    DetectAdditionalFieldsRecursive(item, itemSchema, pathSegments, warnings);
+                }
+                pathSegments.RemoveAt(pathSegments.Count - 1);
+            }
+        }
+    }
+
+    private bool IsPropertyDefined(System.Text.Json.Nodes.JsonNode? schemaNode, string propertyName, out System.Text.Json.Nodes.JsonNode? propertySchema)
+    {
+        propertySchema = null;
+        if (schemaNode == null)
+        {
+            return false;
+        }
+
+        if (schemaNode is JsonObject obj)
+        {
+            if (obj.TryGetPropertyValue("$ref", out var refNode) && refNode is JsonValue refValue)
+            {
+                var refStr = refValue.GetValue<string>();
+                var resolvedNode = Task.Run(() => _schemaResolverService.ResolveNodeRefAsync(refStr)).GetAwaiter().GetResult();
+                return IsPropertyDefined(resolvedNode, propertyName, out propertySchema);
+            }
+
+            if (obj.TryGetPropertyValue("properties", out var propsNode) && propsNode is JsonObject propsObj)
+            {
+                if (propsObj.TryGetPropertyValue(propertyName, out propertySchema))
+                {
+                    return true;
+                }
+            }
+
+            if (obj.TryGetPropertyValue("allOf", out var allOfNode) && allOfNode is JsonArray allOfArr)
+            {
+                foreach (var item in allOfArr)
+                {
+                    if (IsPropertyDefined(item, propertyName, out propertySchema))
+                    {
+                        return true;
+                    }
                 }
             }
         }
+
+        return false;
+    }
+
+    private System.Text.Json.Nodes.JsonNode? FindItemsSchema(System.Text.Json.Nodes.JsonNode? schemaNode)
+    {
+        if (schemaNode == null) return null;
+
+        if (schemaNode is JsonObject obj)
+        {
+            if (obj.TryGetPropertyValue("$ref", out var refNode) && refNode is JsonValue refValue)
+            {
+                var refStr = refValue.GetValue<string>();
+                var resolvedNode = Task.Run(() => _schemaResolverService.ResolveNodeRefAsync(refStr)).GetAwaiter().GetResult();
+                return FindItemsSchema(resolvedNode);
+            }
+
+            if (obj.TryGetPropertyValue("items", out var itemsSchema))
+            {
+                return itemsSchema;
+            }
+
+            if (obj.TryGetPropertyValue("allOf", out var allOfNode) && allOfNode is JsonArray allOfArr)
+            {
+                foreach (var item in allOfArr)
+                {
+                    var found = FindItemsSchema(item);
+                    if (found != null) return found;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static string BuildPath(List<string> segments)
+    {
+        if (segments.Count == 0) return string.Empty;
+        var sb = new System.Text.StringBuilder(segments[0]);
+        for (int i = 1; i < segments.Count; i++)
+        {
+            var segment = segments[i];
+            if (ReferenceEquals(segment, ArrayIndexToken))
+            {
+                sb.Append(segment);
+            }
+            else
+            {
+                sb.Append('.').Append(segment);
+            }
+        }
+        return sb.ToString();
+    }
+
+    private static List<string> GetRequiredRootProperties(System.Text.Json.Nodes.JsonNode? schemaNode)
+    {
+        if (schemaNode is not System.Text.Json.Nodes.JsonObject schemaObject
+            || schemaObject["required"] is not System.Text.Json.Nodes.JsonArray requiredArray)
+        {
+            return [];
+        }
+
+        return [.. requiredArray
+            .Select(static item => item?.GetValue<string>())
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Cast<string>()];
+    }
+
+    private static bool HasRootTypeKeyword(System.Text.Json.Nodes.JsonNode? schemaNode)
+    {
+        return schemaNode is System.Text.Json.Nodes.JsonObject schemaObject
+            && schemaObject.ContainsKey("type");
     }
 
     private static string BuildAdditionalFieldMessage(string path)
@@ -1019,5 +1459,10 @@ public class JsonValidatorService : IJsonValidatorService
         return $"Field '{path}' is not defined in the schema";
     }
 
-}
+    private sealed record ResolvedSchemaDetails(
+        JsonSchema Schema,
+        System.Text.Json.Nodes.JsonNode? SchemaNode,
+        string? Title,
+        string? Description);
 
+}

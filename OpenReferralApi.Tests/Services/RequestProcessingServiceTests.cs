@@ -159,7 +159,7 @@ public class RequestProcessingServiceTests
         var results = await _service.ExecuteMultipleConcurrentlyAsync(functions);
 
         // Assert
-        Assert.That(results, Is.EqualTo(new[] { 1, 2, 3 }));
+        Assert.That(results, Is.EqualTo([1, 2, 3]));
     }
 
     [Test]

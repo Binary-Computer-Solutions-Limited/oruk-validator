@@ -1,39 +1,26 @@
 using Microsoft.Extensions.Options;
-using OpenReferralApi.Core.Services;
-using OpenReferralApi.Core.Logging;
 
 namespace OpenReferralApi.Services;
 
 /// <summary>
 /// Warms frequently-used remote schemas into cache after startup.
 /// </summary>
-internal sealed class SchemaWarmupBackgroundService : BackgroundService
+internal sealed class SchemaWarmupBackgroundService(
+    IServiceProvider serviceProvider,
+    IOptions<SpecificationOptions> options,
+    IOptions<CacheOptions> cacheOptions,
+    ISchemaWarmupStatusTracker statusTracker,
+    ILogger<SchemaWarmupBackgroundService> logger,
+    ISchemaWarmupExecutor? executor = null) : BackgroundService
 {
-    private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger<SchemaWarmupBackgroundService> _logger;
-    private readonly SpecificationOptions _options;
-    private readonly CacheOptions _cacheOptions;
-    private readonly ISchemaWarmupStatusTracker _statusTracker;
-    private readonly ISchemaWarmupExecutor _executor;
+    private readonly IServiceProvider _serviceProvider = serviceProvider;
+    private readonly ILogger<SchemaWarmupBackgroundService> _logger = logger;
+    private readonly SpecificationOptions _options = options.Value ?? new SpecificationOptions();
+    private readonly CacheOptions _cacheOptions = cacheOptions.Value ?? new CacheOptions();
+    private readonly ISchemaWarmupStatusTracker _statusTracker = statusTracker;
+    private readonly ISchemaWarmupExecutor _executor = executor ?? new SchemaWarmupExecutor();
 
-    public SchemaWarmupBackgroundService(
-        IServiceProvider serviceProvider,
-        IOptions<SpecificationOptions> options,
-        IOptions<CacheOptions> cacheOptions,
-        ISchemaWarmupStatusTracker statusTracker,
-        ILogger<SchemaWarmupBackgroundService> logger,
-        ISchemaWarmupExecutor? executor = null)
-    {
-        _serviceProvider = serviceProvider;
-        _logger = logger;
-        _options = options.Value ?? new SpecificationOptions();
-        _cacheOptions = cacheOptions.Value ?? new CacheOptions();
-        _statusTracker = statusTracker;
-        _executor = executor ?? new SchemaWarmupExecutor();
-    }
-
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        await _executor.WarmupAsync(_options, _cacheOptions, _statusTracker, _serviceProvider, _logger, stoppingToken).ConfigureAwait(false);
-    }
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
+        _executor.WarmupAsync(_options, _cacheOptions, _statusTracker, _serviceProvider, _logger, stoppingToken);
 }
+

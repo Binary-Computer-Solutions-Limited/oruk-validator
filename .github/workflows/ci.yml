@@ -69,6 +69,9 @@ jobs:
           dotnet restore --use-lock-file
           dotnet build --configuration Release --no-restore
 
+      - name: Audit NuGet Packages for Vulnerabilities
+        run: dotnet list package --vulnerable --include-transitive
+
       - name: Run Tests
         run: dotnet test --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./coverage
 
@@ -143,6 +146,34 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4.32.6
         with:
           sarif_file: "trivy-fs-results.sarif"   
+
+  docker-lint:
+    name: Dockerfile Lint (Hadolint)
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v6.0.2
+      
+      - name: Run Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: ./Dockerfile
+          ignore: 'DL3008,DL3015' # Ignoring strict apt-get rules for now to prevent immediate build failures
+
+  secret-scan:
+    name: Secret Scanning (Gitleaks)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0 # Fetch all history for secret scanning
+          
+      - name: Run Gitleaks Scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # --- JOB 3: DOCKER & DAST ---
   # Now depends only on Build-and-Test to enable parallel execution
@@ -229,7 +260,7 @@ jobs:
   # It only runs if all preceding parallel jobs succeed.
   workflow-status:
     name: Final Workflow Status
-    needs: [code-quality, trivy-fs-scan, docker-and-dast]
+    needs: [code-quality, trivy-fs-scan, secret-scan, docker-lint, docker-and-dast]
     runs-on: ubuntu-latest
     if: always() # Ensures this runs even if others are skipped or fail so we can evaluate them
     steps:
@@ -238,15 +269,21 @@ jobs:
           # 1. Get the results
           CODE_QUALITY_RESULT="${{ needs.code-quality.result }}"
           TRIVY_FS_RESULT="${{ needs.trivy-fs-scan.result }}"
+          DOCKER_LINT_RESULT="${{ needs.docker-lint.result }}"
           DOCKER_RESULT="${{ needs.docker-and-dast.result }}"
+          SECRET_SCAN_RESULT="${{ needs.secret-scan.result }}"
 
           echo "Code Quality Status: $CODE_QUALITY_RESULT"
           echo "Trivy FS Scan Status: $TRIVY_FS_RESULT"
+          echo "Docker Lint Status: $DOCKER_LINT_RESULT"
           echo "Docker & DAST Status: $DOCKER_RESULT"
+          echo "Secret Scan Status: $SECRET_SCAN_RESULT"
 
           # 2. Strict Check: If ANY job actually failed or was cancelled, we fail.
           if [[ "$CODE_QUALITY_RESULT" == "failure" || "$CODE_QUALITY_RESULT" == "cancelled" ]] || \
              [[ "$TRIVY_FS_RESULT" == "failure" || "$TRIVY_FS_RESULT" == "cancelled" ]] || \
+             [[ "$DOCKER_LINT_RESULT" == "failure" || "$DOCKER_LINT_RESULT" == "cancelled" ]] || \
+             [[ "$SECRET_SCAN_RESULT" == "failure" || "$SECRET_SCAN_RESULT" == "cancelled" ]] || \
              [[ "$DOCKER_RESULT" == "failure" || "$DOCKER_RESULT" == "cancelled" ]]; then
             echo "::error::One or more required jobs failed or were cancelled."
             exit 1

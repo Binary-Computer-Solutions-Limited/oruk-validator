@@ -1,15 +1,8 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
-using System.Linq;
-using System.Net.Http;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using OpenReferralApi.Core.Services;
+using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Logging;
+using OpenReferralApi.Core.Services;
 
 namespace OpenReferralApi.Services
 {
@@ -143,7 +136,7 @@ namespace OpenReferralApi.Services
 
                         var managedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
                         var processWorkingSetBytes = Environment.WorkingSet;
-                        var sanitizedUrl = SchemaResolverService.SanitizeUrlForLogging(url);
+                        var sanitizedUrl = TextSanitizer.SanitizeUrlForLogging(url);
                         logger.WarmupMemoryAfterCaching(
                             sanitizedUrl,
                             cachedSchemaCount,
@@ -221,7 +214,7 @@ namespace OpenReferralApi.Services
             var workingSetBytes = Environment.WorkingSet;
 
             logger.WarmupMemoryAfterFailure(
-                SchemaResolverService.SanitizeUrlForLogging(schemaUrl),
+                TextSanitizer.SanitizeUrlForLogging(schemaUrl),
                 cachedSchemaCount,
                 totalSchemaCount,
                 managedHeapBytes,

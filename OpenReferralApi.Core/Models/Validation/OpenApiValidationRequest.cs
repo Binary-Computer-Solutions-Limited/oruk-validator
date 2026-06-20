@@ -1,4 +1,4 @@
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace OpenReferralApi.Core.Models.Validation;
 
@@ -14,7 +14,7 @@ public class OpenApiValidationRequest
     /// The service will download and parse the specification from this URL
     /// Supports HTTP/HTTPS URLs and handles $ref resolution for external references
     /// </summary>
-    [JsonProperty("ownSchemaUrl")]
+    [JsonPropertyName("ownSchemaUrl")]
     public string? OwnSchemaUrl { get; set; }
 
     /// <summary>
@@ -23,7 +23,7 @@ public class OpenApiValidationRequest
     /// Should include protocol (http/https) and may include port (e.g., "https://api.example.com:8080")
     /// </summary>
     /// <example>https://api.example.org</example>
-    [JsonProperty("baseUrl")]
+    [JsonPropertyName("baseUrl")]
     public string? BaseUrl { get; set; }
 
     /// <summary>
@@ -32,7 +32,7 @@ public class OpenApiValidationRequest
     /// Required if endpoint testing is enabled and the API requires authentication for access
     /// </summary>
     /// <example>{"method":"BearerToken","token":"sample-token"}</example>
-    [JsonProperty("dataSourceAuth")]
+    [JsonPropertyName("dataSourceAuth")]
     public DataSourceAuthentication? DataSourceAuth { get; set; }
 
     /// <summary>
@@ -41,13 +41,7 @@ public class OpenApiValidationRequest
     /// If null, default options will be used (specification validation only)
     /// </summary>
     /// <example>{"includeResponseBody":false,"includeTestResults":true}</example>
-    [JsonProperty("options")]
+    [JsonPropertyName("options")]
     public OpenApiValidationOptions? Options { get; set; }
 
-    /// <summary>
-    /// Internal property to pass the profile discovery reason from discovery to validation.
-    /// This is not part of the public API request and should not be set by clients.
-    /// </summary>
-    [System.Text.Json.Serialization.JsonIgnore]
-    public string? ProfileReason { get; set; }
 }

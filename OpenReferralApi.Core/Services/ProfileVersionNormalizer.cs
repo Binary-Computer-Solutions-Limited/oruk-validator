@@ -1,18 +1,12 @@
-using System.Text.RegularExpressions;
-
 namespace OpenReferralApi.Core.Services;
 
-internal static partial class ProfileVersionNormalizer
+internal static class ProfileVersionNormalizer
 {
     /// <summary>
     /// Extracts the trailing major.minor version number from a raw profile version string.
     /// For example "HSDS-UK-3.0" → "3.0", "V3" → "3.0", "3.2" → "3.2", "SOMESCHEMA-1.5" → "1.5".
     /// Returns null if no version number can be extracted.
     /// </summary>
-    [GeneratedRegex("(?<major>\\d+)(?:\\.(?<minor>\\d+))?$")]
-    private static partial Regex TrailingVersionRegex();
-    // Note: GeneratedRegex attribute provides the implementation for the above partial method.
-
     internal static string? ExtractMajorMinor(string? rawVersion)
     {
         if (string.IsNullOrWhiteSpace(rawVersion))
@@ -20,15 +14,50 @@ internal static partial class ProfileVersionNormalizer
             return null;
         }
 
-        var match = TrailingVersionRegex().Match(rawVersion.Trim());
-        if (!match.Success)
+        var span = rawVersion.AsSpan().Trim();
+        if (span.IsEmpty)
         {
             return null;
         }
 
-        var major = match.Groups["major"].Value;
-        var minor = match.Groups["minor"].Success ? match.Groups["minor"].Value : "0";
-        return $"{major}.{minor}";
+        int i = span.Length - 1;
+
+        // Find trailing digits (minor or major)
+        int end1 = i;
+        while (i >= 0 && char.IsAsciiDigit(span[i]))
+        {
+            i--;
+        }
+
+        if (i == end1)
+        {
+            // No trailing digits
+            return null;
+        }
+
+        int start1 = i + 1;
+
+        if (i >= 0 && span[i] == '.')
+        {
+            // We found a dot, so the first block might be minor. Look for major.
+            i--;
+            int end2 = i;
+            while (i >= 0 && char.IsAsciiDigit(span[i]))
+            {
+                i--;
+            }
+
+            if (i != end2)
+            {
+                var major = span.Slice(i + 1, end2 - i);
+                var minor = span.Slice(start1, end1 - start1 + 1);
+                return $"{major}.{minor}";
+            }
+        }
+
+        // No dot, or dot not preceded by digits. Treat trailing digits as major.
+        var majorOnly = span.Slice(start1, end1 - start1 + 1);
+        return $"{majorOnly}.0";
     }
 
     /// <summary>

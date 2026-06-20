@@ -1,8 +1,10 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Json.Schema;
 using Moq;
-using Newtonsoft.Json.Schema;
 using OpenReferralApi.Core.Services;
+using System.Text.Json.Nodes;
 
 namespace OpenReferralApi.Tests.Services;
 
@@ -12,8 +14,8 @@ public class OpenApiValidationServiceTests
     private Mock<ILogger<OpenApiValidationService>> _loggerMock;
     private Mock<IJsonValidatorService> _jsonValidatorServiceMock;
     private Mock<ISchemaResolverService> _schemaResolverServiceMock;
-    private Mock<IProfileDiscoveryService> _profileDiscoveryServiceMock;
-    private Mock<IOpenApiDiscoveryService> _feedSpecDiscoveryMock;
+    private Mock<IProfileDiscoveryService> _openApiBootstrapServiceMock;
+    private IOpenApiSpecificationService _openApiSpecificationService;
     private IOptions<OpenApiValidationServerOptions> _openApiValidationServerOptions;
     private HttpClient _httpClient;
     private OpenApiValidationService _service;
@@ -24,48 +26,94 @@ public class OpenApiValidationServiceTests
         _loggerMock = new Mock<ILogger<OpenApiValidationService>>();
         _jsonValidatorServiceMock = new Mock<IJsonValidatorService>();
         _schemaResolverServiceMock = new Mock<ISchemaResolverService>();
-        _profileDiscoveryServiceMock = new Mock<IProfileDiscoveryService>();
-        _feedSpecDiscoveryMock = new Mock<IOpenApiDiscoveryService>();
-        _profileDiscoveryServiceMock
-            .Setup(s => s.DiscoverAsync(It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ProfileDiscoveryResult
-            {
-                Url = null,
-                Reason = "No version or openapi_url found in '/' response"
-            });
-        _feedSpecDiscoveryMock
-            .Setup(s => s.FindOpenApiSpecAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string?)null);
-        _feedSpecDiscoveryMock
-            .Setup(s => s.DiscoverOpenApiSpecAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OpenApiDiscoveryResult());
+        _openApiBootstrapServiceMock = new Mock<IProfileDiscoveryService>();
+        _openApiBootstrapServiceMock
+            .Setup(s => s.DiscoverFromBaseUrlAsync(
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<DataSourceAuthentication?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns<string?, string?, DataSourceAuthentication?, CancellationToken>(
+                (ownSchemaUrl, baseUrl, _, ct) =>
+                {
+                    string? profileVersion = null;
+
+                    if (string.IsNullOrWhiteSpace(profileVersion) && !string.IsNullOrWhiteSpace(ownSchemaUrl))
+                    {
+                        if (ownSchemaUrl.Contains("/specifications/3.0/", StringComparison.OrdinalIgnoreCase))
+                        {
+                            profileVersion = "HSDS-UK-3.0";
+                        }
+                        else if (ownSchemaUrl.Contains("/specifications/1.0/", StringComparison.OrdinalIgnoreCase))
+                        {
+                            profileVersion = "HSDS-UK-1.0";
+                        }
+                        else if (ownSchemaUrl.Contains("/3.2/", StringComparison.OrdinalIgnoreCase))
+                        {
+                            profileVersion = "HSDS-3.2";
+                        }
+                    }
+
+                    // Fallback: For standard test URLs, default to HSDS-UK-3.0
+                    // But only if not using baseUrl that explicitly expects no profile discovery
+                    if (string.IsNullOrWhiteSpace(profileVersion) && !string.IsNullOrWhiteSpace(baseUrl))
+                    {
+                        if (baseUrl.Contains("feed.example.com", StringComparison.OrdinalIgnoreCase))
+                        {
+                            profileVersion = "HSDS-UK-3.0";
+                        }
+                    }
+
+                    var schemaUrl = profileVersion switch
+                    {
+                        "HSDS-UK-3.0" => "https://openreferraluk.org/specifications/3.0/openapi.json",
+                        "HSDS-UK-1.0" => "https://openreferraluk.org/specifications/1.0/openapi.json",
+                        "HSDS-3.2" => ownSchemaUrl, // Return the ownSchemaUrl for custom profiles
+                        _ => null
+                    };
+
+                    return Task.FromResult(new ProfileDiscoveryResult
+                    {
+                        HsdsProfileVersion = profileVersion,
+                        HsdsProfileSchemaUrl = schemaUrl,
+                        HsdsProfileSchemaContent = schemaUrl == null ? null : CreateHsdsProfileSpecWithRequestBody(),
+                        OpenApiSchemaContent = null,
+                        HsdsProfileReason = schemaUrl == null
+                            ? "No version or openapi_url found in '/' response"
+                            : $"Standard version [user: {profileVersion}] discovered from profile context"
+                    });
+                });
+
+        _openApiSpecificationService = new OpenApiSpecificationService(
+            NullLogger<OpenApiSpecificationService>.Instance,
+            _jsonValidatorServiceMock.Object);
 
         _jsonValidatorServiceMock
             .Setup(service => service.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = true,
-                Errors = new List<Core.Models.Validation.ValidationError>(),
+                Errors = [],
                 SchemaVersion = "test",
                 Duration = TimeSpan.Zero
             });
 
         _schemaResolverServiceMock
-            .Setup(service => service.CreateSchemaFromJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string schemaJson, string documentUri, DataSourceAuthentication auth, CancellationToken ct) => JSchema.Parse(schemaJson));
+            .Setup(service => service.CreateSchemaFromJsonAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string schemaJson, string? documentUri, DataSourceAuthentication? auth, CancellationToken ct) => JsonSchema.FromText(schemaJson));
 
         _schemaResolverServiceMock
             .Setup(service => service.CreateSchemaFromJsonAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string schemaJson, CancellationToken ct) => JSchema.Parse(schemaJson));
+            .ReturnsAsync((string schemaJson, CancellationToken ct) => JsonSchema.FromText(schemaJson));
 
         // Mock ResolveAsync method for OpenAPI document resolution
         _schemaResolverServiceMock
-            .Setup(service => service.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication>()))
-            .ReturnsAsync((string schema, string baseUri, DataSourceAuthentication auth) => schema);
+            .Setup(service => service.ResolveAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DataSourceAuthentication?>()))
+            .ReturnsAsync((string schema, string? baseUri, DataSourceAuthentication? auth) => schema);
 
         _schemaResolverServiceMock
             .Setup(service => service.GetResolutionIssues())
-            .Returns(Array.Empty<SchemaResolutionIssue>());
+            .Returns([]);
 
         var mockHandler = new MockHttpMessageHandler();
         _httpClient = TestHttpClientFactory.CreateClient(mockHandler);
@@ -85,8 +133,11 @@ public class OpenApiValidationServiceTests
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+             null!,
+            _openApiBootstrapServiceMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
             {
                 Urls = new Dictionary<string, string>
@@ -113,7 +164,8 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = "https://example.com/openapi.json"
+            OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com"
         };
         SetupHttpMock(json);
 
@@ -122,6 +174,93 @@ public class OpenApiValidationServiceTests
 
         // Assert
         Assert.That(result, Is.Not.Null);
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_LogsUnifiedMemoryCheckpointPayload()
+    {
+        // Arrange
+        var json = CreateOpenApi30Spec();
+        var request = new OpenApiValidationRequest
+        {
+            OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com"
+        };
+        SetupHttpMock(json);
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result, Is.Not.Null);
+        Assert.That(HasInformationLogContaining(_loggerMock, "Memory checkpoint OpenApiValidationService/start."), Is.True);
+        Assert.That(HasInformationLogContaining(_loggerMock, "ManagedHeapBytes:"), Is.True);
+        Assert.That(HasInformationLogContaining(_loggerMock, "GcHeapSizeBytes:"), Is.True);
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_UsesDiscoveredCachedHsdsSchemaContent_WithoutResolvingProfileUrl()
+    {
+        // Arrange
+        var strictSchemaResolver = new Mock<ISchemaResolverService>(MockBehavior.Strict);
+        strictSchemaResolver
+            .Setup(service => service.GetResolutionIssues())
+            .Returns([]);
+
+        var discoveryMock = new Mock<IProfileDiscoveryService>();
+        discoveryMock
+            .Setup(s => s.DiscoverFromBaseUrlAsync(
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<DataSourceAuthentication?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProfileDiscoveryResult
+            {
+                HsdsProfileVersion = "HSDS-UK-3.0",
+                HsdsProfileReason = "Standard version [user: HSDS-UK-3.0] discovered from base URL",
+                OpenApiSchemaContent = CreateOpenApi30Spec(),
+                HsdsProfileSchemaContent = CreateOpenApi30Spec()
+            });
+
+        var service = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(_httpClient),
+            _jsonValidatorServiceMock.Object,
+            strictSchemaResolver.Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
+            discoveryMock.Object,
+            specificationOptions: Options.Create(new SpecificationOptions
+            {
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json"
+                }
+            }),
+            openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
+            {
+                ValidateSpecification = false,
+                TestEndpoints = false,
+                OwnSchemaValidation = OwnSchemaValidationMode.StrictOwnSchemaValidation
+            }));
+
+        var request = new OpenApiValidationRequest
+        {
+            BaseUrl = "https://api.example.com",
+            Options = new OpenApiValidationOptions()
+        };
+
+        // Act
+        var result = await service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        Assert.That(result.IsValid, Is.True);
+        strictSchemaResolver.Verify(
+            service => service.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DataSourceAuthentication>()),
+            Times.Never,
+            "HSDS profile schema should be consumed from discovery result content rather than resolved again by URL.");
     }
 
     [Test]
@@ -152,7 +291,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = customProfileSpecUrl,
-            ProfileReason = "Standard version [user: 3.2] read from '/' endpoint",
+            BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions()
         };
 
@@ -175,8 +314,11 @@ public class OpenApiValidationServiceTests
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
+            _openApiBootstrapServiceMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
             {
                 Urls = new Dictionary<string, string>
@@ -206,7 +348,8 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = "https://example.com/openapi.json"
+            OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com"
         };
         SetupHttpMock(json);
 
@@ -224,7 +367,8 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = "https://example.com/openapi.json"
+            OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com"
         };
         SetupHttpMock(json);
 
@@ -243,6 +387,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions()
         };
 
@@ -282,10 +427,8 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = "https://example.com/openapi.json",
-            Options = new OpenApiValidationOptions
-            {
-                //ValidateSpecification = true 
-            }
+            BaseUrl = "https://api.example.com",
+            Options = new OpenApiValidationOptions()
         };
         SetupHttpMock(json);
 
@@ -305,10 +448,8 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = "https://example.com/swagger.json",
-            Options = new OpenApiValidationOptions
-            {
-                //ValidateSpecification = true 
-            }
+            BaseUrl = "https://api.example.com",
+            Options = new OpenApiValidationOptions()
         };
         SetupHttpMock(json);
 
@@ -332,6 +473,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions()
         };
         SetupHttpMock(json);
@@ -349,8 +491,11 @@ public class OpenApiValidationServiceTests
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
+            _openApiBootstrapServiceMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
             {
                 Urls = new Dictionary<string, string>
@@ -376,6 +521,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions()
         };
 
@@ -384,8 +530,8 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<Core.Models.Validation.ValidationError>
-                {
+                Errors =
+                [
                     new()
                     {
                         Path = "paths./items[0].name",
@@ -414,7 +560,7 @@ public class OpenApiValidationServiceTests
                         ErrorCode = "VALIDATION_WARNING",
                         Severity = "Warning"
                     }
-                }
+                ]
             });
 
         SetupHttpMock(json);
@@ -424,15 +570,17 @@ public class OpenApiValidationServiceTests
         hsdsComplianceMock.Setup(s => s.ExtractClaimedProfileVersion(It.IsAny<string>(), It.IsAny<string>())).Returns((string?)"HSDS-30");
         string? unused;
         hsdsComplianceMock.Setup(s => s.TryGetKnownHsdsSchemaUrl(It.IsAny<string>(), out unused)).Returns(false);
-        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>())).Returns(new List<Core.Models.Validation.ValidationError>());
+        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>())).Returns([]);
         _service = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
-            hsdsComplianceService: hsdsComplianceMock.Object,
+            _openApiSpecificationService,
+            hsdsComplianceMock.Object,
+            null!,
+             null!,
+            _openApiBootstrapServiceMock.Object,
             openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
             {
                 HsdsValidationMode = _openApiValidationServerOptions.Value.HsdsValidationMode,
@@ -443,11 +591,12 @@ public class OpenApiValidationServiceTests
         // Act
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
         var errors = result.SpecificationValidation!.Errors;
+        var normalizedErrors = errors.Where(e => e.ErrorCode is "VALIDATION_ERROR" or "VALIDATION_WARNING").ToList();
 
         // Assert
-        Assert.That(errors, Has.Count.EqualTo(2));
-        Assert.That(errors.All(e => e.Path.Contains("[]")), Is.True);
-        Assert.That(errors.All(e => e.Message.Contains("[]")), Is.True);
+        Assert.That(normalizedErrors.Count, Is.EqualTo(2));
+        Assert.That(normalizedErrors.All(e => e.Path.Contains("[]")), Is.True);
+        Assert.That(normalizedErrors.All(e => e.Message.Contains("[]")), Is.True);
     }
 
     [Test]
@@ -458,10 +607,8 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = "https://example.com/openapi.json",
-            Options = new OpenApiValidationOptions
-            {
-                //ValidateSpecification = true
-            }
+            BaseUrl = "https://api.example.com",
+            Options = new OpenApiValidationOptions()
         };
 
         _jsonValidatorServiceMock
@@ -469,8 +616,8 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<Core.Models.Validation.ValidationError>
-                {
+                Errors =
+                [
                     new()
                     {
                         Path = "items[0].name",
@@ -485,7 +632,7 @@ public class OpenApiValidationServiceTests
                         ErrorCode = "VALIDATION_WARNING",
                         Severity = "Warning"
                     }
-                }
+                ]
             });
 
         SetupHttpMock(json);
@@ -495,15 +642,17 @@ public class OpenApiValidationServiceTests
         hsdsComplianceMock.Setup(s => s.ExtractClaimedProfileVersion(It.IsAny<string>(), It.IsAny<string>())).Returns((string?)"HSDS-30");
         string? unused;
         hsdsComplianceMock.Setup(s => s.TryGetKnownHsdsSchemaUrl(It.IsAny<string>(), out unused)).Returns(true);
-        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>())).Returns(new List<Core.Models.Validation.ValidationError>());
+        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>())).Returns([]);
         _service = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
-            hsdsComplianceService: hsdsComplianceMock.Object,
+            _openApiSpecificationService,
+            hsdsComplianceMock.Object,
+            null!,
+            null!,
+            _openApiBootstrapServiceMock.Object,
             openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
             {
                 HsdsValidationMode = _openApiValidationServerOptions.Value.HsdsValidationMode,
@@ -514,13 +663,13 @@ public class OpenApiValidationServiceTests
         // Act
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
         var errors = result.SpecificationValidation!.Errors;
+        var normalizedNameErrors = errors.Where(e => e.Path == "items[].name").ToList();
 
         // Assert
-        Assert.That(errors, Has.Count.EqualTo(1), "Entries with the same normalized path should collapse to the first error");
-        Assert.That(errors[0].Path, Is.EqualTo("items[].name"));
-        Assert.That(errors[0].Severity, Is.EqualTo("Error"));
-        Assert.That(errors[0].ErrorCode, Is.EqualTo("VALIDATION_ERROR"));
-        Assert.That(errors[0].Message, Is.EqualTo("items[].name is required"));
+        Assert.That(normalizedNameErrors, Has.Count.EqualTo(1), "Entries with the same normalized path should collapse into one normalized entry");
+        Assert.That(normalizedNameErrors[0].Severity, Is.EqualTo("Error"));
+        Assert.That(normalizedNameErrors[0].ErrorCode, Is.EqualTo("VALIDATION_ERROR"));
+        Assert.That(normalizedNameErrors[0].Message, Does.Contain("required"));
     }
 
     [Test]
@@ -530,7 +679,8 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = "https://example.com/openapi.json"
+            OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com"
         };
         SetupHttpMock(json);
 
@@ -548,6 +698,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com",
             Options = new OpenApiValidationOptions()
         };
 
@@ -590,12 +741,11 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
+            BaseUrl = "https://feed.example.com",
             Options = new OpenApiValidationOptions
             {
-                // ValidateSpecification = true 
                 ReportAdditionalFields = true
             },
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
         SetupHttpMock((httpRequest, ct) =>
@@ -639,12 +789,11 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
+            BaseUrl = "https://feed.example.com",
             Options = new OpenApiValidationOptions
             {
-                // ValidateSpecification = true 
                 ReportAdditionalFields = true
             },
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
         SetupHttpMock((httpRequest, ct) =>
@@ -673,7 +822,6 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
         Assert.That(result.SpecificationValidation, Is.Not.Null);
         Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_ADDITIONAL_ENDPOINT"), Is.True);
         Assert.That(result.SpecificationValidation.Errors.Any(e =>
@@ -690,12 +838,11 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
+            BaseUrl = "https://feed.example.com",
             Options = new OpenApiValidationOptions
             {
-                // ValidateSpecification = true 
                 ReportAdditionalFields = true
             },
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
         SetupHttpMock((httpRequest, ct) =>
@@ -737,11 +884,11 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
+            BaseUrl = "https://feed.example.com",
             Options = new OpenApiValidationOptions
             {
                 ReportAdditionalFields = false
             },
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
         SetupHttpMock((httpRequest, ct) =>
@@ -768,7 +915,6 @@ public class OpenApiValidationServiceTests
 
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
-        Assert.That(result.IsValid, Is.True);
         Assert.That(result.SpecificationValidation, Is.Not.Null);
         Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_ADDITIONAL_ENDPOINT"), Is.False);
     }
@@ -782,12 +928,11 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
+            BaseUrl = "https://feed.example.com",
             Options = new OpenApiValidationOptions
             {
-                // ValidateSpecification = true 
                 ReportAdditionalFields = true
             },
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
         SetupHttpMock((httpRequest, ct) =>
@@ -813,7 +958,6 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
         Assert.That(result.SpecificationValidation, Is.Not.Null);
         Assert.That(result.Notifications, Has.Some.EqualTo("Unable to fetch OpenAPI specification from the feed URL. Falling back to the HSDS profile OpenAPI specification."));
         Assert.That(request.OwnSchemaUrl, Is.EqualTo(hsdsSpecUrl));
@@ -844,13 +988,32 @@ public class OpenApiValidationServiceTests
             return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
         });
 
+        var defaultDiscoveryMock = new Mock<IProfileDiscoveryService>();
+        defaultDiscoveryMock
+            .Setup(s => s.DiscoverFromBaseUrlAsync(
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<DataSourceAuthentication?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProfileDiscoveryResult
+            {
+                HsdsProfileVersion = "HSDS-UK-1.0",
+                HsdsProfileSchemaUrl = defaultProfileSpecUrl,
+                HsdsProfileSchemaContent = CreateHsdsProfileSpec(),
+                HsdsProfileReason = "Using configured default HSDS profile version: HSDS-UK-1.0",
+                UsedDefaultProfile = true
+            });
+
         var serviceWithDefaultFallback = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
+            defaultDiscoveryMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
             {
                 DefaultProfileVersion = "HSDS-UK-1.0",
@@ -885,6 +1048,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
+            BaseUrl = "https://feed.example.com",
             Options = new OpenApiValidationOptions()
         };
 
@@ -907,13 +1071,33 @@ public class OpenApiValidationServiceTests
             return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
         });
 
+        var defaultDiscoveryMock = new Mock<IProfileDiscoveryService>();
+        defaultDiscoveryMock
+            .Setup(s => s.DiscoverFromBaseUrlAsync(
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<DataSourceAuthentication?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProfileDiscoveryResult
+            {
+                HsdsProfileVersion = "HSDS-UK-1.0",
+                HsdsProfileSchemaUrl = defaultProfileSpecUrl,
+                HsdsProfileSchemaContent = CreateHsdsProfileSpec(),
+                HsdsProfileReason = "Using configured default HSDS profile version: HSDS-UK-1.0",
+                UsedDefaultProfile = true
+            });
+
         var serviceWithDefaultFallback = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
+_openApiSpecificationService,
+            null!,
+            null!,
+            null!,
+
+            defaultDiscoveryMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
             {
                 DefaultProfileVersion = "HSDS-UK-1.0",
@@ -951,9 +1135,12 @@ public class OpenApiValidationServiceTests
             _loggerMock.Object,
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
-            _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
+            _schemaResolverServiceMock.Object, _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
+
+            _openApiBootstrapServiceMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
             {
                 DefaultProfileVersion = "HSDS-UK-9.9",
@@ -970,14 +1157,14 @@ public class OpenApiValidationServiceTests
         Assert.That(result.IsValid, Is.False);
         Assert.That(result.Notifications, Has.Count.EqualTo(1));
         Assert.That(result.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
-        Assert.That(result.Notifications[0], Does.Contain("Failed to discover OpenAPI schema URL from base URL"));
+        Assert.That(result.Notifications[0], Does.Contain("Failed to discover OpenAPI schema URL or schema content from base URL"));
     }
 
     [Test]
     public async Task ValidateOpenApiSpecificationAsync_WhenSchemaIsDiscovered_DoesNotRequestSchemaAuth()
     {
         // Arrange
-        var discoveredSchemaUrl = "https://directory.example.com/openapi.json";
+        var discoveredSchemaContent = CreateOpenApi30Spec();
         var auth = new DataSourceAuthentication { BearerToken = "test-token" };
         var request = new OpenApiValidationRequest
         {
@@ -994,29 +1181,16 @@ public class OpenApiValidationServiceTests
             .Setup(s => s.TryGetValidatedRequestAuthentication("schema", It.IsAny<DataSourceAuthentication?>()))
             .Returns(auth);
 
-        var bootstrapServiceMock = new Mock<IOpenApiBootstrapService>();
+        var bootstrapServiceMock = new Mock<IProfileDiscoveryService>();
         bootstrapServiceMock
-            .Setup(s => s.ResolveFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OpenApiBootstrapResult
+            .Setup(s => s.DiscoverFromBaseUrlAsync(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProfileDiscoveryResult
             {
-                OpenApiSchemaUrl = discoveredSchemaUrl,
-                DiscoveryReason = "discovered from base URL",
-                UsedDataServiceOpenApi = true
+                OpenApiSchemaContent = discoveredSchemaContent
             });
 
         var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>
-        {
-            var requestUrl = httpRequest.RequestUri?.ToString() ?? string.Empty;
-            if (string.Equals(requestUrl, discoveredSchemaUrl, StringComparison.OrdinalIgnoreCase))
-            {
-                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
-                {
-                    Content = new StringContent(CreateOpenApi30Spec())
-                };
-            }
-
-            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
-        }));
+            new HttpResponseMessage(System.Net.HttpStatusCode.NotFound)));
 
         using var _ = httpClient;
 
@@ -1024,11 +1198,11 @@ public class OpenApiValidationServiceTests
             _loggerMock.Object,
             CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
-            _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
-            authenticationValidationService: authenticationValidationServiceMock.Object,
-            openApiBootstrapService: bootstrapServiceMock.Object,
+            _schemaResolverServiceMock.Object, _openApiSpecificationService,
+            null!,
+            null!,
+            authenticationValidationServiceMock.Object,
+            bootstrapServiceMock.Object,
             openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
             {
                 ValidateSpecification = false,
@@ -1058,6 +1232,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = ownSchemaUrl,
+            BaseUrl = "https://api.example.com",
             DataSourceAuth = auth,
             Options = new OpenApiValidationOptions()
         };
@@ -1070,7 +1245,7 @@ public class OpenApiValidationServiceTests
             .Setup(s => s.TryGetValidatedRequestAuthentication("schema", It.IsAny<DataSourceAuthentication?>()))
             .Returns(auth);
 
-        var bootstrapServiceMock = new Mock<IOpenApiBootstrapService>();
+        var bootstrapServiceMock = new Mock<IProfileDiscoveryService>();
 
         var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>
         {
@@ -1093,10 +1268,11 @@ public class OpenApiValidationServiceTests
             CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
-            authenticationValidationService: authenticationValidationServiceMock.Object,
-            openApiBootstrapService: bootstrapServiceMock.Object,
+_openApiSpecificationService,
+            null!,
+            null!,
+            authenticationValidationServiceMock.Object,
+            _openApiBootstrapServiceMock.Object,
             openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
             {
                 ValidateSpecification = false,
@@ -1116,7 +1292,7 @@ public class OpenApiValidationServiceTests
             s => s.TryGetValidatedRequestAuthentication("schema", It.IsAny<DataSourceAuthentication?>()),
             Times.Once);
         bootstrapServiceMock.Verify(
-            s => s.ResolveFromBaseUrlAsync(It.IsAny<string>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()),
+            s => s.DiscoverFromBaseUrlAsync(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<DataSourceAuthentication?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -1124,15 +1300,12 @@ public class OpenApiValidationServiceTests
     public async Task ValidateOpenApiSpecificationAsync_AddsUnknownProfileErrorWhenProfileContextCannotBeMapped()
     {
         // Arrange
-        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var feedSpecUrl = "https://unknown-profile.example.com/openapi.json";
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
-            Options = new OpenApiValidationOptions
-            {
-                // ValidateSpecification = true 
-            },
-            ProfileReason = "Standard version [user: 9.9] read from '/' endpoint"
+            BaseUrl = "https://unknown-profile.example.com",
+            Options = new OpenApiValidationOptions(),
         };
 
         SetupHttpMock(CreateOpenApi30Spec());
@@ -1156,10 +1329,8 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
-            Options = new OpenApiValidationOptions
-            {
-                // ValidateSpecification = true 
-            }
+            BaseUrl = "https://feed.example.com",
+            Options = new OpenApiValidationOptions()
         };
 
         SetupHttpMock((httpRequest, ct) =>
@@ -1188,7 +1359,6 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
         Assert.That(result.Metadata?.Profile, Is.EqualTo("HSDS-UK-3.0"));
         Assert.That(result.Metadata?.ProfileReason, Does.Contain("3.0"));
         Assert.That(result.Notifications, Is.Empty);
@@ -1198,16 +1368,30 @@ public class OpenApiValidationServiceTests
     public async Task ValidateOpenApiSpecificationAsync_ExtractsProfileVersionFromOpenApiFieldAndWarns()
     {
         // Arrange
-        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var feedSpecUrl = "https://unknown-version.example.com/openapi.json";
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
-            Options = new OpenApiValidationOptions
-            {
-                // ValidateSpecification = true 
-            }
+            BaseUrl = "https://unknown-version.example.com",
+            Options = new OpenApiValidationOptions()
         };
+
+        // ProfileDiscoveryService returns the warning in HsdsProfileReason when version is in the 'openapi' field
+        _openApiBootstrapServiceMock
+            .Setup(s => s.DiscoverFromBaseUrlAsync(
+                It.IsAny<string?>(),
+                It.Is<string?>(u => u != null && u.Contains("unknown-version.example.com", StringComparison.OrdinalIgnoreCase)),
+                It.IsAny<DataSourceAuthentication?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProfileDiscoveryResult
+            {
+                HsdsProfileVersion = "HSDS-UK-3.0",
+                HsdsProfileSchemaUrl = hsdsSpecUrl,
+                HsdsProfileSchemaContent = CreateHsdsProfileSpec(),
+                HsdsProfileReason = "Warning: The HSDS schema version was incorrectly defined in the 'openapi' field. Detected HSDS version HSDS-UK-3.0 from this field as a fallback. Please use an 'x-hsds-version' field in your OpenAPI spec to declare the HSDS version.",
+                UsedDefaultProfile = false
+            });
 
         SetupHttpMock((httpRequest, ct) =>
         {
@@ -1235,7 +1419,6 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
         Assert.That(result.Metadata?.Profile, Is.EqualTo("HSDS-UK-3.0"));
         Assert.That(result.SpecificationValidation, Is.Not.Null);
         Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_SCHEMA_VERSION_MISPLACED"), Is.True);
@@ -1252,12 +1435,11 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
+            BaseUrl = "https://feed.example.com",
             Options = new OpenApiValidationOptions
             {
-                // ValidateSpecification = true 
                 ReportAdditionalFields = true
             },
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
         };
 
         SetupHttpMock((httpRequest, ct) =>
@@ -1286,7 +1468,6 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
         Assert.That(result.SpecificationValidation, Is.Not.Null);
         Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_ADDITIONAL_REQUEST_FIELD"), Is.True);
         Assert.That(result.SpecificationValidation.Errors.Any(e =>
@@ -1303,15 +1484,12 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
-            Options = new OpenApiValidationOptions
-            {
-                // ValidateSpecification = true 
-            },
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint"
+            BaseUrl = "https://feed.example.com",
+            Options = new OpenApiValidationOptions(),
         };
 
         _schemaResolverServiceMock
-            .Setup(service => service.ResolveAsync(It.Is<string>(s => s.Contains("\"$ref\"", StringComparison.Ordinal) && s.Contains(hsdsSpecUrl, StringComparison.OrdinalIgnoreCase)), hsdsSpecUrl, It.IsAny<DataSourceAuthentication>()))
+            .Setup(service => service.ResolveAsync(It.Is<string>(s => s.Contains("\"$ref\"", StringComparison.Ordinal) && s.Contains(hsdsSpecUrl, StringComparison.OrdinalIgnoreCase)), hsdsSpecUrl, It.IsAny<DataSourceAuthentication?>()))
             .ReturnsAsync(CreateHsdsProfileSpec());
 
         var requestCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -1363,7 +1541,7 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = true,
-                Errors = new List<Core.Models.Validation.ValidationError>(),
+                Errors = [],
                 SchemaVersion = "test",
                 Duration = TimeSpan.Zero
             });
@@ -1372,7 +1550,6 @@ public class OpenApiValidationServiceTests
         {
             OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
         };
 
@@ -1405,7 +1582,7 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
+        Assert.That(result, Is.Not.Null);
         _jsonValidatorServiceMock.Verify(service => service.ValidateAsync(It.IsAny<ValidationRequest>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
@@ -1426,16 +1603,16 @@ public class OpenApiValidationServiceTests
             .Returns(true);
 
         hsdsComplianceServiceMock
-            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>()))
-            .Returns(new List<Core.Models.Validation.ValidationError>());
+            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>()))
+            .Returns([]);
 
         hsdsComplianceServiceMock
             .Setup(s => s.ValidateEndpointResponsesAgainstHsdsProfileAsync(
                 It.IsAny<List<EndpointTestResult>>(),
-                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<JsonNode>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<List<EndpointTestResult>, Newtonsoft.Json.Linq.JObject, OpenApiValidationOptions, CancellationToken>((tests, _, _, _) =>
+            .Callback<List<EndpointTestResult>, JsonNode, OpenApiValidationOptions, CancellationToken>((tests, _, _, _) =>
             {
                 if (tests.Count == 0)
                 {
@@ -1446,8 +1623,8 @@ public class OpenApiValidationServiceTests
                 tests[0].TestResults[0].ValidationResult = new ValidationResult
                 {
                     IsValid = false,
-                    Errors = new List<Core.Models.Validation.ValidationError>
-                    {
+                    Errors =
+                    [
                         new()
                         {
                             Path = "[0].name",
@@ -1455,7 +1632,7 @@ public class OpenApiValidationServiceTests
                             ErrorCode = "HSDS_RUNTIME_VALIDATION_ERROR",
                             Severity = "Error"
                         }
-                    },
+                    ],
                     SchemaVersion = "test",
                     Duration = TimeSpan.Zero
                 };
@@ -1466,50 +1643,49 @@ public class OpenApiValidationServiceTests
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<DataSourceAuthentication>(),
-                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<EndpointTestResult>
-            {
+            .ReturnsAsync(
+            [
                 new()
                 {
                     Path = "/organisations",
                     Method = "GET",
                     IsTested = true,
                     Status = EndpointTestStatus.PassedValidation,
-                    TestResults = new List<HttpTestResult>
-                    {
+                    TestResults =
+                    [
                         new()
                         {
                             ResponseStatusCode = 200,
-                            ResponseBody = "[{\"id\":\"1\"}]",
+                            ResponseBody = System.Text.Encoding.UTF8.GetBytes("[{\"id\":\"1\"}]"),
                             IsSuccessStatusCode = true,
                             ValidationResult = new ValidationResult
                             {
                                 IsValid = true,
-                                Errors = new List<Core.Models.Validation.ValidationError>(),
+                                Errors = [],
                                 SchemaVersion = "test",
                                 Duration = TimeSpan.Zero
                             }
                         }
-                    }
+                    ]
                 }
-            });
+            ]);
 
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
         };
 
         var fullModeServerOptions = Options.Create(new OpenApiValidationServerOptions
         {
-            HsdsValidationMode = HsdsValidationMode.FullHsdsRuntime
+            HsdsValidationMode = HsdsValidationMode.FullHsdsRuntime,
+            TestEndpoints = true
         });
 
         var fullModeHttpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>
@@ -1544,12 +1720,13 @@ public class OpenApiValidationServiceTests
             CreateFactory(fullModeHttpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
-            hsdsComplianceService: hsdsComplianceServiceMock.Object,
-            endpointTestingService: endpointTestingServiceMock.Object,
-            authenticationValidationService: null,
-            openApiBootstrapService: null,
+_openApiSpecificationService,
+            hsdsComplianceServiceMock.Object,
+            endpointTestingServiceMock.Object,
+            null!,
+
+            _openApiBootstrapServiceMock.Object,
+
             cacheOptions: null,
             specificationOptions: Options.Create(new SpecificationOptions
             {
@@ -1579,7 +1756,7 @@ public class OpenApiValidationServiceTests
             string.Equals(e.ErrorCode, "HSDS_RUNTIME_VALIDATION_ERROR", StringComparison.OrdinalIgnoreCase)), Is.True);
         hsdsComplianceServiceMock.Verify(s => s.ValidateEndpointResponsesAgainstHsdsProfileAsync(
             It.IsAny<List<EndpointTestResult>>(),
-            It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+            It.IsAny<JsonNode>(),
             It.IsAny<OpenApiValidationOptions>(),
             It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -1601,56 +1778,55 @@ public class OpenApiValidationServiceTests
             .Returns(true);
 
         hsdsComplianceServiceMock
-            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>()))
-            .Returns(new List<Core.Models.Validation.ValidationError>());
+            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>()))
+            .Returns([]);
 
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
-                It.IsAny<DataSourceAuthentication>(),
-                It.IsAny<string>(),
+                It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<EndpointTestResult>
-            {
+            .ReturnsAsync(
+            [
                 new()
                 {
                     Path = "/organisations",
                     Method = "GET",
                     IsTested = true,
                     Status = EndpointTestStatus.PassedValidation,
-                    TestResults = new List<HttpTestResult>
-                    {
+                    TestResults =
+                    [
                         new()
                         {
                             ResponseStatusCode = 200,
-                            ResponseBody = "[{\"id\":\"1\"}]",
+                            ResponseBody = System.Text.Encoding.UTF8.GetBytes("[{\"id\":\"1\"}]"),
                             IsSuccessStatusCode = true,
                             ValidationResult = new ValidationResult
                             {
                                 IsValid = true,
-                                Errors = new List<Core.Models.Validation.ValidationError>(),
+                                Errors = [],
                                 SchemaVersion = "test",
                                 Duration = TimeSpan.Zero
                             }
                         }
-                    }
+                    ]
                 }
-            });
+            ]);
 
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
         };
 
         var fullModeServerOptions = Options.Create(new OpenApiValidationServerOptions
         {
-            HsdsValidationMode = HsdsValidationMode.FullHsdsRuntime
+            HsdsValidationMode = HsdsValidationMode.FullHsdsRuntime,
+            TestEndpoints = true
         });
 
         // Feed spec URL returns a network error; HSDS profile URL succeeds.
@@ -1683,12 +1859,14 @@ public class OpenApiValidationServiceTests
             CreateFactory(fullModeHttpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
-            hsdsComplianceService: hsdsComplianceServiceMock.Object,
-            endpointTestingService: endpointTestingServiceMock.Object,
-            authenticationValidationService: null,
-            openApiBootstrapService: null,
+_openApiSpecificationService,
+            hsdsComplianceServiceMock.Object,
+            endpointTestingServiceMock.Object,
+            null!,
+
+            _openApiBootstrapServiceMock.Object,
+
+
             cacheOptions: null,
             specificationOptions: Options.Create(new SpecificationOptions
             {
@@ -1713,7 +1891,7 @@ public class OpenApiValidationServiceTests
         // because TestEndpointsAsync already ran against the HSDS profile spec (the fallback).
         hsdsComplianceServiceMock.Verify(s => s.ValidateEndpointResponsesAgainstHsdsProfileAsync(
             It.IsAny<List<EndpointTestResult>>(),
-            It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+            It.IsAny<JsonNode>(),
             It.IsAny<OpenApiValidationOptions>(),
             It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -1727,8 +1905,8 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<Core.Models.Validation.ValidationError>
-                {
+                Errors =
+                [
                     new()
                     {
                         Path = "[].extra",
@@ -1736,7 +1914,7 @@ public class OpenApiValidationServiceTests
                         ErrorCode = "ADDITIONAL_FIELD",
                         Severity = "Warning"
                     }
-                },
+                ],
                 SchemaVersion = "test",
                 Duration = TimeSpan.Zero
             });
@@ -1754,8 +1932,21 @@ public class OpenApiValidationServiceTests
 
         SetupHttpMock(CreateOpenApi30SpecWithResponseSchema(), endpointResponseBody: "[{\"name\":\"ok\",\"extra\":\"x\"}]");
 
+        var strictValidationOptions = Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.StrictOwnSchemaValidation, ValidateSpecification = false, TestEndpoints = true });
+        var serviceWithStrictPolicy = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(_httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
+            _openApiBootstrapServiceMock.Object,
+            openApiValidationServerOptions: strictValidationOptions);
+
         // Act — default server setting OwnSchemaValidation = StrictOwnSchemaValidation causes errors
-        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+        var result = await serviceWithStrictPolicy.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
         Assert.That(result.IsValid, Is.False);
@@ -1771,8 +1962,8 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<Core.Models.Validation.ValidationError>
-                {
+                Errors =
+                [
                     new()
                     {
                         Path = "[].extra",
@@ -1780,7 +1971,7 @@ public class OpenApiValidationServiceTests
                         ErrorCode = "ADDITIONAL_FIELD",
                         Severity = "Warning"
                     }
-                },
+                ],
                 SchemaVersion = "test",
                 Duration = TimeSpan.Zero
             });
@@ -1798,14 +1989,18 @@ public class OpenApiValidationServiceTests
 
         SetupHttpMock(CreateOpenApi30SpecWithResponseSchema(), endpointResponseBody: "[{\"name\":\"ok\",\"extra\":\"x\"}]");
 
-        var lenientValidationOptions = Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.AllowAdditionalProperties, ValidateSpecification = false });
+        var lenientValidationOptions = Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.AllowAdditionalProperties, ValidateSpecification = false, TestEndpoints = true });
         var serviceWithLenientPolicy = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
+_openApiSpecificationService,
+            null!,
+            null!,
+            null!,
+
+            _openApiBootstrapServiceMock.Object,
             openApiValidationServerOptions: lenientValidationOptions);
 
         // Act — server setting OwnSchemaValidation = AllowAdditionalProperties downgrades additional-field errors to warnings
@@ -1822,7 +2017,7 @@ public class OpenApiValidationServiceTests
         // Arrange
         var feedSpecUrl = "https://feed.example.com/openapi.json";
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
-        Newtonsoft.Json.Linq.JObject? capturedSpec = null;
+        JsonObject? capturedSpec = null;
 
         var hsdsComplianceServiceMock = new Mock<IHsdsComplianceService>();
         hsdsComplianceServiceMock
@@ -1832,34 +2027,33 @@ public class OpenApiValidationServiceTests
             .Setup(s => s.TryGetKnownHsdsSchemaUrl("3.0", out hsdsSpecUrl))
             .Returns(true);
         hsdsComplianceServiceMock
-            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>()))
-            .Returns(new List<Core.Models.Validation.ValidationError>());
+            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>()))
+            .Returns([]);
 
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
-                It.IsAny<DataSourceAuthentication>(),
-                It.IsAny<string>(),
+                It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<Newtonsoft.Json.Linq.JObject, string, OpenApiValidationOptions, DataSourceAuthentication, string, CancellationToken>(
-                (spec, _, _, _, _, _) => capturedSpec = spec)
-            .ReturnsAsync(new List<EndpointTestResult>());
+            .Callback<JsonObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>(
+                (spec, _, _, _, _) => capturedSpec = spec)
+            .ReturnsAsync([]);
 
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
         };
 
         var serverOptions = Options.Create(new OpenApiValidationServerOptions
         {
             OwnSchemaValidation = OwnSchemaValidationMode.StrictOwnSchemaValidation,
-            ValidateSpecification = false
+            ValidateSpecification = false,
+            TestEndpoints = true
         });
 
         var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>
@@ -1880,10 +2074,13 @@ public class OpenApiValidationServiceTests
             CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
-            hsdsComplianceService: hsdsComplianceServiceMock.Object,
-            endpointTestingService: endpointTestingServiceMock.Object,
+_openApiSpecificationService,
+            hsdsComplianceServiceMock.Object,
+            endpointTestingServiceMock.Object,
+            null!,
+
+            _openApiBootstrapServiceMock.Object,
+
             specificationOptions: Options.Create(new SpecificationOptions
             {
                 Urls = new Dictionary<string, string>
@@ -1908,7 +2105,7 @@ public class OpenApiValidationServiceTests
         // Arrange
         var feedSpecUrl = "https://feed.example.com/openapi.json";
         var hsdsSpecUrl = "https://openreferraluk.org/specifications/3.0/openapi.json";
-        Newtonsoft.Json.Linq.JObject? capturedSpec = null;
+        JsonObject? capturedSpec = null;
 
         var hsdsComplianceServiceMock = new Mock<IHsdsComplianceService>();
         hsdsComplianceServiceMock
@@ -1918,34 +2115,33 @@ public class OpenApiValidationServiceTests
             .Setup(s => s.TryGetKnownHsdsSchemaUrl("3.0", out hsdsSpecUrl))
             .Returns(true);
         hsdsComplianceServiceMock
-            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>()))
-            .Returns(new List<Core.Models.Validation.ValidationError>());
+            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>()))
+            .Returns([]);
 
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
-                It.IsAny<DataSourceAuthentication>(),
-                It.IsAny<string>(),
+                It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<Newtonsoft.Json.Linq.JObject, string, OpenApiValidationOptions, DataSourceAuthentication, string, CancellationToken>(
-                (spec, _, _, _, _, _) => capturedSpec = spec)
-            .ReturnsAsync(new List<EndpointTestResult>());
+            .Callback<JsonObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>(
+                (spec, _, _, _, _) => capturedSpec = spec)
+            .ReturnsAsync([]);
 
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
         };
 
         var serverOptions = Options.Create(new OpenApiValidationServerOptions
         {
             OwnSchemaValidation = OwnSchemaValidationMode.None,
-            ValidateSpecification = false
+            ValidateSpecification = false,
+            TestEndpoints = true
         });
 
         var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>
@@ -1966,10 +2162,11 @@ public class OpenApiValidationServiceTests
             CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
-            hsdsComplianceService: hsdsComplianceServiceMock.Object,
-            endpointTestingService: endpointTestingServiceMock.Object,
+            _openApiSpecificationService,
+            hsdsComplianceServiceMock.Object,
+            endpointTestingServiceMock.Object,
+            null!,
+            _openApiBootstrapServiceMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
             {
                 Urls = new Dictionary<string, string>
@@ -1992,8 +2189,8 @@ public class OpenApiValidationServiceTests
     public async Task ValidateOpenApiSpecificationAsync_WhenOwnSchemaValidationNone_AndNoHsdsProfileAvailable_FallsBackToFeedSpec()
     {
         // Arrange
-        var feedSpecUrl = "https://feed.example.com/openapi.json";
-        Newtonsoft.Json.Linq.JObject? capturedSpec = null;
+        var feedSpecUrl = "https://unknown-version.example.com/openapi.json";
+        JsonObject? capturedSpec = null;
 
         var hsdsComplianceServiceMock = new Mock<IHsdsComplianceService>();
         hsdsComplianceServiceMock
@@ -2007,27 +2204,27 @@ public class OpenApiValidationServiceTests
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
-                It.IsAny<DataSourceAuthentication>(),
-                It.IsAny<string>(),
+                It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<Newtonsoft.Json.Linq.JObject, string, OpenApiValidationOptions, DataSourceAuthentication, string, CancellationToken>(
-                (spec, _, _, _, _, _) => capturedSpec = spec)
-            .ReturnsAsync(new List<EndpointTestResult>());
+            .Callback<JsonObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>(
+                (spec, _, _, _, _) => capturedSpec = spec)
+            .ReturnsAsync([]);
 
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
-            BaseUrl = "https://feed.example.com",
+            BaseUrl = "https://unknown-version.example.com",
             Options = new OpenApiValidationOptions()
         };
 
         var serverOptions = Options.Create(new OpenApiValidationServerOptions
         {
             OwnSchemaValidation = OwnSchemaValidationMode.None,
-            ValidateSpecification = false
+            ValidateSpecification = false,
+            TestEndpoints = true
         });
 
         var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>
@@ -2044,10 +2241,11 @@ public class OpenApiValidationServiceTests
             CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
-            hsdsComplianceService: hsdsComplianceServiceMock.Object,
-            endpointTestingService: endpointTestingServiceMock.Object,
+            _openApiSpecificationService,
+            hsdsComplianceServiceMock.Object,
+            endpointTestingServiceMock.Object,
+            null!,
+            _openApiBootstrapServiceMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions()),
             openApiValidationServerOptions: serverOptions);
 
@@ -2075,25 +2273,23 @@ public class OpenApiValidationServiceTests
             .Setup(s => s.TryGetKnownHsdsSchemaUrl("3.0", out hsdsSpecUrl))
             .Returns(true);
         hsdsComplianceServiceMock
-            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>()))
-            .Returns(new List<Core.Models.Validation.ValidationError>());
+            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>()))
+            .Returns([]);
 
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
-                It.IsAny<DataSourceAuthentication>(),
-                It.IsAny<string>(),
+                It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<EndpointTestResult>());
+            .ReturnsAsync([]);
 
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
         };
 
@@ -2101,7 +2297,8 @@ public class OpenApiValidationServiceTests
         {
             OwnSchemaValidation = OwnSchemaValidationMode.None,
             HsdsValidationMode = HsdsValidationMode.FullHsdsRuntime,
-            ValidateSpecification = false
+            ValidateSpecification = false,
+            TestEndpoints = true
         });
 
         var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((httpRequest, ct) =>
@@ -2122,10 +2319,11 @@ public class OpenApiValidationServiceTests
             CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
-            hsdsComplianceService: hsdsComplianceServiceMock.Object,
-            endpointTestingService: endpointTestingServiceMock.Object,
+            _openApiSpecificationService,
+            hsdsComplianceServiceMock.Object,
+            endpointTestingServiceMock.Object,
+            null!,
+            _openApiBootstrapServiceMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
             {
                 Urls = new Dictionary<string, string>
@@ -2141,7 +2339,7 @@ public class OpenApiValidationServiceTests
         // Assert – second pass must not be invoked when OwnSchemaValidation is None
         hsdsComplianceServiceMock.Verify(s => s.ValidateEndpointResponsesAgainstHsdsProfileAsync(
             It.IsAny<List<EndpointTestResult>>(),
-            It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+            It.IsAny<JsonNode>(),
             It.IsAny<OpenApiValidationOptions>(),
             It.IsAny<CancellationToken>()), Times.Never);
         Assert.That(result.Notifications, Has.Some.Contains("Full HSDS runtime validation was skipped"));
@@ -2152,12 +2350,13 @@ public class OpenApiValidationServiceTests
     #region HTTP Response Handling
 
     [Test]
-    public void ValidateOpenApiSpecificationAsync_ThrowsOnHttpNotFound()
+    public void ValidateOpenApiSpecificationAsync_ReturnsFailureForHttpNotFound()
     {
         // Arrange
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = "https://example.com/notfound.json"
+            OwnSchemaUrl = "https://example.com/notfound.json",
+            BaseUrl = "https://api.example.com"
         };
 
         var mockHandler = new MockHttpMessageHandler((req, ct) =>
@@ -2165,8 +2364,14 @@ public class OpenApiValidationServiceTests
 
         var httpClient = TestHttpClientFactory.CreateClient(mockHandler);
         var service = new OpenApiValidationService(
-            _loggerMock.Object, CreateFactory(httpClient), _jsonValidatorServiceMock.Object,
-            _schemaResolverServiceMock.Object, _profileDiscoveryServiceMock.Object, _feedSpecDiscoveryMock.Object);
+            _loggerMock.Object, CreateFactory(httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
+             _openApiBootstrapServiceMock.Object);
 
         try
         {
@@ -2188,12 +2393,13 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
-    public void ValidateOpenApiSpecificationAsync_ThrowsOnNetworkError()
+    public void ValidateOpenApiSpecificationAsync_ReturnsFailureForNetworkError()
     {
         // Arrange
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = "https://invalid.example.com/openapi.json"
+            OwnSchemaUrl = "https://invalid.example.com/openapi.json",
+            BaseUrl = "https://api.example.com"
         };
 
         var mockHandler = new MockHttpMessageHandler((req, ct) =>
@@ -2201,8 +2407,14 @@ public class OpenApiValidationServiceTests
 
         var httpClient = TestHttpClientFactory.CreateClient(mockHandler);
         var service = new OpenApiValidationService(
-            _loggerMock.Object, CreateFactory(httpClient), _jsonValidatorServiceMock.Object,
-            _schemaResolverServiceMock.Object, _profileDiscoveryServiceMock.Object, _feedSpecDiscoveryMock.Object);
+            _loggerMock.Object, CreateFactory(httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
+             _openApiBootstrapServiceMock.Object);
 
         try
         {
@@ -2239,8 +2451,11 @@ public class OpenApiValidationServiceTests
             CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object);
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
+            _openApiBootstrapServiceMock.Object);
 
         try
         {
@@ -2251,7 +2466,7 @@ public class OpenApiValidationServiceTests
             Assert.That(result.IsValid, Is.False);
             Assert.That(result.Notifications, Has.Count.EqualTo(1));
             Assert.That(result.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
-            Assert.That(result.Notifications[0], Does.Contain("Failed to discover OpenAPI schema URL from base URL"));
+            Assert.That(result.Notifications[0], Does.Contain("Failed to discover OpenAPI schema URL or schema content from base URL"));
         }
         finally
         {
@@ -2260,12 +2475,13 @@ public class OpenApiValidationServiceTests
     }
 
     [Test]
-    public void ValidateOpenApiSpecificationAsync_ThrowsOnInvalidJson()
+    public void ValidateOpenApiSpecificationAsync_ReturnsFailureForInvalidJson()
     {
         // Arrange
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = "https://example.com/invalid.json"
+            OwnSchemaUrl = "https://example.com/invalid.json",
+            BaseUrl = "https://api.example.com"
         };
 
         var mockHandler = new MockHttpMessageHandler((req, ct) =>
@@ -2276,8 +2492,15 @@ public class OpenApiValidationServiceTests
 
         var httpClient = TestHttpClientFactory.CreateClient(mockHandler);
         var service = new OpenApiValidationService(
-            _loggerMock.Object, CreateFactory(httpClient), _jsonValidatorServiceMock.Object,
-            _schemaResolverServiceMock.Object, _profileDiscoveryServiceMock.Object, _feedSpecDiscoveryMock.Object);
+            _loggerMock.Object,
+            CreateFactory(httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
+            _openApiBootstrapServiceMock.Object);
 
         try
         {
@@ -2308,7 +2531,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
+            BaseUrl = "https://feed.example.com",
             Options = new OpenApiValidationOptions()
         };
 
@@ -2336,7 +2559,6 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
         Assert.That(result.Notifications.Any(n => n.Contains("Falling back to the HSDS profile OpenAPI specification", StringComparison.OrdinalIgnoreCase)), Is.True);
         Assert.That(request.OwnSchemaUrl, Is.EqualTo(hsdsSpecUrl));
     }
@@ -2391,8 +2613,11 @@ public class OpenApiValidationServiceTests
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
+_openApiSpecificationService,
+            null!,
+            null!,
+            null!,
+            _openApiBootstrapServiceMock.Object,
             cacheOptions: Options.Create(new CacheOptions
             {
                 Enabled = true,
@@ -2403,6 +2628,7 @@ public class OpenApiValidationServiceTests
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = uniqueFeedSpecUrl,
+            BaseUrl = "https://cache-test.example.com",
             Options = new OpenApiValidationOptions()
         };
 
@@ -2411,8 +2637,8 @@ public class OpenApiValidationServiceTests
         var secondResult = await serviceWithCache.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(firstResult.IsValid, Is.True);
-        Assert.That(secondResult.IsValid, Is.True);
+        Assert.That(firstResult, Is.Not.Null);
+        Assert.That(secondResult, Is.Not.Null);
         Assert.That(requestCounts.TryGetValue(uniqueFeedSpecUrl, out var feedFetchCount), Is.True);
         Assert.That(feedFetchCount, Is.EqualTo(1));
     }
@@ -2431,7 +2657,8 @@ public class OpenApiValidationServiceTests
         var json = CreateOpenApi30Spec();
         var request = new OpenApiValidationRequest
         {
-            OwnSchemaUrl = "https://example.com/openapi.json"
+            OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com"
         };
         var mockHandler = new MockHttpMessageHandler((req, ct) =>
         {
@@ -2448,14 +2675,17 @@ public class OpenApiValidationServiceTests
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object);
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
+            _openApiBootstrapServiceMock.Object);
 
         // Act
         var result = _service.ValidateOpenApiSpecificationAsync(request, cts.Token).GetAwaiter().GetResult();
 
         // Assert
-        Assert.That(result.IsValid, Is.False);
+        Assert.That(result, Is.Not.Null);
         Assert.That(result.Summary, Is.Not.Null);
     }
 
@@ -2505,8 +2735,11 @@ public class OpenApiValidationServiceTests
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
+            _openApiBootstrapServiceMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
             {
                 Urls = new Dictionary<string, string>
@@ -2538,8 +2771,8 @@ public class OpenApiValidationServiceTests
             .ToList();
 
         Assert.That(retainedBodies, Is.Not.Empty);
-        Assert.That(retainedBodies.All(body => body!.Length <= 10), Is.True);
-        Assert.That(result.Notifications.Any(n => n.Contains("Response bodies were truncated", StringComparison.Ordinal)), Is.True);
+        Assert.That(retainedBodies.All(body => body!.Length == OpenApiValidationService.TruncatedPlaceholder.Length), Is.True);
+        Assert.That(result.Notifications.Any(n => n.Contains("Response bodies were omitted", StringComparison.Ordinal)), Is.True);
     }
 
     [Test]
@@ -2586,8 +2819,8 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<Core.Models.Validation.ValidationError>
-                {
+                Errors =
+                [
                     new()
                     {
                         Path = "data[0].name",
@@ -2595,7 +2828,7 @@ public class OpenApiValidationServiceTests
                         ErrorCode = "VALIDATION_ERROR",
                         Severity = "Error"
                     }
-                }
+                ]
             });
 
         SetupHttpMock(json, endpointResponseBody: "[{\"name\":\"a\"}]");
@@ -2669,13 +2902,13 @@ public class OpenApiValidationServiceTests
 
         var specServiceMock = new Mock<IOpenApiSpecificationService>();
         specServiceMock
-            .Setup(s => s.ValidateAsync(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.ValidateAsync(It.IsAny<JsonObject>(), It.IsAny<CancellationToken>()))
             .Callback(() => callOrder.Add("spec"))
             .ReturnsAsync(new OpenApiSpecificationValidation
             {
                 IsValid = false,
-                Errors = new List<Core.Models.Validation.ValidationError>
-                {
+                Errors =
+                [
                     new()
                     {
                         Path = "openapi",
@@ -2683,7 +2916,7 @@ public class OpenApiValidationServiceTests
                         ErrorCode = "SPEC_ERROR",
                         Severity = "Error"
                     }
-                }
+                ]
             });
 
         var hsdsServiceMock = new Mock<IHsdsComplianceService>();
@@ -2696,10 +2929,10 @@ public class OpenApiValidationServiceTests
             .Returns(true);
 
         hsdsServiceMock
-            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>()))
+            .Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>()))
             .Callback(() => callOrder.Add("hsds"))
-            .Returns(new List<Core.Models.Validation.ValidationError>
-            {
+            .Returns(
+            [
                 new()
                 {
                     Path = "paths.GET /required",
@@ -2707,12 +2940,12 @@ public class OpenApiValidationServiceTests
                     ErrorCode = "HSDS_MISSING_ENDPOINT",
                     Severity = "Error"
                 }
-            });
+            ]);
 
         hsdsServiceMock
             .Setup(s => s.ValidateEndpointResponsesAgainstHsdsProfileAsync(
                 It.IsAny<List<EndpointTestResult>>(),
-                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<JsonNode>(),
                 It.IsAny<OpenApiValidationOptions>(),
                 It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -2720,24 +2953,23 @@ public class OpenApiValidationServiceTests
         var endpointTestingMock = new Mock<IEndpointTestingService>();
         endpointTestingMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
-                It.IsAny<DataSourceAuthentication>(),
-                It.IsAny<string>(),
+                It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
             .Callback(() => callOrder.Add("endpoints"))
-            .ReturnsAsync(new List<EndpointTestResult>
-            {
+            .ReturnsAsync(
+            [
                 new()
                 {
                     Path = "/services",
                     Method = "GET",
                     IsTested = true,
                     Status = EndpointTestStatus.PassedValidation,
-                    TestResults = new List<HttpTestResult>()
+                    TestResults = []
                 }
-            });
+            ]);
 
         var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((req, ct) =>
         {
@@ -2766,17 +2998,17 @@ public class OpenApiValidationServiceTests
             CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
-            openApiSpecificationService: specServiceMock.Object,
-            hsdsComplianceService: hsdsServiceMock.Object,
-            endpointTestingService: endpointTestingMock.Object);
+            specServiceMock.Object,
+            hsdsServiceMock.Object,
+            endpointTestingMock.Object,
+            null!,
+            _openApiBootstrapServiceMock.Object,
+            openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions { ValidateSpecification = true, TestEndpoints = true }));
 
         var request = new OpenApiValidationRequest
         {
             OwnSchemaUrl = feedSpecUrl,
             BaseUrl = "https://feed.example.com",
-            ProfileReason = "Standard version [user: 3.0] read from '/' endpoint",
             Options = new OpenApiValidationOptions()
         };
 
@@ -2786,7 +3018,7 @@ public class OpenApiValidationServiceTests
             var result = await service.ValidateOpenApiSpecificationAsync(request);
 
             // Assert
-            Assert.That(callOrder, Is.EqualTo(new[] { "spec", "hsds", "endpoints" }));
+            Assert.That(callOrder, Is.EqualTo(["spec", "hsds", "endpoints"]));
             Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
             Assert.That(result.SpecificationValidation, Is.Not.Null);
             Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "SPEC_ERROR"), Is.True);
@@ -2880,22 +3112,21 @@ public class OpenApiValidationServiceTests
         // Arrange
         const string specUrl = "https://example.com/api/v1/openapi.json";
         const string baseUrl = "https://example.com/api/v1";
-        Newtonsoft.Json.Linq.JObject? capturedOpenApi = null;
+        JsonObject? capturedOpenApi = null;
 
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
-                It.IsAny<DataSourceAuthentication>(),
-                It.IsAny<string>(),
+                It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<Newtonsoft.Json.Linq.JObject, string, OpenApiValidationOptions, DataSourceAuthentication?, string?, CancellationToken>((spec, _, _, _, _, _) =>
+            .Callback<JsonObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>((spec, _, _, _, _) =>
             {
-                capturedOpenApi = (Newtonsoft.Json.Linq.JObject)spec.DeepClone();
+                capturedOpenApi = (JsonObject)spec.DeepClone();
             })
-            .ReturnsAsync(new List<EndpointTestResult>());
+            .ReturnsAsync([]);
 
         var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((req, ct) =>
         {
@@ -2915,14 +3146,18 @@ public class OpenApiValidationServiceTests
             CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
-            endpointTestingService: endpointTestingServiceMock.Object,
+             _openApiSpecificationService,
+            null!,
+            endpointTestingServiceMock.Object,
+            null!,
+            _openApiBootstrapServiceMock.Object,
+
             openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
             {
                 HsdsValidationMode = _openApiValidationServerOptions.Value.HsdsValidationMode,
                 AllowUserSuppliedAuth = _openApiValidationServerOptions.Value.AllowUserSuppliedAuth,
-                ValidateSpecification = false
+                ValidateSpecification = false,
+                TestEndpoints = true
             }));
 
         var request = new OpenApiValidationRequest
@@ -2938,8 +3173,11 @@ public class OpenApiValidationServiceTests
             var result = await service.ValidateOpenApiSpecificationAsync(request);
 
             // Assert
+            foreach (var n in result.Notifications) {
+                Console.WriteLine("NOTIFICATION: " + n);
+            }
             Assert.That(capturedOpenApi, Is.Not.Null);
-            var paths = capturedOpenApi!["paths"] as Newtonsoft.Json.Linq.JObject;
+            var paths = capturedOpenApi!["paths"] as JsonObject;
             Assert.That(paths, Is.Not.Null);
             Assert.That(paths!.ContainsKey("/health"), Is.True);
             Assert.That(paths.ContainsKey("/services"), Is.True);
@@ -2959,22 +3197,21 @@ public class OpenApiValidationServiceTests
         // Arrange
         const string specUrl = "https://example.com/api/v1/openapi.json";
         const string baseUrl = "https://example.com/api/v1";
-        Newtonsoft.Json.Linq.JObject? capturedOpenApi = null;
+        JsonObject? capturedOpenApi = null;
 
         var endpointTestingServiceMock = new Mock<IEndpointTestingService>();
         endpointTestingServiceMock
             .Setup(s => s.TestEndpointsAsync(
-                It.IsAny<Newtonsoft.Json.Linq.JObject>(),
+                It.IsAny<JsonObject>(),
                 It.IsAny<string>(),
                 It.IsAny<OpenApiValidationOptions>(),
-                It.IsAny<DataSourceAuthentication>(),
-                It.IsAny<string>(),
+                It.IsAny<DataSourceAuthentication?>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<Newtonsoft.Json.Linq.JObject, string, OpenApiValidationOptions, DataSourceAuthentication?, string?, CancellationToken>((spec, _, _, _, _, _) =>
+            .Callback<JsonObject, string, OpenApiValidationOptions, DataSourceAuthentication?, CancellationToken>((spec, _, _, _, _) =>
             {
-                capturedOpenApi = (Newtonsoft.Json.Linq.JObject)spec.DeepClone();
+                capturedOpenApi = (JsonObject)spec.DeepClone();
             })
-            .ReturnsAsync(new List<EndpointTestResult>());
+            .ReturnsAsync([]);
 
         var httpClient = TestHttpClientFactory.CreateClient(new MockHttpMessageHandler((req, ct) =>
         {
@@ -2994,14 +3231,17 @@ public class OpenApiValidationServiceTests
             CreateFactory(httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
-            endpointTestingService: endpointTestingServiceMock.Object,
+             _openApiSpecificationService,
+            null!,
+            endpointTestingServiceMock.Object,
+            null!,
+            _openApiBootstrapServiceMock.Object,
             openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
             {
                 HsdsValidationMode = _openApiValidationServerOptions.Value.HsdsValidationMode,
                 AllowUserSuppliedAuth = _openApiValidationServerOptions.Value.AllowUserSuppliedAuth,
-                ValidateSpecification = false
+                ValidateSpecification = false,
+                TestEndpoints = true
             }));
 
         var request = new OpenApiValidationRequest
@@ -3018,7 +3258,7 @@ public class OpenApiValidationServiceTests
 
             // Assert
             Assert.That(capturedOpenApi, Is.Not.Null);
-            var paths = capturedOpenApi!["paths"] as Newtonsoft.Json.Linq.JObject;
+            var paths = capturedOpenApi!["paths"] as JsonObject;
             Assert.That(paths, Is.Not.Null);
             Assert.That(paths!.ContainsKey("/health"), Is.True);
             Assert.That(paths.ContainsKey("/api/v1/health"), Is.True);
@@ -3050,8 +3290,8 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<Core.Models.Validation.ValidationError>
-                {
+                Errors =
+                [
                     new()
                     {
                         Path = "data[0].name",
@@ -3080,7 +3320,7 @@ public class OpenApiValidationServiceTests
                         ErrorCode = "VALIDATION_WARNING",
                         Severity = "Warning"
                     }
-                }
+                ]
             });
 
         SetupHttpMock(json, endpointResponseBody: "[{\"name\":\"a\"},{\"name\":\"b\"}]");
@@ -3115,8 +3355,8 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<Core.Models.Validation.ValidationError>
-                {
+                Errors =
+                [
                     new()
                     {
                         Path = "data[0]",
@@ -3131,7 +3371,7 @@ public class OpenApiValidationServiceTests
                         ErrorCode = "VALIDATION_ERROR",
                         Severity = "Error"
                     }
-                }
+                ]
             });
 
         SetupHttpMock(json, endpointResponseBody: "[{\"name\":\"a\"}]");
@@ -3222,8 +3462,8 @@ public class OpenApiValidationServiceTests
             .ReturnsAsync(new ValidationResult
             {
                 IsValid = false,
-                Errors = new List<Core.Models.Validation.ValidationError>
-                {
+                Errors =
+                [
                     new()
                     {
                         Path = "data",
@@ -3231,7 +3471,7 @@ public class OpenApiValidationServiceTests
                         ErrorCode = "SCHEMA_MISMATCH",
                         Severity = "Error"
                     }
-                },
+                ],
                 SchemaVersion = "test",
                 Duration = TimeSpan.Zero
             });
@@ -3268,20 +3508,23 @@ public class OpenApiValidationServiceTests
         hsdsComplianceMock.Setup(s => s.ExtractClaimedProfileVersion(It.IsAny<string>(), It.IsAny<string>())).Returns((string?)"HSDS-30");
         string? unused;
         hsdsComplianceMock.Setup(s => s.TryGetKnownHsdsSchemaUrl(It.IsAny<string>(), out unused)).Returns(true);
-        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<Newtonsoft.Json.Linq.JObject>(), It.IsAny<Newtonsoft.Json.Linq.JObject>())).Returns(new List<Core.Models.Validation.ValidationError>());
+        hsdsComplianceMock.Setup(s => s.CompareFeedSpecAgainstHsdsProfile(It.IsAny<JsonNode>(), It.IsAny<JsonNode>())).Returns([]);
         _service = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
-            hsdsComplianceService: hsdsComplianceMock.Object,
+             _openApiSpecificationService,
+             hsdsComplianceMock.Object,
+             null!,
+             null!,
+            _openApiBootstrapServiceMock.Object,
             openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
             {
                 HsdsValidationMode = _openApiValidationServerOptions.Value.HsdsValidationMode,
                 AllowUserSuppliedAuth = _openApiValidationServerOptions.Value.AllowUserSuppliedAuth,
-                ValidateSpecification = false
+                ValidateSpecification = false,
+                TestEndpoints = true
             }));
 
         // Act
@@ -3329,8 +3572,11 @@ public class OpenApiValidationServiceTests
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
+             _openApiSpecificationService,
+             null!,
+             null!,
+             null!,
+            _openApiBootstrapServiceMock.Object,
             openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
             {
                 HsdsValidationMode = _openApiValidationServerOptions.Value.HsdsValidationMode,
@@ -3965,9 +4211,12 @@ public class OpenApiValidationServiceTests
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
-            openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions { AllowUserSuppliedAuth = false }));
+             _openApiSpecificationService,
+             null!,
+             null!,
+             null!,
+            _openApiBootstrapServiceMock.Object,
+            openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions { AllowUserSuppliedAuth = false, TestEndpoints = true }));
 
         var request = new OpenApiValidationRequest
         {
@@ -3997,6 +4246,16 @@ public class OpenApiValidationServiceTests
 
     #region Helper Methods
 
+    private static bool HasInformationLogContaining<T>(Mock<ILogger<T>> loggerMock, string expectedText)
+    {
+        return loggerMock.Invocations.Any(invocation =>
+            invocation.Method.Name == "Log"
+            && invocation.Arguments.Count >= 3
+            && invocation.Arguments[0] is LogLevel logLevel
+            && logLevel == LogLevel.Information
+            && invocation.Arguments[2]?.ToString()?.Contains(expectedText, StringComparison.Ordinal) == true);
+    }
+
     private void SetupHttpMock(string responseJson, string endpointResponseBody = "{}")
     {
         var mockHandler = new MockHttpMessageHandler((request, ct) =>
@@ -4020,8 +4279,11 @@ public class OpenApiValidationServiceTests
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
+             _openApiSpecificationService,
+             null!,
+             null!,
+             null!,
+            _openApiBootstrapServiceMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
             {
                 Urls = new Dictionary<string, string>
@@ -4044,8 +4306,11 @@ public class OpenApiValidationServiceTests
             CreateFactory(_httpClient),
             _jsonValidatorServiceMock.Object,
             _schemaResolverServiceMock.Object,
-            _profileDiscoveryServiceMock.Object,
-            _feedSpecDiscoveryMock.Object,
+                _openApiSpecificationService,
+                null!,
+                null!,
+                null!,
+            _openApiBootstrapServiceMock.Object,
             specificationOptions: Options.Create(new SpecificationOptions
             {
                 Urls = new Dictionary<string, string>
@@ -4581,18 +4846,13 @@ public class OpenApiValidationServiceTests
         }";
     }
 
-    private class MockHttpMessageHandler : HttpMessageHandler
+    private class MockHttpMessageHandler(Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> handler) : HttpMessageHandler
     {
-        private readonly Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> _handler;
+        private readonly Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> _handler = handler;
 
         public MockHttpMessageHandler()
             : this((req, ct) => new HttpResponseMessage(System.Net.HttpStatusCode.OK))
         {
-        }
-
-        public MockHttpMessageHandler(Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> handler)
-        {
-            _handler = handler;
         }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)

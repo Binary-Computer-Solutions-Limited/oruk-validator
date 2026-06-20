@@ -1,9 +1,9 @@
 using System.Text.Json.Nodes;
+using Json.Schema;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
-using Newtonsoft.Json.Schema;
 using OpenReferralApi.Core.Services;
 
 namespace OpenReferralApi.Tests.Services;
@@ -119,7 +119,7 @@ public class SchemaResolverServiceTests
 
     #endregion
 
-    #region Newtonsoft.Json.Schema CreateSchemaFromJsonAsync Tests
+    #region Json.Schema CreateSchemaFromJsonAsync Tests
 
     [Test]
     public async Task CreateSchemaFromJsonAsync_WithValidSchema_ReturnsSchema()
@@ -136,14 +136,13 @@ public class SchemaResolverServiceTests
         }";
 
         // Act
-        var result = await _service.CreateSchemaFromJsonAsync(schemaJson);
+        var result = await _service.CreateSchemaFromJsonAsync(schemaJson, null);
 
         // Assert
         Assert.That(result, Is.Not.Null);
-        Assert.That(result.Type, Is.EqualTo(JSchemaType.Object));
-        Assert.That(result.Properties, Has.Count.EqualTo(2));
-        Assert.That(result.Properties, Does.ContainKey("name"));
-        Assert.That(result.Properties, Does.ContainKey("age"));
+        Assert.That(System.Text.Json.JsonSerializer.Serialize(result), Does.Contain("object"));
+        Assert.That(System.Text.Json.JsonSerializer.Serialize(result), Does.Contain("name"));
+        Assert.That(System.Text.Json.JsonSerializer.Serialize(result), Does.Contain("age"));
     }
 
     [Test]
@@ -164,7 +163,7 @@ public class SchemaResolverServiceTests
 
         // Assert
         Assert.That(result, Is.Not.Null);
-        Assert.That(result.Type, Is.EqualTo(JSchemaType.Object));
+        Assert.That(System.Text.Json.JsonSerializer.Serialize(result), Does.Contain("object"));
     }
 
     [Test]
@@ -201,7 +200,7 @@ public class SchemaResolverServiceTests
         var rootSchemaJson = """
         {
           "$schema": "https://json-schema.org/draft/2020-12/schema",
-          "$id": "https://json-schema.org/draft/2020-12/schema",
+          "$id": "https://example.com/draft/2020-12/schema",
           "$dynamicAnchor": "meta",
           "allOf": [
             { "$ref": "meta/core" }
@@ -213,7 +212,7 @@ public class SchemaResolverServiceTests
         var coreMetaJson = """
         {
           "$schema": "https://json-schema.org/draft/2020-12/schema",
-          "$id": "https://json-schema.org/draft/2020-12/meta/core",
+          "$id": "https://example.com/draft/2020-12/meta/core",
           "$dynamicAnchor": "meta",
           "type": ["object", "boolean"],
           "properties": {
@@ -228,7 +227,7 @@ public class SchemaResolverServiceTests
         var handler = new MockHttpMessageHandler(async request =>
         {
             var uri = request.RequestUri?.GetLeftPart(UriPartial.Path);
-            if (uri == "https://json-schema.org/draft/2020-12/meta/core")
+            if (uri == "https://example.com/draft/2020-12/meta/core")
             {
                 return new HttpResponseMessage
                 {
@@ -244,7 +243,7 @@ public class SchemaResolverServiceTests
         var service = new SchemaResolverService(CreateFactory(httpClient), _loggerMock.Object, _memoryCache, _cacheOptions);
 
         // Act
-        var result = await service.CreateSchemaFromJsonAsync(rootSchemaJson, "https://json-schema.org/draft/2020-12/schema");
+        var result = await service.CreateSchemaFromJsonAsync(rootSchemaJson, "https://example.com/draft/2020-12/schema");
 
         // Assert
         Assert.That(result, Is.Not.Null);
@@ -309,7 +308,7 @@ public class SchemaResolverServiceTests
 
         // Verify cache contains the schema
         var cacheKey = $"schema:{schemaUrl}";
-        Assert.That(memoryCache.TryGetValue(cacheKey, out string? _), Is.True);
+        Assert.That(memoryCache.TryGetValue(cacheKey, out CachedSchema? _), Is.True);
     }
 
     [Test]
@@ -362,7 +361,7 @@ public class SchemaResolverServiceTests
 
         // Verify cache does not contain the schema
         var cacheKey = $"schema:{schemaUrl}";
-        Assert.That(memoryCache.TryGetValue(cacheKey, out string? _), Is.False);
+        Assert.That(memoryCache.TryGetValue(cacheKey, out CachedSchema? _), Is.False);
     }
 
     [Test]
@@ -461,14 +460,9 @@ public class SchemaResolverServiceTests
     /// <summary>
     /// Mock HTTP message handler for testing
     /// </summary>
-    private class MockHttpMessageHandler : HttpMessageHandler
+    private class MockHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler) : HttpMessageHandler
     {
-        private readonly Func<HttpRequestMessage, Task<HttpResponseMessage>> _handler;
-
-        public MockHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler)
-        {
-            _handler = handler;
-        }
+        private readonly Func<HttpRequestMessage, Task<HttpResponseMessage>> _handler = handler;
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
