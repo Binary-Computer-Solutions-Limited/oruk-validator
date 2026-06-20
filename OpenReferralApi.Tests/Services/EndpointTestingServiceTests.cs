@@ -214,7 +214,48 @@ public class EndpointTestingServiceTests
     Assert.That(parameterized.TestResults.All(r => !string.IsNullOrWhiteSpace(r.TestedId)), Is.True);
   }
 
+  [Test]
+  public async Task TestEndpointsAsync_CqcLikeSpec_UsesExtractedIdsAndPasses()
+  {
+    SetupService((request, _) =>
+    {
+      var uri = request.RequestUri!.ToString();
+      if (uri.EndsWith("/services", StringComparison.OrdinalIgnoreCase))
+      {
+        return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+          Content = new StringContent("{\"totalElements\":2,\"totalPages\":1,\"number\":1,\"size\":2,\"first\":true,\"last\":false,\"content\":[{\"id\":\"1\",\"name\":\"Service 1\",\"status\":\"active\"},{\"id\":\"2\",\"name\":\"Service 2\",\"status\":\"active\"}]}")
+        };
+      }
 
+      if (uri.Contains("/services/1", StringComparison.OrdinalIgnoreCase) ||
+              uri.Contains("/services/2", StringComparison.OrdinalIgnoreCase))
+      {
+        return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+          Content = new StringContent("{\"id\":\"ok\"}")
+        };
+      }
+
+      return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound)
+      {
+        Content = new StringContent("{}")
+      };
+    });
+
+    var results = await _service.TestEndpointsAsync(
+        CreateCqcLikeSpec(),
+        "https://api.example.com",
+        new OpenApiValidationOptions(),
+        null,
+        CancellationToken.None);
+
+    Assert.That(results, Has.Count.EqualTo(2));
+    var parameterized = results.Single(r => r.Path == "/services/{id}");
+    Assert.That(parameterized.Status, Is.EqualTo(EndpointTestStatus.PassedValidation));
+    Assert.That(parameterized.TestResults, Has.Count.EqualTo(2));
+    Assert.That(parameterized.TestResults.All(r => !string.IsNullOrWhiteSpace(r.TestedId)), Is.True);
+  }
 
   [Test]
   public async Task TestEndpointsAsync_OptionalEndpoint404_ReturnsPassedWithWarnings()
@@ -975,6 +1016,73 @@ public class EndpointTestingServiceTests
       }
     }
     """)!.AsObject();
+  }
+
+  private static JsonObject CreateCqcLikeSpec()
+  {
+    return JsonNode.Parse("""
+        {
+          "openapi": "3.0.0",
+          "info": { "title": "Test CQC API", "version": "1.0.0" },
+          "paths": {
+            "/services": {
+              "get": {
+                "responses": {
+                  "200": {
+                    "description": "ok",
+                    "content": {
+                      "application/json": {
+                        "schema": {
+                          "$ref": "#/components/schemas/PageService_ServiceBasicView"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "/services/{id}": {
+              "get": {
+                "parameters": [
+                  { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+                ],
+                "responses": {
+                  "200": {
+                    "description": "ok"
+                  }
+                }
+              }
+            }
+          },
+          "components": {
+            "schemas": {
+              "PageService_ServiceBasicView": {
+                "type": "object",
+                "properties": {
+                  "totalElements": { "type": "integer" },
+                  "totalPages": { "type": "integer" },
+                  "size": { "type": "integer" },
+                  "content": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Service_ServiceBasicView"
+                    }
+                  }
+                }
+              },
+              "Service_ServiceBasicView": {
+                "required": ["id", "name", "status"],
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" },
+                  "name": { "type": "string" },
+                  "status": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+        """)!.AsObject();
   }
 
   private sealed class DelegateHttpMessageHandler : HttpMessageHandler

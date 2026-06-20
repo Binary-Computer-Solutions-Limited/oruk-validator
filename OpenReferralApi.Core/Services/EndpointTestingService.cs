@@ -228,7 +228,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         return results;
     }
 
-    private async Task<EndpointTestResult> TestSingleEndpointAsync(string path, string method, JsonObject operation, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, SemaphoreSlim semaphore, JsonObject openApiDocument, JsonObject pathItem, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken, string? testedId = null)
+    private async Task<EndpointTestResult> TestSingleEndpointAsync(string path, string method, JsonObject operation, string baseUrl, OpenApiValidationOptions options, DataSourceAuthentication? authentication, SemaphoreSlim semaphore, JsonObject openApiDocument, JsonObject pathItem, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken, string? testedId = null, bool retainResponseJson = false)
     {
         await semaphore.WaitAsync(cancellationToken);
 
@@ -264,7 +264,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             if (hasPagination)
             {
                 // Test pagination: first page, middle page(s), last page
-                await TestPaginatedEndpointAsync(result, path, method, operation, baseUrl, options, authentication, resolvedParams, openApiDocument, pathItem, parsedResponseJsonByResult, cancellationToken);
+                await TestPaginatedEndpointAsync(result, path, method, operation, baseUrl, options, authentication, resolvedParams, openApiDocument, pathItem, parsedResponseJsonByResult, cancellationToken, retainFirstPageResponseJson: retainResponseJson);
             }
             else
             {
@@ -427,7 +427,8 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         JsonObject openApiDocument,
         JsonObject pathItem,
         ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool retainFirstPageResponseJson = false)
     {
         _logger.TestingPaginatedEndpoint(TextSanitizer.SanitizeStringForLogging(method), TextSanitizer.SanitizeStringForLogging(path));
 
@@ -487,8 +488,12 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         // Try to determine total pages and check for empty feed
         var paginationInfo = ExtractPaginationInfo(firstPageResult, parsedResponseJsonByResult);
 
-        // Release the first page's parsed JSON document now that validation and pagination info extraction are complete.
-        ReleaseParsedResponseJsonDocuments([firstPageResult], parsedResponseJsonByResult);
+        // Release the first page's parsed JSON document now that validation and pagination info extraction are complete,
+        // unless we need to retain it for extracting IDs in dependency testing.
+        if (!retainFirstPageResponseJson)
+        {
+            ReleaseParsedResponseJsonDocuments([firstPageResult], parsedResponseJsonByResult);
+        }
 
         // Warn if feed returns no rows
         if (paginationInfo.ItemCount == 0)
@@ -1238,7 +1243,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         ConcurrentDictionary<string, List<string>> extractedIds, SemaphoreSlim semaphore,
         JsonObject openApiDocument, JsonObject pathItem, ConcurrentDictionary<HttpTestResult, JsonDocument> parsedResponseJsonByResult, CancellationToken cancellationToken)
     {
-        var result = await TestSingleEndpointAsync(path, method, operation, baseUrl, options, authentication, semaphore, openApiDocument, pathItem, parsedResponseJsonByResult, cancellationToken);
+        var result = await TestSingleEndpointAsync(path, method, operation, baseUrl, options, authentication, semaphore, openApiDocument, pathItem, parsedResponseJsonByResult, cancellationToken, retainResponseJson: true);
 
         // Extract IDs from successful GET responses for dependency testing
         if (method == "GET" && result.TestResults.Any(r => r.IsSuccessStatusCode && HasResponsePayload(r, parsedResponseJsonByResult)))
@@ -1430,6 +1435,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                 TestResults = new List<HttpTestResult>(){
                     new() {
                         IsSuccessStatusCode = false,
+                        RequestMethod = method,
                         RequestUrl = $"{baseUrl}{path}",
                         ErrorMessage = "No extracted IDs available for parameter substitution. Endpoint was not tested.",
                         ValidationResult= new ValidationResult
