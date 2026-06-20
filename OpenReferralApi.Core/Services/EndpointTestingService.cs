@@ -1609,6 +1609,32 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
         return null;
     }
 
+    private static JsonNode? ResolveLocalRef(string refStr, JsonObject openApiDocument)
+    {
+        if (string.IsNullOrWhiteSpace(refStr) || !refStr.StartsWith("#/", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var parts = refStr.Substring(2).Split('/');
+        JsonNode? current = openApiDocument;
+
+        foreach (var part in parts)
+        {
+            var decodedPart = Uri.UnescapeDataString(part).Replace("~1", "/").Replace("~0", "~");
+            if (current is JsonObject obj && obj.TryGetPropertyValue(decodedPart, out var nextNode))
+            {
+                current = nextNode;
+            }
+            else
+            {
+                return null;
+            }
+        }
+
+        return current;
+    }
+
     /// <summary>
     /// Extracts ID field names from the OpenAPI response schema
     /// </summary>
@@ -1622,7 +1648,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             var responseSchema = operation["responses"]?["200"]?["content"]?["application/json"]?["schema"];
             if (responseSchema != null)
             {
-                ExtractIdFieldsFromSchemaRecursive(responseSchema, idFields);
+                ExtractIdFieldsFromSchemaRecursive(responseSchema, idFields, openApiDocument, new HashSet<JsonNode>(System.Collections.Generic.ReferenceEqualityComparer.Instance));
             }
         }
         catch (Exception ex)
@@ -1646,7 +1672,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             var responseSchema = operation["responses"]?["200"]?["content"]?["application/json"]?["schema"];
             if (responseSchema != null)
             {
-                ExtractCollectionPropertiesFromSchemaRecursive(responseSchema, collectionProps);
+                ExtractCollectionPropertiesFromSchemaRecursive(responseSchema, collectionProps, openApiDocument, new HashSet<JsonNode>(System.Collections.Generic.ReferenceEqualityComparer.Instance));
             }
         }
         catch (Exception ex)
@@ -1660,10 +1686,27 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     /// <summary>
     /// Recursively extracts ID field names from a schema structure
     /// </summary>
-    private static void ExtractIdFieldsFromSchemaRecursive(JsonNode schema, List<string> idFields)
+    private static void ExtractIdFieldsFromSchemaRecursive(JsonNode schema, List<string> idFields, JsonObject openApiDocument, HashSet<JsonNode> visited)
     {
+        if (schema == null || !visited.Add(schema))
+        {
+            return;
+        }
+
         if (schema is JsonObject schemaObj)
         {
+            // Check if this schema has a reference
+            if (schemaObj.TryGetPropertyValue("$ref", out var refToken) && refToken is not null)
+            {
+                var refStr = refToken.ToString();
+                var resolved = ResolveLocalRef(refStr, openApiDocument);
+                if (resolved != null)
+                {
+                    ExtractIdFieldsFromSchemaRecursive(resolved, idFields, openApiDocument, visited);
+                }
+                return;
+            }
+
             // Check if this schema has properties
             if (schemaObj["properties"] is JsonObject properties)
             {
@@ -1681,7 +1724,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                     // Recursively check nested properties
                     if (propSchema != null)
                     {
-                        ExtractIdFieldsFromSchemaRecursive(propSchema, idFields);
+                        ExtractIdFieldsFromSchemaRecursive(propSchema, idFields, openApiDocument, visited);
                     }
                 }
             }
@@ -1689,7 +1732,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
             // Check array items
             if (schemaObj["items"] is JsonNode itemsSchema)
             {
-                ExtractIdFieldsFromSchemaRecursive(itemsSchema, idFields);
+                ExtractIdFieldsFromSchemaRecursive(itemsSchema, idFields, openApiDocument, visited);
             }
 
             // Check allOf, anyOf, oneOf
@@ -1701,7 +1744,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                     {
                         if (item != null)
                         {
-                            ExtractIdFieldsFromSchemaRecursive(item, idFields);
+                            ExtractIdFieldsFromSchemaRecursive(item, idFields, openApiDocument, visited);
                         }
                     }
                 }
@@ -1712,10 +1755,27 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
     /// <summary>
     /// Recursively extracts collection property names from a schema structure
     /// </summary>
-    private static void ExtractCollectionPropertiesFromSchemaRecursive(JsonNode schema, List<string> collectionProps)
+    private static void ExtractCollectionPropertiesFromSchemaRecursive(JsonNode schema, List<string> collectionProps, JsonObject openApiDocument, HashSet<JsonNode> visited)
     {
+        if (schema == null || !visited.Add(schema))
+        {
+            return;
+        }
+
         if (schema is JsonObject schemaObj)
         {
+            // Check if this schema has a reference
+            if (schemaObj.TryGetPropertyValue("$ref", out var refToken) && refToken is not null)
+            {
+                var refStr = refToken.ToString();
+                var resolved = ResolveLocalRef(refStr, openApiDocument);
+                if (resolved != null)
+                {
+                    ExtractCollectionPropertiesFromSchemaRecursive(resolved, collectionProps, openApiDocument, visited);
+                }
+                return;
+            }
+
             // Check if this schema has properties
             if (schemaObj["properties"] is JsonObject properties)
             {
@@ -1733,7 +1793,7 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                     // Recursively check nested properties
                     if (propSchema != null)
                     {
-                        ExtractCollectionPropertiesFromSchemaRecursive(propSchema, collectionProps);
+                        ExtractCollectionPropertiesFromSchemaRecursive(propSchema, collectionProps, openApiDocument, visited);
                     }
                 }
             }
@@ -1747,13 +1807,14 @@ public class EndpointTestingService : OpenApiValidationServiceBase, IEndpointTes
                     {
                         if (item != null)
                         {
-                            ExtractCollectionPropertiesFromSchemaRecursive(item, collectionProps);
+                            ExtractCollectionPropertiesFromSchemaRecursive(item, collectionProps, openApiDocument, visited);
                         }
                     }
                 }
             }
         }
     }
+
 
     /// <summary>
     /// Determines if a property name and schema indicate an ID field

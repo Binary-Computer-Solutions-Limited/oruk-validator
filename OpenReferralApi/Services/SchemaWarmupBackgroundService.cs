@@ -30,8 +30,7 @@ internal sealed class SchemaWarmupBackgroundService : BackgroundService
         _executor = executor ?? new SchemaWarmupExecutor();
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        await _executor.WarmupAsync(_options, _cacheOptions, _statusTracker, _serviceProvider, _logger, stoppingToken).ConfigureAwait(false);
-    }
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
+        _executor.WarmupAsync(_options, _cacheOptions, _statusTracker, _serviceProvider, _logger, stoppingToken);
 }
+

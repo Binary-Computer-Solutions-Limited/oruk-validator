@@ -129,6 +129,94 @@ public class EndpointTestingServiceTests
   }
 
   [Test]
+  public async Task TestEndpointsAsync_CollectionWithRefThenParameterized_UsesExtractedIdsAndPasses()
+  {
+    SetupService((request, _) =>
+    {
+      var uri = request.RequestUri!.ToString();
+      if (uri.EndsWith("/services", StringComparison.OrdinalIgnoreCase))
+      {
+        return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+          Content = new StringContent("{\"content\":[{\"id\":\"1\"},{\"id\":\"2\"}]}")
+        };
+      }
+
+      if (uri.Contains("/services/1", StringComparison.OrdinalIgnoreCase) ||
+              uri.Contains("/services/2", StringComparison.OrdinalIgnoreCase))
+      {
+        return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+          Content = new StringContent("{\"id\":\"ok\"}")
+        };
+      }
+
+      return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound)
+      {
+        Content = new StringContent("{}")
+      };
+    });
+
+    var results = await _service.TestEndpointsAsync(
+        CreateCollectionWithRefAndParameterizedSpec(),
+        "https://api.example.com",
+        new OpenApiValidationOptions(),
+        null,
+        CancellationToken.None);
+
+    Assert.That(results, Has.Count.EqualTo(2));
+    var parameterized = results.Single(r => r.Path == "/services/{id}");
+    Assert.That(parameterized.Status, Is.EqualTo(EndpointTestStatus.PassedValidation));
+    Assert.That(parameterized.TestResults, Has.Count.EqualTo(2));
+    Assert.That(parameterized.TestResults.All(r => !string.IsNullOrWhiteSpace(r.TestedId)), Is.True);
+  }
+
+  [Test]
+  public async Task TestEndpointsAsync_CollectionWithRefAndCustomPropThenParameterized_UsesExtractedIdsAndPasses()
+  {
+    SetupService((request, _) =>
+    {
+      var uri = request.RequestUri!.ToString();
+      if (uri.EndsWith("/services", StringComparison.OrdinalIgnoreCase))
+      {
+        return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+          Content = new StringContent("{\"services\":[{\"service_id\":\"1\"},{\"service_id\":\"2\"}]}")
+        };
+      }
+
+      if (uri.Contains("/services/1", StringComparison.OrdinalIgnoreCase) ||
+              uri.Contains("/services/2", StringComparison.OrdinalIgnoreCase))
+      {
+        return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+          Content = new StringContent("{\"id\":\"ok\"}")
+        };
+      }
+
+      return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound)
+      {
+        Content = new StringContent("{}")
+      };
+    });
+
+    var results = await _service.TestEndpointsAsync(
+        CreateCollectionWithRefAndCustomPropAndParameterizedSpec(),
+        "https://api.example.com",
+        new OpenApiValidationOptions(),
+        null,
+        CancellationToken.None);
+
+    Assert.That(results, Has.Count.EqualTo(2));
+    var parameterized = results.Single(r => r.Path == "/services/{id}");
+    Assert.That(parameterized.Status, Is.EqualTo(EndpointTestStatus.PassedValidation));
+    Assert.That(parameterized.TestResults, Has.Count.EqualTo(2));
+    Assert.That(parameterized.TestResults.All(r => !string.IsNullOrWhiteSpace(r.TestedId)), Is.True);
+  }
+
+
+
+  [Test]
   public async Task TestEndpointsAsync_OptionalEndpoint404_ReturnsPassedWithWarnings()
   {
     SetupService((request, _) =>
@@ -669,6 +757,128 @@ public class EndpointTestingServiceTests
         }
         """)!.AsObject();
   }
+
+  private static JsonObject CreateCollectionWithRefAndParameterizedSpec()
+  {
+    return JsonNode.Parse("""
+        {
+          "openapi": "3.0.0",
+          "info": { "title": "Test API", "version": "1.0.0" },
+          "paths": {
+            "/services": {
+              "get": {
+                "responses": {
+                  "200": {
+                    "description": "ok",
+                    "content": {
+                      "application/json": {
+                        "schema": {
+                          "properties": {
+                            "content": {
+                              "type": "array",
+                              "items": {
+                                "$ref": "#/components/schemas/Service"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "/services/{id}": {
+              "get": {
+                "parameters": [
+                  { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+                ],
+                "responses": {
+                  "200": {
+                    "description": "ok"
+                  }
+                }
+              }
+            }
+          },
+          "components": {
+            "schemas": {
+              "Service": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+        """)!.AsObject();
+  }
+
+  private static JsonObject CreateCollectionWithRefAndCustomPropAndParameterizedSpec()
+  {
+    return JsonNode.Parse("""
+        {
+          "openapi": "3.0.0",
+          "info": { "title": "Test API", "version": "1.0.0" },
+          "paths": {
+            "/services": {
+              "get": {
+                "responses": {
+                  "200": {
+                    "description": "ok",
+                    "content": {
+                      "application/json": {
+                        "schema": {
+                          "$ref": "#/components/schemas/ServicesResponse"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "/services/{id}": {
+              "get": {
+                "parameters": [
+                  { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+                ],
+                "responses": {
+                  "200": {
+                    "description": "ok"
+                  }
+                }
+              }
+            }
+          },
+          "components": {
+            "schemas": {
+              "ServicesResponse": {
+                "type": "object",
+                "properties": {
+                  "services": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Service"
+                    }
+                  }
+                }
+              },
+              "Service": {
+                "type": "object",
+                "properties": {
+                  "service_id": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+        """)!.AsObject();
+  }
+
+
 
   private static JsonObject CreateCollectionAndOptionalParameterizedSpec()
   {
