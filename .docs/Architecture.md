@@ -1471,7 +1471,7 @@ dotnet test OpenReferralApi.Tests/OpenReferralApi.Tests.csproj
 
 ### Logging
 
-**Framework**: `ILogger<T>` (ASP.NET Core)
+Our application utilizes compile-time high-performance LoggerMessage source generation across LogInformation, LogWarning, and LogError levels to achieve zero-allocation, highly optimized performance.
 
 **Log Levels**:
 
@@ -1483,9 +1483,30 @@ dotnet test OpenReferralApi.Tests/OpenReferralApi.Tests.csproj
 **Key Log Points**:
 
 ```csharp
-_logger.LogInformation("Validation completed in {ms} ms", elapsed);
-_logger.LogError(ex, "Error occurred while validating {url}", url);
-_logger.LogWarning("Service unavailable: {url}", serviceUrl);
+namespace OpenReferralApi.Core.Logging
+{
+    public static partial class ExampleServiceLog
+    {
+        [LoggerMessage(EventId = 15000, Level = LogLevel.Information, Message = "Validation completed in {Elapsed} ms")]
+        public static partial void LogValidationCompleted(this ILogger logger, double elapsed);
+
+        [LoggerMessage(EventId = 15001, Level = LogLevel.Error, Message = "Error occurred while validating {Url}")]
+        public static partial void LogValidationFailure(this ILogger logger, Exception exception, string url);
+
+        [LoggerMessage(EventId = 15002, Level = LogLevel.Warning, Message = "Service unavailable: {Url}")]
+        public static partial void LogServiceUnavailable(this ILogger logger, string url);
+    }
+}
+```
+
+#### Usage in Services
+
+These compile-time methods are consumed throughout services as extension methods on `ILogger` instances:
+
+```csharp
+_logger.LogValidationCompleted(elapsed);
+_logger.LogValidationFailure(exception, url);
+_logger.LogServiceUnavailable(url);
 ```
 
 ### Health Checks
