@@ -1,5 +1,4 @@
 using OpenReferralApi.Core.Helpers;
-using OpenReferralApi.Core.Services;
 
 namespace OpenReferralApi.Tests.Services;
 
@@ -9,8 +8,11 @@ public class TextSanitizerTests
     [Test]
     public void SanitizeExceptionMessage_WithNullOrEmpty_ReturnsEmptyString()
     {
-        Assert.That(TextSanitizer.SanitizeExceptionMessage(null), Is.EqualTo(string.Empty));
-        Assert.That(TextSanitizer.SanitizeExceptionMessage(string.Empty), Is.EqualTo(string.Empty));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TextSanitizer.SanitizeExceptionMessage(null), Is.EqualTo(string.Empty));
+            Assert.That(TextSanitizer.SanitizeExceptionMessage(string.Empty), Is.EqualTo(string.Empty));
+        }
     }
 
     [Test]
@@ -30,15 +32,21 @@ public class TextSanitizerTests
 
         var sanitized = TextSanitizer.SanitizeExceptionMessage(input);
 
-        Assert.That(sanitized.Length, Is.EqualTo(514));
-        Assert.That(sanitized.EndsWith("...(truncated)", StringComparison.Ordinal), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sanitized, Has.Length.EqualTo(514));
+            Assert.That(sanitized.EndsWith("...(truncated)", StringComparison.Ordinal), Is.True);
+        }
     }
 
     [Test]
     public void SanitizeForLogging_WithNullOrEmpty_ReturnsEmptyString()
     {
-        Assert.That(TextSanitizer.SanitizeForLogging(null), Is.EqualTo(string.Empty));
-        Assert.That(TextSanitizer.SanitizeForLogging(string.Empty), Is.EqualTo(string.Empty));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TextSanitizer.SanitizeForLogging(null), Is.EqualTo(string.Empty));
+            Assert.That(TextSanitizer.SanitizeForLogging(string.Empty), Is.EqualTo(string.Empty));
+        }
     }
 
     [Test]
