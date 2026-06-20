@@ -109,11 +109,14 @@ public class ProfileDiscoveryService(
                     // 2. Extract version only if we don't have one yet
                     if (discoveredVersion == null)
                     {
-                        discoveredVersion = TryExtractPotentialHsdsProfileVersion(content);
-                        if (discoveredVersion != null)
+                        var extractedVersion = TryExtractPotentialHsdsProfileVersion(content);
+                        if (extractedVersion != null)
                         {
+                            discoveredVersion = MapProfileVersion(extractedVersion);
                             var reasonPath = string.IsNullOrEmpty(path) ? "root" : path;
-                            discoveryReason = $"HSDS version {discoveredVersion} discovered from base URL at {reasonPath}";
+                            discoveryReason = extractedVersion == discoveredVersion
+                                ? $"HSDS version {discoveredVersion} discovered from base URL at {reasonPath}"
+                                : $"HSDS version {discoveredVersion} (mapped from {extractedVersion}) discovered from base URL at {reasonPath}";
                         }
                     }
 
@@ -131,11 +134,14 @@ public class ProfileDiscoveryService(
 
                             if (discoveredVersion == null && discoveredSchema != null)
                             {
-                                discoveredVersion = TryExtractPotentialHsdsProfileVersion(discoveredSchema);
-                                if (discoveredVersion != null)
+                                var extractedVersion = TryExtractPotentialHsdsProfileVersion(discoveredSchema);
+                                if (extractedVersion != null)
                                 {
+                                    discoveredVersion = MapProfileVersion(extractedVersion);
                                     var reasonPath = string.IsNullOrEmpty(path) ? "root" : path;
-                                    discoveryReason = $"HSDS version {discoveredVersion} discovered from base URL at {reasonPath}";
+                                    discoveryReason = extractedVersion == discoveredVersion
+                                        ? $"HSDS version {discoveredVersion} discovered from base URL at {reasonPath}"
+                                        : $"HSDS version {discoveredVersion} (mapped from {extractedVersion}) discovered from base URL at {reasonPath}";
                                 }
                             }
                         }
@@ -156,10 +162,13 @@ public class ProfileDiscoveryService(
 
         if (string.IsNullOrWhiteSpace(discoveredVersion))
         {
-            discoveredVersion = TryExtractProfileVersionFromSchemaUrl(ownSchemaUrl);
-            if (!string.IsNullOrWhiteSpace(discoveredVersion))
+            var extractedVersion = TryExtractProfileVersionFromSchemaUrl(ownSchemaUrl);
+            if (!string.IsNullOrWhiteSpace(extractedVersion))
             {
-                discoveryReason = $"HSDS version {discoveredVersion} extracted from schema URL";
+                discoveredVersion = MapProfileVersion(extractedVersion);
+                discoveryReason = extractedVersion == discoveredVersion
+                    ? $"HSDS version {discoveredVersion} extracted from schema URL"
+                    : $"HSDS version {discoveredVersion} (mapped from {extractedVersion}) extracted from schema URL";
             }
         }
 
@@ -170,18 +179,23 @@ public class ProfileDiscoveryService(
             var (versionFromOpenApiSpec, fromOpenapiField) = TryExtractProfileVersionFromOpenApiSpec(fallbackSpecContent);
             if (!string.IsNullOrWhiteSpace(versionFromOpenApiSpec))
             {
-                discoveredVersion = versionFromOpenApiSpec;
+                discoveredVersion = MapProfileVersion(versionFromOpenApiSpec);
 
                 if (fromOpenapiField)
                 {
-                    discoveryReason =
-                        $"Warning: The HSDS schema version was incorrectly defined in the 'openapi' field. " +
-                        $"Detected HSDS version {versionFromOpenApiSpec} from this field as a fallback. " +
-                        "Please use an 'x-hsds-version' field in your OpenAPI spec to declare the HSDS version.";
+                    discoveryReason = versionFromOpenApiSpec == discoveredVersion
+                        ? $"Warning: The HSDS schema version was incorrectly defined in the 'openapi' field. " +
+                          $"Detected HSDS version {versionFromOpenApiSpec} from this field as a fallback. " +
+                          "Please use an 'x-hsds-version' field in your OpenAPI spec to declare the HSDS version."
+                        : $"Warning: The HSDS schema version was incorrectly defined in the 'openapi' field. " +
+                          $"Detected HSDS version {discoveredVersion} (mapped from {versionFromOpenApiSpec}) from this field as a fallback. " +
+                          "Please use an 'x-hsds-version' field in your OpenAPI spec to declare the HSDS version.";
                 }
                 else
                 {
-                    discoveryReason = $"Standard version [user: {versionFromOpenApiSpec}] read from OpenAPI spec";
+                    discoveryReason = versionFromOpenApiSpec == discoveredVersion
+                        ? $"Standard version [user: {discoveredVersion}] read from OpenAPI spec"
+                        : $"Standard version [user: {discoveredVersion}] (mapped from {versionFromOpenApiSpec}) read from OpenAPI spec";
                 }
             }
         }
@@ -812,6 +826,36 @@ public class ProfileDiscoveryService(
 
         var extracted = match.Groups["version"].Value.Trim();
         return string.IsNullOrWhiteSpace(extracted) ? null : extracted;
+    }
+
+    private string MapProfileVersion(string version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+        {
+            return version;
+        }
+
+        if (_specificationOptions.ProfileVersionMappings == null || _specificationOptions.ProfileVersionMappings.Count == 0)
+        {
+            return version;
+        }
+
+        foreach (var mapping in _specificationOptions.ProfileVersionMappings)
+        {
+            var targetVersion = mapping.Key;
+            var aliases = mapping.Value;
+            if (aliases == null) continue;
+
+            foreach (var alias in aliases)
+            {
+                if (string.Equals(alias, version, StringComparison.OrdinalIgnoreCase))
+                {
+                    return targetVersion;
+                }
+            }
+        }
+
+        return version;
     }
 
     private bool TryGetDefaultProfileSchemaFallback(out string schemaUrl, out string? profileVersion)

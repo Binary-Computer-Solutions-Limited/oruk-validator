@@ -177,6 +177,75 @@ public class ProfileDiscoveryServiceTests
     }
 
     [Test]
+    public async Task DiscoverFromBaseUrlAsync_WhenDiscoveredProfileMatchesMapping_MapsToCanonicalVersion()
+    {
+        SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode, string)>
+        {
+            ["/"] = (HttpStatusCode.OK, "{\"version\":\"V3\"}")
+        });
+
+        var service = new ProfileDiscoveryService(
+            _loggerMock.Object,
+            _httpClientFactoryMock.Object,
+            Options.Create(new SpecificationOptions
+            {
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-3.0"] = "https://hsds.example.org/3.0/openapi.json"
+                },
+                ProfileVersionMappings = new Dictionary<string, string[]>
+                {
+                    ["HSDS-UK-3.0"] = ["V3"]
+                }
+            }),
+            Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.StrictOwnSchemaValidation }),
+            _memoryCache);
+
+        var result = await service.DiscoverFromBaseUrlAsync(null, "https://api.example.com");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
+            Assert.That(result.UsedDefaultProfile, Is.False);
+            Assert.That(result.HsdsProfileReason, Does.Contain("HSDS version HSDS-UK-3.0 (mapped from V3) discovered from base URL at root"));
+        }
+    }
+
+    [Test]
+    public async Task DiscoverFromBaseUrlAsync_WhenDiscoveredProfileMatchesMappingCaseInsensitively_MapsToCanonicalVersion()
+    {
+        SetupHttpResponseMap(new Dictionary<string, (HttpStatusCode, string)>
+        {
+            ["/"] = (HttpStatusCode.OK, "{\"version\":\"v3\"}")
+        });
+
+        var service = new ProfileDiscoveryService(
+            _loggerMock.Object,
+            _httpClientFactoryMock.Object,
+            Options.Create(new SpecificationOptions
+            {
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-3.0"] = "https://hsds.example.org/3.0/openapi.json"
+                },
+                ProfileVersionMappings = new Dictionary<string, string[]>
+                {
+                    ["HSDS-UK-3.0"] = ["V3"]
+                }
+            }),
+            Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.StrictOwnSchemaValidation }),
+            _memoryCache);
+
+        var result = await service.DiscoverFromBaseUrlAsync(null, "https://api.example.com");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
+            Assert.That(result.HsdsProfileReason, Does.Contain("HSDS version HSDS-UK-3.0 (mapped from v3) discovered from base URL at root"));
+        }
+    }
+
+    [Test]
     public async Task DiscoverFromBaseUrlAsync_WhenSwaggerConfigEndpointContainsUrl_ReturnsDiscoveredSpecContent()
     {
         // Use a URL not in Constants.Paths so it is only reachable via swagger-config probing
