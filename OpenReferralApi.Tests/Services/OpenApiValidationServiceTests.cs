@@ -192,10 +192,13 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(HasInformationLogContaining(_loggerMock, "Memory checkpoint OpenApiValidationService/start."), Is.True);
-        Assert.That(HasInformationLogContaining(_loggerMock, "ManagedHeapBytes:"), Is.True);
-        Assert.That(HasInformationLogContaining(_loggerMock, "GcHeapSizeBytes:"), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(HasInformationLogContaining(_loggerMock, "Memory checkpoint OpenApiValidationService/start."), Is.True);
+            Assert.That(HasInformationLogContaining(_loggerMock, "ManagedHeapBytes:"), Is.True);
+            Assert.That(HasInformationLogContaining(_loggerMock, "GcHeapSizeBytes:"), Is.True);
+        }
     }
 
     [Test]
@@ -337,8 +340,11 @@ public class OpenApiValidationServiceTests
         var result = await serviceWithCustomProfile.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
-        Assert.That(result.Metadata?.Profile, Is.EqualTo("HSDS-3.2"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(result.Metadata?.Profile, Is.EqualTo("HSDS-3.2"));
+        }
     }
 
     [Test]
@@ -395,8 +401,7 @@ public class OpenApiValidationServiceTests
 
         _schemaResolverServiceMock
             .Setup(service => service.GetResolutionIssues())
-            .Returns(new[]
-            {
+            .Returns([
                 new SchemaResolutionIssue
                 {
                     ErrorCode = "CIRCULAR_SCHEMA_REFERENCE",
@@ -404,15 +409,18 @@ public class OpenApiValidationServiceTests
                     ReferencePath = "https://example.com/openapi.json#/components/schemas/Organization -> https://example.com/openapi.json#/components/schemas/Service -> https://example.com/openapi.json#/components/schemas/Organization",
                     Message = "Circular schema reference detected"
                 }
-            });
+            ]);
 
         // Act
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.Notifications.Any(n => n.Contains("Circular schema reference detected", StringComparison.Ordinal)), Is.False);
-        Assert.That(result.SpecificationValidation, Is.Not.Null);
-        Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "CIRCULAR_SCHEMA_REFERENCE"), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Notifications.Any(n => n.Contains("Circular schema reference detected", StringComparison.Ordinal)), Is.False);
+            Assert.That(result.SpecificationValidation, Is.Not.Null);
+            Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "CIRCULAR_SCHEMA_REFERENCE"), Is.True);
+        }
     }
 
     #endregion
@@ -594,9 +602,12 @@ public class OpenApiValidationServiceTests
         var normalizedErrors = errors.Where(e => e.ErrorCode is "VALIDATION_ERROR" or "VALIDATION_WARNING").ToList();
 
         // Assert
-        Assert.That(normalizedErrors.Count, Is.EqualTo(2));
-        Assert.That(normalizedErrors.All(e => e.Path.Contains("[]")), Is.True);
-        Assert.That(normalizedErrors.All(e => e.Message.Contains("[]")), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(normalizedErrors, Has.Count.EqualTo(2));
+            Assert.That(normalizedErrors.All(e => e.Path.Contains("[]")), Is.True);
+            Assert.That(normalizedErrors.All(e => e.Message.Contains("[]")), Is.True);
+        }
     }
 
     [Test]
@@ -666,10 +677,13 @@ public class OpenApiValidationServiceTests
         var normalizedNameErrors = errors.Where(e => e.Path == "items[].name").ToList();
 
         // Assert
-        Assert.That(normalizedNameErrors, Has.Count.EqualTo(1), "Entries with the same normalized path should collapse into one normalized entry");
-        Assert.That(normalizedNameErrors[0].Severity, Is.EqualTo("Error"));
-        Assert.That(normalizedNameErrors[0].ErrorCode, Is.EqualTo("VALIDATION_ERROR"));
-        Assert.That(normalizedNameErrors[0].Message, Does.Contain("required"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(normalizedNameErrors, Has.Count.EqualTo(1), "Entries with the same normalized path should collapse into one normalized entry");
+            Assert.That(normalizedNameErrors[0].Severity, Is.EqualTo("Error"));
+            Assert.That(normalizedNameErrors[0].ErrorCode, Is.EqualTo("VALIDATION_ERROR"));
+            Assert.That(normalizedNameErrors[0].Message, Does.Contain("required"));
+        }
     }
 
     [Test]
@@ -726,10 +740,13 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.False);
-        Assert.That(result.SpecificationValidation, Is.Not.Null);
-        Assert.That(result.SpecificationValidation!.IsValid, Is.False);
-        Assert.That(result.SpecificationValidation.Errors.Any(e => e.ErrorCode == "UNSUPPORTED_SCHEMA_VERSION" && string.Equals(e.Severity, "Error", StringComparison.OrdinalIgnoreCase)), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.SpecificationValidation, Is.Not.Null);
+            Assert.That(result.SpecificationValidation!.IsValid, Is.False);
+            Assert.That(result.SpecificationValidation.Errors.Any(e => e.ErrorCode == "UNSUPPORTED_SCHEMA_VERSION" && string.Equals(e.Severity, "Error", StringComparison.OrdinalIgnoreCase)), Is.True);
+        }
     }
 
     [Test]
@@ -774,10 +791,13 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.False);
-        Assert.That(result.SpecificationValidation, Is.Not.Null);
-        Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_MISSING_ENDPOINT"), Is.True);
-        Assert.That(result.Metadata?.Profile, Is.EqualTo("HSDS-UK-3.0"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.SpecificationValidation, Is.Not.Null);
+            Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_MISSING_ENDPOINT"), Is.True);
+            Assert.That(result.Metadata?.Profile, Is.EqualTo("HSDS-UK-3.0"));
+        }
     }
 
     [Test]
@@ -822,11 +842,14 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.SpecificationValidation, Is.Not.Null);
-        Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_ADDITIONAL_ENDPOINT"), Is.True);
-        Assert.That(result.SpecificationValidation.Errors.Any(e =>
-            e.ErrorCode == "HSDS_ADDITIONAL_ENDPOINT" &&
-            string.Equals(e.Severity, "Info", StringComparison.OrdinalIgnoreCase)), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.SpecificationValidation, Is.Not.Null);
+            Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_ADDITIONAL_ENDPOINT"), Is.True);
+            Assert.That(result.SpecificationValidation.Errors.Any(e =>
+                e.ErrorCode == "HSDS_ADDITIONAL_ENDPOINT" &&
+                string.Equals(e.Severity, "Info", StringComparison.OrdinalIgnoreCase)), Is.True);
+        }
     }
 
     [Test]
@@ -871,9 +894,12 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.False);
-        Assert.That(result.SpecificationValidation, Is.Not.Null);
-        Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_MISSING_REQUIRED_REQUEST_FIELD"), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.SpecificationValidation, Is.Not.Null);
+            Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_MISSING_REQUIRED_REQUEST_FIELD"), Is.True);
+        }
     }
 
     [Test]
@@ -915,8 +941,11 @@ public class OpenApiValidationServiceTests
 
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
-        Assert.That(result.SpecificationValidation, Is.Not.Null);
-        Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_ADDITIONAL_ENDPOINT"), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.SpecificationValidation, Is.Not.Null);
+            Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_ADDITIONAL_ENDPOINT"), Is.False);
+        }
     }
 
     [Test]
@@ -958,9 +987,12 @@ public class OpenApiValidationServiceTests
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.SpecificationValidation, Is.Not.Null);
-        Assert.That(result.Notifications, Has.Some.EqualTo("Unable to fetch OpenAPI specification from the feed URL. Falling back to the HSDS profile OpenAPI specification."));
-        Assert.That(request.OwnSchemaUrl, Is.EqualTo(hsdsSpecUrl));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.SpecificationValidation, Is.Not.Null);
+            Assert.That(result.Notifications, Has.Some.EqualTo("Unable to fetch OpenAPI specification from the feed URL. Falling back to the HSDS profile OpenAPI specification."));
+            Assert.That(request.OwnSchemaUrl, Is.EqualTo(hsdsSpecUrl));
+        }
     }
 
     [Test]
@@ -1033,10 +1065,13 @@ public class OpenApiValidationServiceTests
         var result = await serviceWithDefaultFallback.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
-        Assert.That(request.OwnSchemaUrl, Is.Not.Null);
-        Assert.That(request.OwnSchemaUrl, Is.EqualTo(defaultProfileSpecUrl));
-        Assert.That(result.Notifications.Any(n => n.Contains("configured default HSDS profile OpenAPI specification", StringComparison.OrdinalIgnoreCase)), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(request.OwnSchemaUrl, Is.Not.Null);
+            Assert.That(request.OwnSchemaUrl, Is.EqualTo(defaultProfileSpecUrl));
+            Assert.That(result.Notifications.Any(n => n.Contains("configured default HSDS profile OpenAPI specification", StringComparison.OrdinalIgnoreCase)), Is.True);
+        }
     }
 
     [Test]
@@ -1116,10 +1151,13 @@ _openApiSpecificationService,
         var result = await serviceWithDefaultFallback.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
-        Assert.That(request.OwnSchemaUrl, Is.EqualTo(defaultProfileSpecUrl));
-        Assert.That(result.Notifications.Any(n => n.Contains("Falling back to the HSDS profile OpenAPI specification", StringComparison.OrdinalIgnoreCase)), Is.True);
-        Assert.That(result.Metadata?.Profile, Is.EqualTo("HSDS-UK-1.0"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(request.OwnSchemaUrl, Is.EqualTo(defaultProfileSpecUrl));
+            Assert.That(result.Notifications.Any(n => n.Contains("Falling back to the HSDS profile OpenAPI specification", StringComparison.OrdinalIgnoreCase)), Is.True);
+            Assert.That(result.Metadata?.Profile, Is.EqualTo("HSDS-UK-1.0"));
+        }
     }
 
     [Test]
@@ -1154,10 +1192,13 @@ _openApiSpecificationService,
         var result = await serviceWithInvalidDefault.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.False);
-        Assert.That(result.Notifications, Has.Count.EqualTo(1));
-        Assert.That(result.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
-        Assert.That(result.Notifications[0], Does.Contain("Failed to discover OpenAPI schema URL or schema content from base URL"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.Notifications, Has.Count.EqualTo(1));
+            Assert.That(result.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
+            Assert.That(result.Notifications[0], Does.Contain("Failed to discover OpenAPI schema URL or schema content from base URL"));
+        }
     }
 
     [Test]
@@ -1314,10 +1355,13 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.False);
-        Assert.That(result.SpecificationValidation, Is.Not.Null);
-        Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_PROFILE_UNKNOWN"), Is.True);
-        Assert.That(result.SpecificationValidation.IsValid, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.SpecificationValidation, Is.Not.Null);
+            Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_PROFILE_UNKNOWN"), Is.True);
+            Assert.That(result.SpecificationValidation.IsValid, Is.False);
+        }
     }
 
     [Test]
@@ -1359,9 +1403,12 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.Metadata?.Profile, Is.EqualTo("HSDS-UK-3.0"));
-        Assert.That(result.Metadata?.ProfileReason, Does.Contain("3.0"));
-        Assert.That(result.Notifications, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Metadata?.Profile, Is.EqualTo("HSDS-UK-3.0"));
+            Assert.That(result.Metadata?.ProfileReason, Does.Contain("3.0"));
+            Assert.That(result.Notifications, Is.Empty);
+        }
     }
 
     [Test]
@@ -1419,11 +1466,14 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.Metadata?.Profile, Is.EqualTo("HSDS-UK-3.0"));
-        Assert.That(result.SpecificationValidation, Is.Not.Null);
-        Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_SCHEMA_VERSION_MISPLACED"), Is.True);
-        Assert.That(result.SpecificationValidation.Errors.Any(e =>
-            e.Message.Contains("incorrectly defined in the 'openapi' field", StringComparison.OrdinalIgnoreCase)), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Metadata?.Profile, Is.EqualTo("HSDS-UK-3.0"));
+            Assert.That(result.SpecificationValidation, Is.Not.Null);
+            Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_SCHEMA_VERSION_MISPLACED"), Is.True);
+            Assert.That(result.SpecificationValidation.Errors.Any(e =>
+                e.Message.Contains("incorrectly defined in the 'openapi' field", StringComparison.OrdinalIgnoreCase)), Is.True);
+        }
     }
 
     [Test]
@@ -1468,11 +1518,14 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.SpecificationValidation, Is.Not.Null);
-        Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_ADDITIONAL_REQUEST_FIELD"), Is.True);
-        Assert.That(result.SpecificationValidation.Errors.Any(e =>
-            e.ErrorCode == "HSDS_ADDITIONAL_REQUEST_FIELD" &&
-            string.Equals(e.Severity, "Info", StringComparison.OrdinalIgnoreCase)), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.SpecificationValidation, Is.Not.Null);
+            Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_ADDITIONAL_REQUEST_FIELD"), Is.True);
+            Assert.That(result.SpecificationValidation.Errors.Any(e =>
+                e.ErrorCode == "HSDS_ADDITIONAL_REQUEST_FIELD" &&
+                string.Equals(e.Severity, "Info", StringComparison.OrdinalIgnoreCase)), Is.True);
+        }
     }
 
     [Test]
@@ -1519,13 +1572,16 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.False);
-        Assert.That(result.SpecificationValidation, Is.Not.Null);
-        Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_MISSING_ENDPOINT"), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.SpecificationValidation, Is.Not.Null);
+            Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "HSDS_MISSING_ENDPOINT"), Is.True);
 
-        Assert.That(requestCounts.TryGetValue(feedSpecUrl, out var feedFetchCount), Is.True);
-        Assert.That(feedFetchCount, Is.EqualTo(1));
-        Assert.That(requestCounts.ContainsKey(hsdsSpecUrl), Is.False, "HSDS profile URL should not be fetched when warmup-path resolver returns it.");
+            Assert.That(requestCounts.TryGetValue(feedSpecUrl, out var feedFetchCount), Is.True);
+            Assert.That(feedFetchCount, Is.EqualTo(1));
+            Assert.That(requestCounts.ContainsKey(hsdsSpecUrl), Is.False, "HSDS profile URL should not be fetched when warmup-path resolver returns it.");
+        }
     }
 
     [Test]
@@ -1742,18 +1798,21 @@ _openApiSpecificationService,
         var result = await serviceWithFullMode.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.False);
-        Assert.That(result.Summary, Is.Not.Null);
-        Assert.That(result.Summary!.FailedTests, Is.EqualTo(1));
-        Assert.That(result.Summary.SuccessfulTests, Is.EqualTo(0));
-        Assert.That(result.Summary.TotalEndpoints, Is.EqualTo(1));
-        Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
-        Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.FailedValidation));
-        Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult, Is.Not.Null);
-        Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult!.Errors.Any(e =>
-            string.Equals(e.ErrorCode, "HSDS_RUNTIME_VALIDATION_ERROR", StringComparison.OrdinalIgnoreCase)), Is.True);
-        Assert.That(result.EndpointTests[0].ValidationErrors.Any(e =>
-            string.Equals(e.ErrorCode, "HSDS_RUNTIME_VALIDATION_ERROR", StringComparison.OrdinalIgnoreCase)), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.Summary, Is.Not.Null);
+            Assert.That(result.Summary!.FailedTests, Is.EqualTo(1));
+            Assert.That(result.Summary.SuccessfulTests, Is.Zero);
+            Assert.That(result.Summary.TotalEndpoints, Is.EqualTo(1));
+            Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
+            Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.FailedValidation));
+            Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult, Is.Not.Null);
+            Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult!.Errors.Any(e =>
+                string.Equals(e.ErrorCode, "HSDS_RUNTIME_VALIDATION_ERROR", StringComparison.OrdinalIgnoreCase)), Is.True);
+            Assert.That(result.EndpointTests[0].ValidationErrors.Any(e =>
+                string.Equals(e.ErrorCode, "HSDS_RUNTIME_VALIDATION_ERROR", StringComparison.OrdinalIgnoreCase)), Is.True);
+        }
         hsdsComplianceServiceMock.Verify(s => s.ValidateEndpointResponsesAgainstHsdsProfileAsync(
             It.IsAny<List<EndpointTestResult>>(),
             It.IsAny<JsonNode>(),
@@ -1949,8 +2008,11 @@ _openApiSpecificationService,
         var result = await serviceWithStrictPolicy.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.False);
-        Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.FailedValidation));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.FailedValidation));
+        }
     }
 
     [Test]
@@ -2007,8 +2069,11 @@ _openApiSpecificationService,
         var result = await serviceWithLenientPolicy.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
-        Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
+        }
     }
 
     [Test]
@@ -2094,9 +2159,12 @@ _openApiSpecificationService,
         var result = await service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert – endpoint testing should have used the feed's own spec (title "Feed API")
-        Assert.That(capturedSpec, Is.Not.Null);
-        Assert.That(capturedSpec!["info"]?["title"]?.ToString(), Is.EqualTo("Feed API"));
-        Assert.That(result.Notifications, Has.None.Contains("OwnSchemaValidation is set to None"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capturedSpec, Is.Not.Null);
+            Assert.That(capturedSpec!["info"]?["title"]?.ToString(), Is.EqualTo("Feed API"));
+            Assert.That(result.Notifications, Has.None.Contains("OwnSchemaValidation is set to None"));
+        }
     }
 
     [Test]
@@ -2180,9 +2248,12 @@ _openApiSpecificationService,
         var result = await service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert – endpoint testing should have used the HSDS profile spec (title "HSDS Profile")
-        Assert.That(capturedSpec, Is.Not.Null);
-        Assert.That(capturedSpec!["info"]?["title"]?.ToString(), Is.EqualTo("HSDS Profile"));
-        Assert.That(result.Notifications, Has.Some.Contains("OwnSchemaValidation is set to None"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capturedSpec, Is.Not.Null);
+            Assert.That(capturedSpec!["info"]?["title"]?.ToString(), Is.EqualTo("HSDS Profile"));
+            Assert.That(result.Notifications, Has.Some.Contains("OwnSchemaValidation is set to None"));
+        }
     }
 
     [Test]
@@ -2253,9 +2324,12 @@ _openApiSpecificationService,
         var result = await service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert – no HSDS profile available, so must fall back to the feed's own spec
-        Assert.That(capturedSpec, Is.Not.Null);
-        Assert.That(capturedSpec!["info"]?["title"]?.ToString(), Is.EqualTo("Feed API"));
-        Assert.That(result.Notifications, Has.Some.Contains("falling back to the feed's own schema"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capturedSpec, Is.Not.Null);
+            Assert.That(capturedSpec!["info"]?["title"]?.ToString(), Is.EqualTo("Feed API"));
+            Assert.That(result.Notifications, Has.Some.Contains("falling back to the feed's own schema"));
+        }
     }
 
     [Test]
@@ -2379,12 +2453,15 @@ _openApiSpecificationService,
             var result = service.ValidateOpenApiSpecificationAsync(request).GetAwaiter().GetResult();
 
             // Assert
-            Assert.That(result.IsValid, Is.False);
-            Assert.That(result.Summary, Is.Not.Null);
-            Assert.That(result.Metadata, Is.Null);
-            Assert.That(result.Notifications, Has.Count.EqualTo(1));
-            Assert.That(result.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
-            Assert.That(result.Notifications[0], Does.Contain("https://example.com/notfound.json"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.IsValid, Is.False);
+                Assert.That(result.Summary, Is.Not.Null);
+                Assert.That(result.Metadata, Is.Null);
+                Assert.That(result.Notifications, Has.Count.EqualTo(1));
+                Assert.That(result.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
+                Assert.That(result.Notifications[0], Does.Contain("https://example.com/notfound.json"));
+            }
         }
         finally
         {
@@ -2422,12 +2499,15 @@ _openApiSpecificationService,
             var result = service.ValidateOpenApiSpecificationAsync(request).GetAwaiter().GetResult();
 
             // Assert
-            Assert.That(result.IsValid, Is.False);
-            Assert.That(result.Summary, Is.Not.Null);
-            Assert.That(result.Metadata, Is.Null);
-            Assert.That(result.Notifications, Has.Count.EqualTo(1));
-            Assert.That(result.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
-            Assert.That(result.Notifications[0], Does.Contain("https://invalid.example.com/openapi.json"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.IsValid, Is.False);
+                Assert.That(result.Summary, Is.Not.Null);
+                Assert.That(result.Metadata, Is.Null);
+                Assert.That(result.Notifications, Has.Count.EqualTo(1));
+                Assert.That(result.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
+                Assert.That(result.Notifications[0], Does.Contain("https://invalid.example.com/openapi.json"));
+            }
         }
         finally
         {
@@ -2463,10 +2543,13 @@ _openApiSpecificationService,
             var result = service.ValidateOpenApiSpecificationAsync(request).GetAwaiter().GetResult();
 
             // Assert
-            Assert.That(result.IsValid, Is.False);
-            Assert.That(result.Notifications, Has.Count.EqualTo(1));
-            Assert.That(result.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
-            Assert.That(result.Notifications[0], Does.Contain("Failed to discover OpenAPI schema URL or schema content from base URL"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.IsValid, Is.False);
+                Assert.That(result.Notifications, Has.Count.EqualTo(1));
+                Assert.That(result.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
+                Assert.That(result.Notifications[0], Does.Contain("Failed to discover OpenAPI schema URL or schema content from base URL"));
+            }
         }
         finally
         {
@@ -2508,12 +2591,15 @@ _openApiSpecificationService,
             var result = service.ValidateOpenApiSpecificationAsync(request).GetAwaiter().GetResult();
 
             // Assert
-            Assert.That(result.IsValid, Is.False);
-            Assert.That(result.Summary, Is.Not.Null);
-            Assert.That(result.Metadata, Is.Null);
-            Assert.That(result.Notifications, Has.Count.EqualTo(1));
-            Assert.That(result.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
-            Assert.That(result.Notifications[0], Does.Contain("https://example.com/invalid.json"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.IsValid, Is.False);
+                Assert.That(result.Summary, Is.Not.Null);
+                Assert.That(result.Metadata, Is.Null);
+                Assert.That(result.Notifications, Has.Count.EqualTo(1));
+                Assert.That(result.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
+                Assert.That(result.Notifications[0], Does.Contain("https://example.com/invalid.json"));
+            }
         }
         finally
         {
@@ -2559,8 +2645,11 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.Notifications.Any(n => n.Contains("Falling back to the HSDS profile OpenAPI specification", StringComparison.OrdinalIgnoreCase)), Is.True);
-        Assert.That(request.OwnSchemaUrl, Is.EqualTo(hsdsSpecUrl));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Notifications.Any(n => n.Contains("Falling back to the HSDS profile OpenAPI specification", StringComparison.OrdinalIgnoreCase)), Is.True);
+            Assert.That(request.OwnSchemaUrl, Is.EqualTo(hsdsSpecUrl));
+        }
     }
 
     [Test]
@@ -2590,12 +2679,8 @@ _openApiSpecificationService,
         SetupHttpMock((httpRequest, ct) =>
         {
             var requestUrl = httpRequest.RequestUri?.ToString() ?? string.Empty;
-            if (!requestCounts.ContainsKey(requestUrl))
-            {
-                requestCounts[requestUrl] = 0;
-            }
-
-            requestCounts[requestUrl]++;
+            requestCounts.TryGetValue(requestUrl, out var currentCount);
+            requestCounts[requestUrl] = currentCount + 1;
 
             if (string.Equals(requestUrl, uniqueFeedSpecUrl, StringComparison.OrdinalIgnoreCase))
             {
@@ -2637,10 +2722,13 @@ _openApiSpecificationService,
         var secondResult = await serviceWithCache.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(firstResult, Is.Not.Null);
-        Assert.That(secondResult, Is.Not.Null);
-        Assert.That(requestCounts.TryGetValue(uniqueFeedSpecUrl, out var feedFetchCount), Is.True);
-        Assert.That(feedFetchCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstResult, Is.Not.Null);
+            Assert.That(secondResult, Is.Not.Null);
+            Assert.That(requestCounts.TryGetValue(uniqueFeedSpecUrl, out var feedFetchCount), Is.True);
+            Assert.That(feedFetchCount, Is.EqualTo(1));
+        }
     }
 
     #endregion
@@ -2770,9 +2858,12 @@ _openApiSpecificationService,
             .Where(body => body != null)
             .ToList();
 
-        Assert.That(retainedBodies, Is.Not.Empty);
-        Assert.That(retainedBodies.All(body => body!.Length == OpenApiValidationService.TruncatedPlaceholder.Length), Is.True);
-        Assert.That(result.Notifications.Any(n => n.Contains("Response bodies were omitted", StringComparison.Ordinal)), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retainedBodies, Is.Not.Empty);
+            Assert.That(retainedBodies.All(body => body!.Length == OpenApiValidationService.TruncatedPlaceholder.Length), Is.True);
+            Assert.That(result.Notifications.Any(n => n.Contains("Response bodies were omitted", StringComparison.Ordinal)), Is.True);
+        }
     }
 
     [Test]
@@ -2792,10 +2883,13 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.EndpointTests, Is.Not.Empty);
-        Assert.That(result.EndpointTests.All(e => e.TestResults.Count == 0), Is.True);
-        Assert.That(result.EndpointTests.All(e => e.ValidationErrors != null), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.EndpointTests, Is.Not.Empty);
+            Assert.That(result.EndpointTests.All(e => e.TestResults.Count == 0), Is.True);
+            Assert.That(result.EndpointTests.All(e => e.ValidationErrors != null), Is.True);
+        }
     }
 
     [Test]
@@ -2837,9 +2931,12 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.EndpointTests, Is.Not.Empty);
-        Assert.That(result.EndpointTests.All(e => e.TestResults.Count == 0), Is.True);
-        Assert.That(result.EndpointTests.Any(e => e.ValidationErrors.Any()), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.EndpointTests, Is.Not.Empty);
+            Assert.That(result.EndpointTests.All(e => e.TestResults.Count == 0), Is.True);
+            Assert.That(result.EndpointTests.Any(e => e.ValidationErrors.Count > 0), Is.True);
+        }
     }
 
     #endregion
@@ -3018,11 +3115,14 @@ _openApiSpecificationService,
             var result = await service.ValidateOpenApiSpecificationAsync(request);
 
             // Assert
-            Assert.That(callOrder, Is.EqualTo(["spec", "hsds", "endpoints"]));
-            Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
-            Assert.That(result.SpecificationValidation, Is.Not.Null);
-            Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "SPEC_ERROR"), Is.True);
-            Assert.That(result.SpecificationValidation.Errors.Any(e => e.ErrorCode == "HSDS_MISSING_ENDPOINT"), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(callOrder, Is.EqualTo(["spec", "hsds", "endpoints"]));
+                Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
+                Assert.That(result.SpecificationValidation, Is.Not.Null);
+                Assert.That(result.SpecificationValidation!.Errors.Any(e => e.ErrorCode == "SPEC_ERROR"), Is.True);
+                Assert.That(result.SpecificationValidation.Errors.Any(e => e.ErrorCode == "HSDS_MISSING_ENDPOINT"), Is.True);
+            }
         }
         finally
         {
@@ -3059,13 +3159,16 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
-        Assert.That(result.EndpointTests[0].IsTested, Is.True);
-        Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
-        Assert.That(result.EndpointTests[0].TestResults, Has.Count.EqualTo(1));
-        Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult, Is.Not.Null);
-        Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult!.Errors,
-            Has.Some.Matches<Core.Models.Validation.ValidationError>(e => e.ErrorCode == "EMPTY_FEED_WARNING"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
+            Assert.That(result.EndpointTests[0].IsTested, Is.True);
+            Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
+            Assert.That(result.EndpointTests[0].TestResults, Has.Count.EqualTo(1));
+            Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult, Is.Not.Null);
+            Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult!.Errors,
+                Has.Some.Matches<Core.Models.Validation.ValidationError>(e => e.ErrorCode == "EMPTY_FEED_WARNING"));
+        }
     }
 
     [Test]
@@ -3176,14 +3279,17 @@ _openApiSpecificationService,
             foreach (var n in result.Notifications) {
                 Console.WriteLine("NOTIFICATION: " + n);
             }
-            Assert.That(capturedOpenApi, Is.Not.Null);
-            var paths = capturedOpenApi!["paths"] as JsonObject;
-            Assert.That(paths, Is.Not.Null);
-            Assert.That(paths!.ContainsKey("/health"), Is.True);
-            Assert.That(paths.ContainsKey("/services"), Is.True);
-            Assert.That(paths.ContainsKey("/api/v1/health"), Is.False);
-            Assert.That(paths.ContainsKey("/api/v1/services"), Is.False);
-            Assert.That(result.Notifications.Any(n => n.Contains("Removed duplicated base URL prefix '/api/v1'", StringComparison.OrdinalIgnoreCase)), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(capturedOpenApi, Is.Not.Null);
+                var paths = capturedOpenApi!["paths"] as JsonObject;
+                Assert.That(paths, Is.Not.Null);
+                Assert.That(paths!.ContainsKey("/health"), Is.True);
+                Assert.That(paths.ContainsKey("/services"), Is.True);
+                Assert.That(paths.ContainsKey("/api/v1/health"), Is.False);
+                Assert.That(paths.ContainsKey("/api/v1/services"), Is.False);
+                Assert.That(result.Notifications.Any(n => n.Contains("Removed duplicated base URL prefix '/api/v1'", StringComparison.OrdinalIgnoreCase)), Is.True);
+            }
         }
         finally
         {
@@ -3257,12 +3363,15 @@ _openApiSpecificationService,
             var result = await service.ValidateOpenApiSpecificationAsync(request);
 
             // Assert
-            Assert.That(capturedOpenApi, Is.Not.Null);
-            var paths = capturedOpenApi!["paths"] as JsonObject;
-            Assert.That(paths, Is.Not.Null);
-            Assert.That(paths!.ContainsKey("/health"), Is.True);
-            Assert.That(paths.ContainsKey("/api/v1/health"), Is.True);
-            Assert.That(result.Notifications.Any(n => n.Contains("automatic de-duplication was skipped for colliding paths", StringComparison.OrdinalIgnoreCase)), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(capturedOpenApi, Is.Not.Null);
+                var paths = capturedOpenApi!["paths"] as JsonObject;
+                Assert.That(paths, Is.Not.Null);
+                Assert.That(paths!.ContainsKey("/health"), Is.True);
+                Assert.That(paths.ContainsKey("/api/v1/health"), Is.True);
+                Assert.That(result.Notifications.Any(n => n.Contains("automatic de-duplication was skipped for colliding paths", StringComparison.OrdinalIgnoreCase)), Is.True);
+            }
         }
         finally
         {
@@ -3330,9 +3439,12 @@ _openApiSpecificationService,
         var errors = result.EndpointTests[0].TestResults[0].ValidationResult!.Errors;
 
         // Assert
-        Assert.That(errors, Has.Count.EqualTo(2));
-        Assert.That(errors.All(e => e.Path.Contains("[]")), Is.True);
-        Assert.That(errors.All(e => e.Message.Contains("[]")), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(errors, Has.Count.EqualTo(2));
+            Assert.That(errors.All(e => e.Path.Contains("[]")), Is.True);
+            Assert.That(errors.All(e => e.Message.Contains("[]")), Is.True);
+        }
     }
 
     [Test]
@@ -3381,9 +3493,12 @@ _openApiSpecificationService,
         var errors = result.EndpointTests[0].TestResults[0].ValidationResult!.Errors;
 
         // Assert
-        Assert.That(errors, Has.Count.EqualTo(1));
-        Assert.That(errors[0].Path, Is.EqualTo("data[]"));
-        Assert.That(errors[0].Message, Is.EqualTo("data[] should be object"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(errors, Has.Count.EqualTo(1));
+            Assert.That(errors[0].Path, Is.EqualTo("data[]"));
+            Assert.That(errors[0].Message, Is.EqualTo("data[] should be object"));
+        }
     }
 
     [Test]
@@ -3409,9 +3524,12 @@ _openApiSpecificationService,
             .First(e => e.ErrorCode == "NO_IDS_AVAILABLE");
 
         // Assert
-        Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.NotTested));
-        Assert.That(warning.Path.Contains("[]"), Is.True, "Path should retain array level markers");
-        Assert.That(warning.Message.Contains("[0]"), Is.False, "Message should not include concrete array indexes");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.NotTested));
+            Assert.That(warning.Path, Does.Contain("[]"), "Path should retain array level markers");
+            Assert.That(warning.Message, Does.Not.Contain("[0]"), "Message should not include concrete array indexes");
+        }
     }
 
     [Test]
@@ -3444,12 +3562,15 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
-        Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
-        Assert.That(result.EndpointTests[0].TestResults, Has.Count.EqualTo(1));
-        Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult, Is.Not.Null);
-        Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult!.Errors,
-            Has.Some.Matches<Core.Models.Validation.ValidationError>(e => e.ErrorCode == "OPTIONAL_ENDPOINT_NON_SUCCESS" && e.Severity == "Warning"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
+            Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
+            Assert.That(result.EndpointTests[0].TestResults, Has.Count.EqualTo(1));
+            Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult, Is.Not.Null);
+            Assert.That(result.EndpointTests[0].TestResults[0].ValidationResult!.Errors,
+                Has.Some.Matches<Core.Models.Validation.ValidationError>(e => e.ErrorCode == "OPTIONAL_ENDPOINT_NON_SUCCESS" && e.Severity == "Warning"));
+        }
     }
 
     [Test]
@@ -3531,12 +3652,15 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
-        Assert.That(result.EndpointTests[0].IsOptional, Is.True);
-        Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
-        Assert.That(result.Summary, Is.Not.Null);
-        Assert.That(result.Summary!.FailedTests, Is.EqualTo(0));
-        Assert.That(result.IsValid, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
+            Assert.That(result.EndpointTests[0].IsOptional, Is.True);
+            Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
+            Assert.That(result.Summary, Is.Not.Null);
+            Assert.That(result.Summary!.FailedTests, Is.Zero);
+            Assert.That(result.IsValid, Is.True);
+        }
     }
 
     [Test]
@@ -3591,9 +3715,12 @@ _openApiSpecificationService,
         var result = await serviceWithOptionalEndpointsDisabled.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
-        Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.Skipped));
-        Assert.That(result.EndpointTests[0].TestResults, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.EndpointTests, Has.Count.EqualTo(1));
+            Assert.That(result.EndpointTests[0].Status, Is.EqualTo(EndpointTestStatus.Skipped));
+            Assert.That(result.EndpointTests[0].TestResults, Is.Empty);
+        }
     }
 
     [Test]
@@ -3634,11 +3761,14 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(result.EndpointTests, Has.Count.EqualTo(2));
-        Assert.That(result.EndpointTests.All(e => e.IsTested), Is.True);
-        Assert.That(result.EndpointTests.All(e => e.Status != EndpointTestStatus.NotTested), Is.True);
-        Assert.That(result.EndpointTests.Any(e => e.Status == EndpointTestStatus.PassedValidation), Is.True);
-        Assert.That(result.EndpointTests.Any(e => e.Status == EndpointTestStatus.PassedWithWarnings), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.EndpointTests, Has.Count.EqualTo(2));
+            Assert.That(result.EndpointTests.All(e => e.IsTested), Is.True);
+            Assert.That(result.EndpointTests.All(e => e.Status != EndpointTestStatus.NotTested), Is.True);
+            Assert.That(result.EndpointTests.Any(e => e.Status == EndpointTestStatus.PassedValidation), Is.True);
+            Assert.That(result.EndpointTests.Any(e => e.Status == EndpointTestStatus.PassedWithWarnings), Is.True);
+        }
     }
 
     #endregion
@@ -3685,9 +3815,12 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(capturedRequest, Is.Not.Null, "Expected endpoint request to be captured");
-        Assert.That(capturedRequest!.Headers.Contains("X-API-Key"), Is.True, "Expected X-API-Key header to be present");
-        Assert.That(capturedRequest.Headers.GetValues("X-API-Key").First(), Is.EqualTo("test-api-key-12345"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capturedRequest, Is.Not.Null, "Expected endpoint request to be captured");
+            Assert.That(capturedRequest!.Headers.Contains("X-API-Key"), Is.True, "Expected X-API-Key header to be present");
+            Assert.That(capturedRequest.Headers.GetValues("X-API-Key").First(), Is.EqualTo("test-api-key-12345"));
+        }
     }
 
     [Test]
@@ -3731,9 +3864,12 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Contains("X-Custom-Auth-Key"), Is.True);
-        Assert.That(capturedRequest.Headers.GetValues("X-Custom-Auth-Key").First(), Is.EqualTo("custom-key-value"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capturedRequest, Is.Not.Null);
+            Assert.That(capturedRequest!.Headers.Contains("X-Custom-Auth-Key"), Is.True);
+            Assert.That(capturedRequest.Headers.GetValues("X-Custom-Auth-Key").First(), Is.EqualTo("custom-key-value"));
+        }
     }
 
     [Test]
@@ -3776,10 +3912,13 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Authorization, Is.Not.Null);
-        Assert.That(capturedRequest.Headers.Authorization!.Scheme, Is.EqualTo("Bearer"));
-        Assert.That(capturedRequest.Headers.Authorization.Parameter, Is.EqualTo("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capturedRequest, Is.Not.Null);
+            Assert.That(capturedRequest!.Headers.Authorization, Is.Not.Null);
+            Assert.That(capturedRequest.Headers.Authorization!.Scheme, Is.EqualTo("Bearer"));
+            Assert.That(capturedRequest.Headers.Authorization.Parameter, Is.EqualTo("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test"));
+        }
     }
 
     [Test]
@@ -3826,14 +3965,17 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Authorization, Is.Not.Null);
-        Assert.That(capturedRequest.Headers.Authorization!.Scheme, Is.EqualTo("Basic"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capturedRequest, Is.Not.Null);
+            Assert.That(capturedRequest!.Headers.Authorization, Is.Not.Null);
+            Assert.That(capturedRequest.Headers.Authorization!.Scheme, Is.EqualTo("Basic"));
 
-        // Decode and verify credentials
-        var credentials = System.Text.Encoding.ASCII.GetString(
-            Convert.FromBase64String(capturedRequest.Headers.Authorization.Parameter!));
-        Assert.That(credentials, Is.EqualTo("testuser:testpass123"));
+            // Decode and verify credentials
+            var credentials = System.Text.Encoding.ASCII.GetString(
+                Convert.FromBase64String(capturedRequest.Headers.Authorization.Parameter!));
+            Assert.That(credentials, Is.EqualTo("testuser:testpass123"));
+        }
     }
 
     [Test]
@@ -3881,13 +4023,16 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Contains("X-Client-Id"), Is.True);
-        Assert.That(capturedRequest.Headers.GetValues("X-Client-Id").First(), Is.EqualTo("client-123"));
-        Assert.That(capturedRequest.Headers.Contains("X-Request-Id"), Is.True);
-        Assert.That(capturedRequest.Headers.GetValues("X-Request-Id").First(), Is.EqualTo("req-456"));
-        Assert.That(capturedRequest.Headers.Contains("X-Tenant-Id"), Is.True);
-        Assert.That(capturedRequest.Headers.GetValues("X-Tenant-Id").First(), Is.EqualTo("tenant-789"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capturedRequest, Is.Not.Null);
+            Assert.That(capturedRequest!.Headers.Contains("X-Client-Id"), Is.True);
+            Assert.That(capturedRequest.Headers.GetValues("X-Client-Id").First(), Is.EqualTo("client-123"));
+            Assert.That(capturedRequest.Headers.Contains("X-Request-Id"), Is.True);
+            Assert.That(capturedRequest.Headers.GetValues("X-Request-Id").First(), Is.EqualTo("req-456"));
+            Assert.That(capturedRequest.Headers.Contains("X-Tenant-Id"), Is.True);
+            Assert.That(capturedRequest.Headers.GetValues("X-Tenant-Id").First(), Is.EqualTo("tenant-789"));
+        }
     }
 
     [Test]
@@ -3934,11 +4079,14 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Contains("X-Client-Id"), Is.True);
-        Assert.That(capturedRequest.Headers.GetValues("X-Client-Id").First(), Is.EqualTo("multi-auth-client"));
-        Assert.That(capturedRequest.Headers.Contains("X-Request-Id"), Is.True);
-        Assert.That(capturedRequest.Headers.GetValues("X-Request-Id").First(), Is.EqualTo("req-12345"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capturedRequest, Is.Not.Null);
+            Assert.That(capturedRequest!.Headers.Contains("X-Client-Id"), Is.True);
+            Assert.That(capturedRequest.Headers.GetValues("X-Client-Id").First(), Is.EqualTo("multi-auth-client"));
+            Assert.That(capturedRequest.Headers.Contains("X-Request-Id"), Is.True);
+            Assert.That(capturedRequest.Headers.GetValues("X-Request-Id").First(), Is.EqualTo("req-12345"));
+        }
     }
 
     [Test]
@@ -3978,9 +4126,12 @@ _openApiSpecificationService,
         var result = await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Contains("X-API-Key"), Is.False);
-        Assert.That(capturedRequest.Headers.Authorization, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capturedRequest, Is.Not.Null);
+            Assert.That(capturedRequest!.Headers.Contains("X-API-Key"), Is.False);
+            Assert.That(capturedRequest.Headers.Authorization, Is.Null);
+        }
     }
 
     [Test]
@@ -4113,11 +4264,14 @@ _openApiSpecificationService,
         await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(capturedDataSourceRequest, Is.Not.Null);
-        Assert.That(capturedDataSourceRequest!.RequestUri, Is.Not.Null);
-        Assert.That(capturedDataSourceRequest.RequestUri!.Scheme, Is.EqualTo(Uri.UriSchemeHttp));
-        Assert.That(capturedDataSourceRequest.Headers.Contains("X-API-Key"), Is.False);
-        Assert.That(capturedDataSourceRequest.Headers.Authorization, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capturedDataSourceRequest, Is.Not.Null);
+            Assert.That(capturedDataSourceRequest!.RequestUri, Is.Not.Null);
+            Assert.That(capturedDataSourceRequest.RequestUri!.Scheme, Is.EqualTo(Uri.UriSchemeHttp));
+            Assert.That(capturedDataSourceRequest.Headers.Contains("X-API-Key"), Is.False);
+            Assert.That(capturedDataSourceRequest.Headers.Authorization, Is.Null);
+        }
     }
 
     [Test]
@@ -4165,13 +4319,16 @@ _openApiSpecificationService,
         await _service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(capturedSchemaRequest, Is.Not.Null);
-        Assert.That(capturedSchemaRequest!.RequestUri, Is.Not.Null);
-        Assert.That(capturedSchemaRequest.RequestUri!.AbsoluteUri, Does.Contain("openapi"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capturedSchemaRequest, Is.Not.Null);
+            Assert.That(capturedSchemaRequest!.RequestUri, Is.Not.Null);
+            Assert.That(capturedSchemaRequest.RequestUri!.AbsoluteUri, Does.Contain("openapi"));
 
-        Assert.That(capturedDataSourceRequest, Is.Not.Null);
-        Assert.That(capturedDataSourceRequest!.Headers.Contains("X-API-Key"), Is.True);
-        Assert.That(capturedDataSourceRequest.Headers.GetValues("X-API-Key").First(), Is.EqualTo("data-source-api-key"));
+            Assert.That(capturedDataSourceRequest, Is.Not.Null);
+            Assert.That(capturedDataSourceRequest!.Headers.Contains("X-API-Key"), Is.True);
+            Assert.That(capturedDataSourceRequest.Headers.GetValues("X-API-Key").First(), Is.EqualTo("data-source-api-key"));
+        }
     }
 
     [Test]
@@ -4233,13 +4390,16 @@ _openApiSpecificationService,
         await service.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
-        Assert.That(capturedSchemaRequest, Is.Not.Null);
-        Assert.That(capturedSchemaRequest!.Headers.Authorization, Is.Null);
-        Assert.That(capturedSchemaRequest.Headers.Contains("X-API-Key"), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capturedSchemaRequest, Is.Not.Null);
+            Assert.That(capturedSchemaRequest!.Headers.Authorization, Is.Null);
+            Assert.That(capturedSchemaRequest.Headers.Contains("X-API-Key"), Is.False);
 
-        Assert.That(capturedDataSourceRequest, Is.Not.Null);
-        Assert.That(capturedDataSourceRequest!.Headers.Authorization, Is.Null);
-        Assert.That(capturedDataSourceRequest.Headers.Contains("X-API-Key"), Is.False);
+            Assert.That(capturedDataSourceRequest, Is.Not.Null);
+            Assert.That(capturedDataSourceRequest!.Headers.Authorization, Is.Null);
+            Assert.That(capturedDataSourceRequest.Headers.Contains("X-API-Key"), Is.False);
+        }
     }
 
     #endregion
@@ -4329,7 +4489,7 @@ _openApiSpecificationService,
         return mock.Object;
     }
 
-    private string CreateOpenApi30Spec()
+    private static string CreateOpenApi30Spec()
     {
         return @"{
             ""openapi"": ""3.0.0"",
@@ -4349,7 +4509,7 @@ _openApiSpecificationService,
         }";
     }
 
-    private string CreateOpenApi30SpecWithResponseSchema()
+    private static string CreateOpenApi30SpecWithResponseSchema()
     {
         return @"{
             ""openapi"": ""3.0.0"",
@@ -4384,7 +4544,7 @@ _openApiSpecificationService,
         }";
     }
 
-    private string CreateOpenApi30ParameterizedOnlySpecWithIndexedPath()
+    private static string CreateOpenApi30ParameterizedOnlySpecWithIndexedPath()
     {
         return @"{
             ""openapi"": ""3.0.0"",
@@ -4404,7 +4564,7 @@ _openApiSpecificationService,
         }";
     }
 
-    private string CreateOpenApi30PaginatedSpec()
+    private static string CreateOpenApi30PaginatedSpec()
     {
         return @"{
             ""openapi"": ""3.0.0"",
@@ -4447,7 +4607,7 @@ _openApiSpecificationService,
         }";
     }
 
-    private string CreateOpenApi30OptionalEndpointSpec()
+    private static string CreateOpenApi30OptionalEndpointSpec()
     {
         return @"{
             ""openapi"": ""3.0.0"",
@@ -4468,7 +4628,7 @@ _openApiSpecificationService,
         }";
     }
 
-    private string CreateOpenApi30MixedRequiredAndOptionalSpec()
+    private static string CreateOpenApi30MixedRequiredAndOptionalSpec()
     {
         return @"{
             ""openapi"": ""3.0.0"",
@@ -4496,7 +4656,7 @@ _openApiSpecificationService,
         }";
     }
 
-    private string CreateOpenApi30SpecWithPrefixedPaths()
+    private static string CreateOpenApi30SpecWithPrefixedPaths()
     {
         return @"{
             ""openapi"": ""3.0.0"",
@@ -4523,7 +4683,7 @@ _openApiSpecificationService,
         }";
     }
 
-    private string CreateOpenApi30SpecWithPrefixedCollisionPaths()
+    private static string CreateOpenApi30SpecWithPrefixedCollisionPaths()
     {
         return @"{
             ""openapi"": ""3.0.0"",
@@ -4550,7 +4710,7 @@ _openApiSpecificationService,
         }";
     }
 
-    private string CreateSwagger20Spec()
+    private static string CreateSwagger20Spec()
     {
         return @"{
             ""swagger"": ""2.0"",
@@ -4570,7 +4730,7 @@ _openApiSpecificationService,
         }";
     }
 
-    private string CreateHsdsProfileSpec()
+    private static string CreateHsdsProfileSpec()
     {
         return @"{
             ""openapi"": ""3.0.0"",
@@ -4607,7 +4767,7 @@ _openApiSpecificationService,
         }";
     }
 
-    private string CreateFeedSpecMissingRequiredHsdsEndpoint()
+    private static string CreateFeedSpecMissingRequiredHsdsEndpoint()
     {
         return @"{
             ""openapi"": ""3.0.0"",
@@ -4627,7 +4787,7 @@ _openApiSpecificationService,
         }";
     }
 
-    private string CreateFeedSpecWithAdditionalEndpoint()
+    private static string CreateFeedSpecWithAdditionalEndpoint()
     {
         return @"{
             ""openapi"": ""3.0.0"",
@@ -4689,7 +4849,7 @@ _openApiSpecificationService,
         }";
     }
 
-    private string CreateFeedSpecPermissiveOrganisationResponse()
+    private static string CreateFeedSpecPermissiveOrganisationResponse()
     {
         return @"{
             ""openapi"": ""3.0.0"",
@@ -4725,7 +4885,7 @@ _openApiSpecificationService,
         }";
     }
 
-    private string CreateHsdsProfileSpecWithRequestBody()
+    private static string CreateHsdsProfileSpecWithRequestBody()
     {
         return @"{
             ""openapi"": ""3.0.0"",
@@ -4760,7 +4920,7 @@ _openApiSpecificationService,
         }";
     }
 
-    private string CreateFeedSpecMissingRequiredHsdsRequestField()
+    private static string CreateFeedSpecMissingRequiredHsdsRequestField()
     {
         return @"{
             ""openapi"": ""3.0.0"",
@@ -4793,7 +4953,7 @@ _openApiSpecificationService,
         }";
     }
 
-    private string CreateFeedSpecWithAdditionalHsdsRequestField()
+    private static string CreateFeedSpecWithAdditionalHsdsRequestField()
     {
         return @"{
             ""openapi"": ""3.0.0"",

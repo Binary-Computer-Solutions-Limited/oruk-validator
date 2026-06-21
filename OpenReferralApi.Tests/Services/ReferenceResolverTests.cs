@@ -11,7 +11,7 @@ namespace OpenReferralApi.Tests.Services;
 public class ReferenceResolverTests
 {
     private Mock<ILogger<SchemaResolverService>> _loggerMock;
-    private IMemoryCache _memoryCache;
+    private MemoryCache _memoryCache;
     private IOptions<CacheOptions> _cacheOptions;
 
     [SetUp]
@@ -74,10 +74,13 @@ public class ReferenceResolverTests
         var result = await resolver.ResolveNodeRefAsync("#/definitions/User");
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        var resultObj = result!.AsObject();
-        Assert.That(resultObj["type"]!.GetValue<string>(), Is.EqualTo("object"));
-        Assert.That(resultObj.ContainsKey("properties"), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            var resultObj = result!.AsObject();
+            Assert.That(resultObj["type"]!.GetValue<string>(), Is.EqualTo("object"));
+            Assert.That(resultObj.ContainsKey("properties"), Is.True);
+        }
     }
 
     [Test]
@@ -101,10 +104,12 @@ public class ReferenceResolverTests
         // Act
         var result = await resolver.ResolveNodeRefAsync("#/items/1");
 
-        // Assert
-        Assert.That(result, Is.Not.Null);
-        var resultObj = result!.AsObject();
-        Assert.That(resultObj["type"]!.GetValue<string>(), Is.EqualTo("number"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            var resultObj = result?.AsObject();
+            Assert.That(resultObj?["type"]?.GetValue<string>(), Is.EqualTo("number"));
+        }
     }
 
     [Test]
@@ -129,10 +134,12 @@ public class ReferenceResolverTests
         // Act
         var result = await resolver.ResolveNodeRefAsync("#/definitions/field~0name~1path");
 
-        // Assert
-        Assert.That(result, Is.Not.Null);
-        var resultObj = result!.AsObject();
-        Assert.That(resultObj["type"]!.GetValue<string>(), Is.EqualTo("string"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            var resultObj = result?.AsObject();
+            Assert.That(resultObj?["type"]?.GetValue<string>(), Is.EqualTo("string"));
+        }
     }
 
     [Test]
@@ -163,10 +170,12 @@ public class ReferenceResolverTests
         // Act
         var result = await resolver.ResolveNodeRefAsync("#userAnchor");
 
-        // Assert
-        Assert.That(result, Is.Not.Null);
-        var resultObj = result!.AsObject();
-        Assert.That(resultObj["type"]!.GetValue<string>(), Is.EqualTo("object"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            var resultObj = result?.AsObject();
+            Assert.That(resultObj?["type"]?.GetValue<string>(), Is.EqualTo("object"));
+        }
     }
 
     [Test]
@@ -191,9 +200,12 @@ public class ReferenceResolverTests
         var result = await resolver.ResolveNodeRefAsync("#/properties/self");
 
         // Assert
-        Assert.That(result, Is.Null, "Circular lookup should return null to break loop");
-        Assert.That(resolver.ResolutionIssues.Count, Is.GreaterThan(0));
-        Assert.That(resolver.ResolutionIssues[0].ErrorCode, Is.EqualTo("CIRCULAR_SCHEMA_REFERENCE"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Null, "Circular lookup should return null to break loop");
+            Assert.That(resolver.ResolutionIssues, Has.Count.GreaterThan(0));
+            Assert.That(resolver.ResolutionIssues[0].ErrorCode, Is.EqualTo("CIRCULAR_SCHEMA_REFERENCE"));
+        }
     }
 
     [Test]
@@ -234,10 +246,13 @@ public class ReferenceResolverTests
             var result = await resolver.ResolveNodeRefAsync("./definitions.json#/$defs/name");
 
             // Assert
-            Assert.That(result, Is.Not.Null);
-            var nameSchema = result!.AsObject();
-            Assert.That(nameSchema["type"]!.GetValue<string>(), Is.EqualTo("string"));
-            Assert.That(nameSchema["minLength"]!.GetValue<int>(), Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.Not.Null);
+                var nameSchema = result!.AsObject();
+                Assert.That(nameSchema["type"]!.GetValue<string>(), Is.EqualTo("string"));
+                Assert.That(nameSchema["minLength"]!.GetValue<int>(), Is.EqualTo(1));
+            }
         }
         finally
         {

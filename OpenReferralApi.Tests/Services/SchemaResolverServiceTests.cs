@@ -12,7 +12,7 @@ namespace OpenReferralApi.Tests.Services;
 public class SchemaResolverServiceTests
 {
     private Mock<ILogger<SchemaResolverService>> _loggerMock;
-    private IMemoryCache _memoryCache;
+    private MemoryCache _memoryCache;
     private IOptions<CacheOptions> _cacheOptions;
     private SchemaResolverService _service;
 
@@ -62,8 +62,11 @@ public class SchemaResolverServiceTests
         var result = await _service.ResolveAsync(schemaJson);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result, Does.Contain("object"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result, Does.Contain("object"));
+        }
     }
 
     [Test]
@@ -84,8 +87,11 @@ public class SchemaResolverServiceTests
         var result = await _service.ResolveAsync(jsonNode!);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result?["type"]?.GetValue<string>(), Is.EqualTo("object"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result?["type"]?.GetValue<string>(), Is.EqualTo("object"));
+        }
     }
 
     [Test]
@@ -139,10 +145,13 @@ public class SchemaResolverServiceTests
         var result = await _service.CreateSchemaFromJsonAsync(schemaJson, null);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(System.Text.Json.JsonSerializer.Serialize(result), Does.Contain("object"));
-        Assert.That(System.Text.Json.JsonSerializer.Serialize(result), Does.Contain("name"));
-        Assert.That(System.Text.Json.JsonSerializer.Serialize(result), Does.Contain("age"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(System.Text.Json.JsonSerializer.Serialize(result), Does.Contain("object"));
+            Assert.That(System.Text.Json.JsonSerializer.Serialize(result), Does.Contain("name"));
+            Assert.That(System.Text.Json.JsonSerializer.Serialize(result), Does.Contain("age"));
+        }
     }
 
     [Test]
@@ -162,8 +171,11 @@ public class SchemaResolverServiceTests
         var result = await _service.CreateSchemaFromJsonAsync(schemaJson, documentUri);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(System.Text.Json.JsonSerializer.Serialize(result), Does.Contain("object"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(System.Text.Json.JsonSerializer.Serialize(result), Does.Contain("object"));
+        }
     }
 
     [Test]
@@ -303,12 +315,15 @@ public class SchemaResolverServiceTests
         var result2 = await service.ResolveAsync(mainSchemaJson, "https://example.com/");
 
         // Assert
-        Assert.That(result1, Is.Not.Null);
-        Assert.That(result2, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result1, Is.Not.Null);
+            Assert.That(result2, Is.Not.Null);
 
-        // Verify cache contains the schema
-        var cacheKey = $"schema:{schemaUrl}";
-        Assert.That(memoryCache.TryGetValue(cacheKey, out CachedSchema? _), Is.True);
+            // Verify cache contains the schema
+            var cacheKey = $"schema:{schemaUrl}";
+            Assert.That(memoryCache.TryGetValue(cacheKey, out CachedSchema? _), Is.True);
+        }
     }
 
     [Test]
@@ -357,11 +372,14 @@ public class SchemaResolverServiceTests
         var result = await service.ResolveAsync(mainSchemaJson, "https://example.com/");
 
         // Assert
-        Assert.That(result, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
 
-        // Verify cache does not contain the schema
-        var cacheKey = $"schema:{schemaUrl}";
-        Assert.That(memoryCache.TryGetValue(cacheKey, out CachedSchema? _), Is.False);
+            // Verify cache does not contain the schema
+            var cacheKey = $"schema:{schemaUrl}";
+            Assert.That(memoryCache.TryGetValue(cacheKey, out CachedSchema? _), Is.False);
+        }
     }
 
     [Test]
@@ -396,10 +414,13 @@ public class SchemaResolverServiceTests
         var result = await service.ResolveAsync(mainSchemaJson, "https://example.com/", null);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Authorization, Is.Null);
-        Assert.That(capturedRequest.Headers.Contains("X-API-Key"), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(capturedRequest, Is.Not.Null);
+            Assert.That(capturedRequest!.Headers.Authorization, Is.Null);
+            Assert.That(capturedRequest.Headers.Contains("X-API-Key"), Is.False);
+        }
     }
 
     [Test]
@@ -440,12 +461,15 @@ public class SchemaResolverServiceTests
         var result = await service.ResolveAsync(mainSchemaJson, "https://example.com/", auth);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Contains("X-Test-Api-Key"), Is.True);
-        Assert.That(capturedRequest.Headers.TryGetValues("X-Test-Api-Key", out var values), Is.True);
-        Assert.That(values, Is.Not.Null);
-        Assert.That(values!.Single(), Is.EqualTo("test-api-key"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(capturedRequest, Is.Not.Null);
+            Assert.That(capturedRequest!.Headers.Contains("X-Test-Api-Key"), Is.True);
+            Assert.That(capturedRequest.Headers.TryGetValues("X-Test-Api-Key", out var values), Is.True);
+            Assert.That(values, Is.Not.Null);
+            Assert.That(values!.Single(), Is.EqualTo("test-api-key"));
+        }
     }
 
     #endregion

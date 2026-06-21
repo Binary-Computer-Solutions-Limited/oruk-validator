@@ -47,9 +47,12 @@ public class OpenReferralUKValidationResponseMapperTests
         // Assert
         Assert.That(response, Is.Not.Null);
         var json = JsonSerializer.SerializeToNode(response)!.AsObject();
-        Assert.That(json["service"], Is.Not.Null);
-        Assert.That(json["testSuites"], Is.Not.Null);
-        Assert.That(json["specificationValidation"], Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["service"], Is.Not.Null);
+            Assert.That(json["testSuites"], Is.Not.Null);
+            Assert.That(json["specificationValidation"], Is.Not.Null);
+        }
     }
 
     [Test]
@@ -83,8 +86,11 @@ public class OpenReferralUKValidationResponseMapperTests
         // Assert
         var json = JsonSerializer.SerializeToNode(response)!.AsObject();
         var testSuites = json["testSuites"] as JsonArray;
-        Assert.That(testSuites, Is.Not.Null);
-        Assert.That(testSuites, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(testSuites, Is.Not.Null);
+            Assert.That(testSuites, Is.Empty);
+        }
     }
 
     [Test]
@@ -132,8 +138,11 @@ public class OpenReferralUKValidationResponseMapperTests
         var response = _mapper.MapToOpenReferralUKValidationResponse(result);
 
         // Assert
-        Assert.That(response.Notifications, Has.Count.EqualTo(1));
-        Assert.That(response.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Notifications, Has.Count.EqualTo(1));
+            Assert.That(response.Notifications[0], Does.Contain("Unable to get or resolve the OpenAPI specification"));
+        }
     }
 
     [Test]
@@ -196,16 +205,18 @@ public class OpenReferralUKValidationResponseMapperTests
         // Assert
         var json = JsonSerializer.SerializeToNode(response)!.AsObject();
         var specValidation = json["specificationValidation"];
+        var errors = specValidation?["errors"] as JsonArray;
 
-        Assert.That(specValidation, Is.Not.Null);
-        Assert.That(specValidation!["isValid"]!.GetValue<bool>(), Is.False);
-        Assert.That(specValidation["version"]!.GetValue<string>(), Is.EqualTo("3.0.0"));
-
-        var errors = specValidation["errors"] as JsonArray;
-        Assert.That(errors, Is.Not.Null);
-        Assert.That(errors!.Count, Is.EqualTo(1));
-        Assert.That(errors[0]!["name"]!.GetValue<string>(), Is.EqualTo("HSDS_MISSING_ENDPOINT"));
-        Assert.That(errors[0]!["errorIn"]!.GetValue<string>(), Is.EqualTo("paths.GET /organizations"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(specValidation, Is.Not.Null);
+            Assert.That(specValidation!["isValid"]!.GetValue<bool>(), Is.False);
+            Assert.That(specValidation["version"]!.GetValue<string>(), Is.EqualTo("3.0.0"));
+            Assert.That(errors, Is.Not.Null);
+            Assert.That(errors, Has.Count.EqualTo(1));
+            Assert.That(errors![0]!["name"]!.GetValue<string>(), Is.EqualTo("HSDS_MISSING_ENDPOINT"));
+            Assert.That(errors[0]!["errorIn"]!.GetValue<string>(), Is.EqualTo("paths.GET /organizations"));
+        }
     }
 
     [Test]
@@ -248,14 +259,17 @@ public class OpenReferralUKValidationResponseMapperTests
         var json = JsonSerializer.SerializeToNode(response)!.AsObject();
         var suites = json["testSuites"] as JsonArray;
 
-        Assert.That(suites, Is.Not.Null);
-        Assert.That(suites!.Count, Is.EqualTo(2));
-        Assert.That(suites[0]!["name"]!.GetValue<string>(), Is.EqualTo("Level 1 Compliance - Basic checks"));
-        Assert.That(suites[0]!["required"]!.GetValue<bool>(), Is.True);
-        Assert.That(suites[0]!["messageLevel"]!.GetValue<string>(), Is.EqualTo("error"));
-        Assert.That(suites[1]!["name"]!.GetValue<string>(), Is.EqualTo("Level 2 Compliance - Extended checks"));
-        Assert.That(suites[1]!["required"]!.GetValue<bool>(), Is.False);
-        Assert.That(suites[1]!["messageLevel"]!.GetValue<string>(), Is.EqualTo("warning"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(suites, Is.Not.Null);
+            Assert.That(suites, Has.Count.EqualTo(2));
+            Assert.That(suites![0]!["name"]!.GetValue<string>(), Is.EqualTo("Level 1 Compliance - Basic checks"));
+            Assert.That(suites[0]!["required"]!.GetValue<bool>(), Is.True);
+            Assert.That(suites[0]!["messageLevel"]!.GetValue<string>(), Is.EqualTo("error"));
+            Assert.That(suites[1]!["name"]!.GetValue<string>(), Is.EqualTo("Level 2 Compliance - Extended checks"));
+            Assert.That(suites[1]!["required"]!.GetValue<bool>(), Is.False);
+            Assert.That(suites[1]!["messageLevel"]!.GetValue<string>(), Is.EqualTo("warning"));
+        }
     }
 
     [Test]
@@ -311,8 +325,11 @@ public class OpenReferralUKValidationResponseMapperTests
         var response = _mapper.MapToOpenReferralUKValidationResponse(result);
 
         // Assert
-        Assert.That(response.Service.Profile, Is.EqualTo("3.0.1"));
-        Assert.That(response.Service.ProfileReason, Is.EqualTo("Unknown"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Service.Profile, Is.EqualTo("3.0.1"));
+            Assert.That(response.Service.ProfileReason, Is.EqualTo("Unknown"));
+        }
     }
 
     [Test]
@@ -382,9 +399,12 @@ public class OpenReferralUKValidationResponseMapperTests
         var json = JsonSerializer.SerializeToNode(response)!.AsObject();
         var messages = json["testSuites"]![0]!["tests"]![0]!["messages"] as JsonArray;
 
-        Assert.That(messages, Is.Not.Null);
-        Assert.That(messages!.Count, Is.EqualTo(1));
-        Assert.That(messages[0]!["errorIn"]!.GetValue<string>(), Is.EqualTo(duplicatePath));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(messages, Is.Not.Null);
+            Assert.That(messages, Has.Count.EqualTo(1));
+            Assert.That(messages![0]!["errorIn"]!.GetValue<string>(), Is.EqualTo(duplicatePath));
+        }
     }
 
     [Test]
@@ -421,11 +441,14 @@ public class OpenReferralUKValidationResponseMapperTests
         var json = JsonSerializer.SerializeToNode(response)!.AsObject();
         var messages = json["testSuites"]![0]!["tests"]![0]!["messages"] as JsonArray;
 
-        Assert.That(messages, Is.Not.Null);
-        Assert.That(messages!.Count, Is.EqualTo(1));
-        Assert.That(messages[0]!["name"]!.GetValue<string>(), Is.EqualTo("Performance"));
-        Assert.That(messages[0]!["description"]!.GetValue<string>(), Is.EqualTo("Warning"));
-        Assert.That(messages[0]!["message"]!.GetValue<string>(), Does.Contain("Average response time is 6500ms"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(messages, Is.Not.Null);
+            Assert.That(messages, Has.Count.EqualTo(1));
+            Assert.That(messages![0]!["name"]!.GetValue<string>(), Is.EqualTo("Performance"));
+            Assert.That(messages[0]!["description"]!.GetValue<string>(), Is.EqualTo("Warning"));
+            Assert.That(messages[0]!["message"]!.GetValue<string>(), Does.Contain("Average response time is 6500ms"));
+        }
     }
 
     [Test]

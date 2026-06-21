@@ -51,10 +51,13 @@ public class OpenApiSpecificationServiceTests
   {
     var result = await _service.ValidateAsync(JsonNode.Parse("{}")!.AsObject(), CancellationToken.None);
 
-    Assert.That(result.IsValid, Is.False);
-    Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "MISSING_OPENAPI_VERSION"));
-    Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "MISSING_INFO"));
-    Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "MISSING_PATHS"));
+    using (Assert.EnterMultipleScope())
+    {
+        Assert.That(result.IsValid, Is.False);
+        Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "MISSING_OPENAPI_VERSION"));
+        Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "MISSING_INFO"));
+        Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "MISSING_PATHS"));
+    }
   }
 
   [Test]
@@ -86,9 +89,12 @@ public class OpenApiSpecificationServiceTests
 
     var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
-    Assert.That(result.IsValid, Is.True);
-    Assert.That(capturedRequest, Is.Not.Null);
-    Assert.That(capturedRequest!.SchemaUri, Is.EqualTo("https://json-schema.org/draft/2020-12/schema"));
+    using (Assert.EnterMultipleScope())
+    {
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(capturedRequest, Is.Not.Null);
+        Assert.That(capturedRequest!.SchemaUri, Is.EqualTo("https://json-schema.org/draft/2020-12/schema"));
+    }
   }
 
   [Test]
@@ -119,9 +125,12 @@ public class OpenApiSpecificationServiceTests
 
     var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
-    Assert.That(result.IsValid, Is.True);
-    Assert.That(capturedRequest, Is.Not.Null);
-    Assert.That(capturedRequest!.SchemaUri, Is.EqualTo("https://json-schema.org/draft/2020-12/schema"));
+    using (Assert.EnterMultipleScope())
+    {
+        Assert.That(result.IsValid, Is.True);
+        Assert.That(capturedRequest, Is.Not.Null);
+        Assert.That(capturedRequest!.SchemaUri, Is.EqualTo("https://json-schema.org/draft/2020-12/schema"));
+    }
   }
 
   [Test]
@@ -149,9 +158,12 @@ public class OpenApiSpecificationServiceTests
 
     var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
-    Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "SCHEMA_VALIDATION_FAILED"));
-    Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "SCHEMA_VALIDATION_FAILED" && e.Severity == "Error"));
-    Assert.That(result.IsValid, Is.False);
+    using (Assert.EnterMultipleScope())
+    {
+        Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "SCHEMA_VALIDATION_FAILED"));
+        Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "SCHEMA_VALIDATION_FAILED" && e.Severity == "Error"));
+        Assert.That(result.IsValid, Is.False);
+    }
   }
 
   [Test]
@@ -176,8 +188,11 @@ public class OpenApiSpecificationServiceTests
 
     var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
-    Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "UNSUPPORTED_SCHEMA_VERSION" && e.Severity == "Error"));
-    Assert.That(result.IsValid, Is.False);
+    using (Assert.EnterMultipleScope())
+    {
+        Assert.That(result.Errors, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "UNSUPPORTED_SCHEMA_VERSION" && e.Severity == "Error"));
+        Assert.That(result.IsValid, Is.False);
+    }
   }
 
   [Test]
@@ -213,8 +228,11 @@ public class OpenApiSpecificationServiceTests
 
     var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
-    Assert.That(result.Errors.Count(e => e.ErrorCode == "V"), Is.EqualTo(1));
-    Assert.That(result.Errors.First(e => e.ErrorCode == "V").Path, Is.EqualTo("paths[/services].get.responses[].content"));
+    using (Assert.EnterMultipleScope())
+    {
+        Assert.That(result.Errors.Count(e => e.ErrorCode == "V"), Is.EqualTo(1));
+        Assert.That(result.Errors.First(e => e.ErrorCode == "V").Path, Is.EqualTo("paths[/services].get.responses[].content"));
+    }
   }
 
   [Test]
@@ -238,9 +256,12 @@ public class OpenApiSpecificationServiceTests
 
     var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
-    Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "info.description"));
-    Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "info.contact"));
-    Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "info.license"));
+    using (Assert.EnterMultipleScope())
+    {
+        Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "info.description"));
+        Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "info.contact"));
+        Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "info.license"));
+    }
   }
 
   [Test]
@@ -268,8 +289,11 @@ public class OpenApiSpecificationServiceTests
 
     var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
-    Assert.That(result.SchemaAnalysis, Is.Not.Null);
-    Assert.That(result.SchemaAnalysis.SchemaCount, Is.EqualTo(2));
+    using (Assert.EnterMultipleScope())
+    {
+        Assert.That(result.SchemaAnalysis, Is.Not.Null);
+        Assert.That(result.SchemaAnalysis!.SchemaCount, Is.EqualTo(2));
+    }
   }
 
   [Test]
@@ -316,14 +340,17 @@ public class OpenApiSpecificationServiceTests
 
     var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
-    Assert.That(result.SchemaAnalysis, Is.Not.Null);
-    Assert.That(result.SchemaAnalysis.ComponentCount, Is.EqualTo(1));
-    Assert.That(result.SchemaAnalysis.SchemaCount, Is.EqualTo(1));
-    Assert.That(result.SchemaAnalysis.ExampleCount, Is.GreaterThanOrEqualTo(1));
+    using (Assert.EnterMultipleScope())
+    {
+        Assert.That(result.SchemaAnalysis, Is.Not.Null);
+        Assert.That(result.SchemaAnalysis!.ComponentCount, Is.EqualTo(1));
+        Assert.That(result.SchemaAnalysis.SchemaCount, Is.EqualTo(1));
+        Assert.That(result.SchemaAnalysis.ExampleCount, Is.GreaterThanOrEqualTo(1));
 
-    Assert.That(result.QualityMetrics, Is.Not.Null);
-    Assert.That(result.QualityMetrics.DocumentationCoverage, Is.GreaterThan(0));
-    Assert.That(result.QualityMetrics.QualityScore, Is.GreaterThan(0));
+        Assert.That(result.QualityMetrics, Is.Not.Null);
+        Assert.That(result.QualityMetrics!.DocumentationCoverage, Is.GreaterThan(0));
+        Assert.That(result.QualityMetrics.QualityScore, Is.GreaterThan(0));
+    }
   }
 
   [Test]
@@ -355,10 +382,13 @@ public class OpenApiSpecificationServiceTests
 
     var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
-    Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "servers"));
-    Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "paths./services.get.operationId"));
-    Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "paths./services.get.responses" && r.Message.Contains("error response codes", StringComparison.OrdinalIgnoreCase)));
-    Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "paths./services.get.responses" && r.Message.Contains("missing a response schema", StringComparison.OrdinalIgnoreCase)));
+    using (Assert.EnterMultipleScope())
+    {
+        Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "servers"));
+        Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "paths./services.get.operationId"));
+        Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "paths./services.get.responses" && r.Message.Contains("error response codes", StringComparison.OrdinalIgnoreCase)));
+        Assert.That(result.Recommendations, Has.Some.Matches<Recommendation>(r => r.Path == "paths./services.get.responses" && r.Message.Contains("missing a response schema", StringComparison.OrdinalIgnoreCase)));
+    }
   }
 
   [Test]
@@ -407,9 +437,12 @@ public class OpenApiSpecificationServiceTests
 
     var result = await _service.ValidateAsync(spec, CancellationToken.None);
 
-    Assert.That(result.Recommendations.Any(r => r.Path == "servers"), Is.False);
-    Assert.That(result.Recommendations.Any(r => r.Path == "paths./services.get.operationId"), Is.False);
-    Assert.That(result.Recommendations.Any(r => r.Path == "paths./services.get.responses" && r.Message.Contains("error response codes", StringComparison.OrdinalIgnoreCase)), Is.False);
-    Assert.That(result.Recommendations.Any(r => r.Path == "paths./services.get.responses" && r.Message.Contains("missing a response schema", StringComparison.OrdinalIgnoreCase)), Is.False);
+    using (Assert.EnterMultipleScope())
+    {
+        Assert.That(result.Recommendations.Any(r => r.Path == "servers"), Is.False);
+        Assert.That(result.Recommendations.Any(r => r.Path == "paths./services.get.operationId"), Is.False);
+        Assert.That(result.Recommendations.Any(r => r.Path == "paths./services.get.responses" && r.Message.Contains("error response codes", StringComparison.OrdinalIgnoreCase)), Is.False);
+        Assert.That(result.Recommendations.Any(r => r.Path == "paths./services.get.responses" && r.Message.Contains("missing a response schema", StringComparison.OrdinalIgnoreCase)), Is.False);
+    }
   }
 }

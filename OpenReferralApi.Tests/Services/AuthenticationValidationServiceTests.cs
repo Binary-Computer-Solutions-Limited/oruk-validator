@@ -54,11 +54,14 @@ public class AuthenticationValidationServiceTests
 
         var result = service.TryGetValidatedRequestAuthentication("schema", auth);
 
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result, Is.Not.SameAs(auth));
-        Assert.That(result!.ApiKey, Is.EqualTo("token"));
-        Assert.That(result.ApiKeyHeader, Is.EqualTo("X-API-Key"));
-        Assert.That(result.BearerToken, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result, Is.Not.SameAs(auth));
+            Assert.That(result?.ApiKey, Is.EqualTo("token"));
+            Assert.That(result?.ApiKeyHeader, Is.EqualTo("X-API-Key"));
+            Assert.That(result?.BearerToken, Is.Null);
+        }
     }
 
     [Test]
@@ -73,8 +76,11 @@ public class AuthenticationValidationServiceTests
 
         var result = service.TryGetValidatedRequestAuthentication("schema", auth);
 
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result!.ApiKeyHeader, Is.EqualTo("X-API-Key"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result?.ApiKeyHeader, Is.EqualTo("X-API-Key"));
+        }
     }
 
     [Test]
@@ -155,10 +161,13 @@ public class AuthenticationValidationServiceTests
 
         var result = service.TryGetValidatedRequestAuthentication("schema", auth);
 
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result!.BasicAuth, Is.Not.Null);
-        Assert.That(result.BasicAuth!.Username, Is.EqualTo("user"));
-        Assert.That(result.BasicAuth.Password, Is.EqualTo("pass"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result?.BasicAuth, Is.Not.Null);
+            Assert.That(result?.BasicAuth?.Username, Is.EqualTo("user"));
+            Assert.That(result?.BasicAuth?.Password, Is.EqualTo("pass"));
+        }
     }
 
     [Test]
@@ -212,11 +221,14 @@ public class AuthenticationValidationServiceTests
 
         var result = service.TryGetValidatedRequestAuthentication("schema", auth);
 
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result!.CustomHeaders, Is.Not.Null);
-        Assert.That(result.CustomHeaders!.Count, Is.EqualTo(1));
-        Assert.That(result.CustomHeaders.ContainsKey("X-Token"), Is.True);
-        Assert.That(result.CustomHeaders["X-Token"], Is.EqualTo("abc"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result?.CustomHeaders, Is.Not.Null);
+            Assert.That(result?.CustomHeaders, Has.Count.EqualTo(1));
+            Assert.That(result?.CustomHeaders?.ContainsKey("X-Token"), Is.True);
+            Assert.That(result?.CustomHeaders?["X-Token"], Is.EqualTo("abc"));
+        }
     }
 
     private AuthenticationValidationService CreateService(bool allowUserSuppliedAuth)

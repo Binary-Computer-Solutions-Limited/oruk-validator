@@ -58,8 +58,11 @@ public class HsdsComplianceServiceTests
 
     var found = service.TryGetKnownHsdsSchemaUrl("3.0", out var schemaUrl);
 
-    Assert.That(found, Is.True);
-    Assert.That(schemaUrl, Is.EqualTo("https://openreferraluk.org/specifications/3.0/openapi.json"));
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(found, Is.True);
+      Assert.That(schemaUrl, Is.EqualTo("https://openreferraluk.org/specifications/3.0/openapi.json"));
+    }
   }
 
   [Test]
@@ -67,8 +70,11 @@ public class HsdsComplianceServiceTests
   {
     var found = _service.TryGetKnownHsdsSchemaUrl("9.9", out var schemaUrl);
 
-    Assert.That(found, Is.False);
-    Assert.That(schemaUrl, Is.EqualTo(string.Empty));
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(found, Is.False);
+      Assert.That(schemaUrl, Is.EqualTo(string.Empty));
+    }
   }
 
   [Test]
@@ -86,8 +92,11 @@ public class HsdsComplianceServiceTests
 
     var found = service.TryGetKnownHsdsSchemaUrl("4.0", out var schemaUrl);
 
-    Assert.That(found, Is.True);
-    Assert.That(schemaUrl, Is.EqualTo("https://profiles.example.org/4.0/openapi.json"));
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(found, Is.True);
+      Assert.That(schemaUrl, Is.EqualTo("https://profiles.example.org/4.0/openapi.json"));
+    }
   }
 
   [Test]
@@ -138,9 +147,12 @@ public class HsdsComplianceServiceTests
 
     var findings = _service.CompareFeedSpecAgainstHsdsProfile(feedSpec, hsdsSpec);
 
-    Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_MISSING_ENDPOINT"));
-    Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_ADDITIONAL_ENDPOINT"));
-    Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_ADDITIONAL_ENDPOINT" && e.Severity == "Info"));
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_MISSING_ENDPOINT"));
+      Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_ADDITIONAL_ENDPOINT"));
+      Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_ADDITIONAL_ENDPOINT" && e.Severity == "Info"));
+    }
   }
 
   [Test]
@@ -206,9 +218,12 @@ public class HsdsComplianceServiceTests
 
     var findings = _service.CompareFeedSpecAgainstHsdsProfile(feedSpec, hsdsSpec);
 
-    Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_MISSING_REQUIRED_FIELD"));
-    Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_ADDITIONAL_FIELD"));
-    Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_ADDITIONAL_FIELD" && e.Severity == "Info"));
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_MISSING_REQUIRED_FIELD"));
+      Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_ADDITIONAL_FIELD"));
+      Assert.That(findings, Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_ADDITIONAL_FIELD" && e.Severity == "Info"));
+    }
   }
 
   [Test]
@@ -332,12 +347,15 @@ public class HsdsComplianceServiceTests
     await _service.ValidateEndpointResponsesAgainstHsdsProfileAsync(endpointTests, hsdsSpec, options, CancellationToken.None);
 
     var endpoint = endpointTests[0];
-    Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.FailedValidation));
-    Assert.That(endpoint.TestResults[0].ValidationResult, Is.Not.Null);
-    Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
-        Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_RUNTIME_ADDITIONAL_FIELD"));
-    Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
-        Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_RUNTIME_VALIDATION_ERROR"));
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.FailedValidation));
+      Assert.That(endpoint.TestResults[0].ValidationResult, Is.Not.Null);
+      Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
+          Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_RUNTIME_ADDITIONAL_FIELD"));
+      Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
+          Has.Some.Matches<ValidationError>(e => e.ErrorCode == "HSDS_RUNTIME_VALIDATION_ERROR"));
+    }
   }
 
   [Test]
@@ -417,9 +435,12 @@ public class HsdsComplianceServiceTests
     await serviceWithLenientPolicy.ValidateEndpointResponsesAgainstHsdsProfileAsync(endpointTests, hsdsSpec, options, CancellationToken.None);
 
     var endpoint = endpointTests[0];
-    Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
-    Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
-        Has.Some.Matches<ValidationError>(e => e.Severity == "Warning"));
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.PassedWithWarnings));
+      Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
+          Has.Some.Matches<ValidationError>(e => e.Severity == "Warning"));
+    }
   }
 
   [Test]
@@ -500,9 +521,12 @@ public class HsdsComplianceServiceTests
     await serviceWithLenientPolicy.ValidateEndpointResponsesAgainstHsdsProfileAsync(endpointTests, hsdsSpec, options, CancellationToken.None);
 
     var endpoint = endpointTests[0];
-    Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.PassedValidation));
-    Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
-        Has.None.Matches<ValidationError>(e => e.ErrorCode == "HSDS_RUNTIME_ADDITIONAL_FIELD"));
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(endpoint.Status, Is.EqualTo(EndpointTestStatus.PassedValidation));
+      Assert.That(endpoint.TestResults[0].ValidationResult!.Errors,
+          Has.None.Matches<ValidationError>(e => e.ErrorCode == "HSDS_RUNTIME_ADDITIONAL_FIELD"));
+    }
   }
 
   [Test]
@@ -524,8 +548,11 @@ public class HsdsComplianceServiceTests
       openApiValidationOptions: Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.AllowAdditionalProperties }));
     serviceWithLenientPolicy.ApplyAdditionalFieldPolicy(result, reportAdditionalFields: true);
 
-    Assert.That(result.Errors.Single(e => e.ErrorCode == "ADDITIONAL_FIELD").Severity, Is.EqualTo("Warning"));
-    Assert.That(result.IsValid, Is.True);
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(result.Errors.Single(e => e.ErrorCode == "ADDITIONAL_FIELD").Severity, Is.EqualTo("Warning"));
+      Assert.That(result.IsValid, Is.True);
+    }
   }
 
   [Test]
@@ -547,7 +574,10 @@ public class HsdsComplianceServiceTests
       openApiValidationOptions: Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.AllowAdditionalProperties }));
     serviceWithLenientPolicy.ApplyAdditionalFieldPolicy(result, reportAdditionalFields: false);
 
-    Assert.That(result.Errors, Has.None.Matches<ValidationError>(e => e.ErrorCode == "ADDITIONAL_FIELD"));
-    Assert.That(result.IsValid, Is.True);
+    using (Assert.EnterMultipleScope())
+    {
+      Assert.That(result.Errors, Has.None.Matches<ValidationError>(e => e.ErrorCode == "ADDITIONAL_FIELD"));
+      Assert.That(result.IsValid, Is.True);
+    }
   }
 }

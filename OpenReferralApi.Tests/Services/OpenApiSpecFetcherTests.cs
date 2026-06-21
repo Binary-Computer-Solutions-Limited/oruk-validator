@@ -13,7 +13,7 @@ public class OpenApiSpecFetcherTests
     private Mock<ILogger<OpenApiValidationService>> _loggerMock;
     private Mock<ILogger<SchemaResolverService>> _schemaResolverLoggerMock;
     private Mock<ISchemaResolverService> _schemaResolverServiceMock;
-    private IMemoryCache _memoryCache;
+    private MemoryCache _memoryCache;
     private IOptions<CacheOptions> _cacheOptions;
 
     [SetUp]
@@ -84,10 +84,13 @@ public class OpenApiSpecFetcherTests
         var result = await fetcher.FetchOpenApiSpecFromUrlAsync(specUrl, auth, CancellationToken.None);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(capturedRequest, Is.Not.Null);
-        // OpenApiSpecFetcher uses default header "X-API-Key" when ApiKeyHeader is null
-        Assert.That(capturedRequest!.Headers.Contains("X-API-Key"), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(capturedRequest, Is.Not.Null);
+            // OpenApiSpecFetcher uses default header "X-API-Key" when ApiKeyHeader is null
+            Assert.That(capturedRequest!.Headers.Contains("X-API-Key"), Is.True);
+        }
     }
 
     [Test]
@@ -123,9 +126,12 @@ public class OpenApiSpecFetcherTests
         var result = await fetcher.FetchOpenApiSpecFromUrlAsync(specUrl, auth, CancellationToken.None);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Contains("X-Custom-Key"), Is.False, "Empty API key should not add header");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(capturedRequest, Is.Not.Null);
+            Assert.That(capturedRequest!.Headers.Contains("X-Custom-Key"), Is.False, "Empty API key should not add header");
+        }
     }
 
     [Test]
@@ -160,9 +166,12 @@ public class OpenApiSpecFetcherTests
         var result = await fetcher.FetchOpenApiSpecFromUrlAsync(specUrl, auth, CancellationToken.None);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Authorization, Is.Null, "Empty bearer token should not add Authorization header");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(capturedRequest, Is.Not.Null);
+            Assert.That(capturedRequest!.Headers.Authorization, Is.Null, "Empty bearer token should not add Authorization header");
+        }
     }
 
     [Test]
@@ -201,9 +210,12 @@ public class OpenApiSpecFetcherTests
         var result = await fetcher.FetchOpenApiSpecFromUrlAsync(specUrl, auth, CancellationToken.None);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Authorization, Is.Null, "Basic auth without username should not add Authorization header");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(capturedRequest, Is.Not.Null);
+            Assert.That(capturedRequest!.Headers.Authorization, Is.Null, "Basic auth without username should not add Authorization header");
+        }
     }
 
     [Test]
@@ -242,12 +254,15 @@ public class OpenApiSpecFetcherTests
         var result = await fetcher.FetchOpenApiSpecFromUrlAsync(specUrl, auth, CancellationToken.None);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Contains("X-API-Key"), Is.True);
-        Assert.That(capturedRequest.Headers.GetValues("X-API-Key").First(), Is.EqualTo("api-key-123"));
-        Assert.That(capturedRequest.Headers.Contains("Authorization"), Is.True);
-        Assert.That(capturedRequest.Headers.GetValues("Authorization").First(), Is.EqualTo("Bearer token-456"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(capturedRequest, Is.Not.Null);
+            Assert.That(capturedRequest!.Headers.Contains("X-API-Key"), Is.True);
+            Assert.That(capturedRequest.Headers.GetValues("X-API-Key").First(), Is.EqualTo("api-key-123"));
+            Assert.That(capturedRequest.Headers.Contains("Authorization"), Is.True);
+            Assert.That(capturedRequest.Headers.GetValues("Authorization").First(), Is.EqualTo("Bearer token-456"));
+        }
     }
 
     [Test]
@@ -282,8 +297,11 @@ public class OpenApiSpecFetcherTests
         var result = await fetcher.FetchOpenApiSpecFromUrlAsync(specUrl, auth, CancellationToken.None);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(capturedRequest, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(capturedRequest, Is.Not.Null);
+        }
         // No custom headers should be added
     }
 
@@ -316,9 +334,12 @@ public class OpenApiSpecFetcherTests
         var result = await fetcher.FetchOpenApiSpecFromUrlAsync(specUrl, auth, CancellationToken.None);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Authorization, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(capturedRequest, Is.Not.Null);
+            Assert.That(capturedRequest!.Headers.Authorization, Is.Null);
+        }
     }
 
     [Test]
@@ -348,9 +369,12 @@ public class OpenApiSpecFetcherTests
         var result = await fetcher.FetchOpenApiSpecFromUrlAsync(specUrl, null, CancellationToken.None);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Authorization, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(capturedRequest, Is.Not.Null);
+            Assert.That(capturedRequest!.Headers.Authorization, Is.Null);
+        }
     }
 
     #endregion
@@ -379,9 +403,12 @@ public class OpenApiSpecFetcherTests
         var ex = Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await fetcher.FetchOpenApiSpecFromUrlAsync("not-a-valid-url", null, CancellationToken.None));
 
-        Assert.That(ex!.Message, Does.Contain("Failed to fetch OpenAPI specification"));
-        Assert.That(ex!.InnerException, Is.InstanceOf<ArgumentException>());
-        Assert.That(ex!.InnerException!.Message, Does.Contain("Invalid OpenAPI spec URL"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex!.Message, Does.Contain("Failed to fetch OpenAPI specification"));
+            Assert.That(ex!.InnerException, Is.InstanceOf<ArgumentException>());
+            Assert.That(ex!.InnerException!.Message, Does.Contain("Invalid OpenAPI spec URL"));
+        }
     }
 
     [Test]
@@ -406,9 +433,12 @@ public class OpenApiSpecFetcherTests
         var ex = Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await fetcher.FetchOpenApiSpecFromUrlAsync("/api/openapi.json", null, CancellationToken.None));
 
-        Assert.That(ex!.Message, Does.Contain("Failed to fetch OpenAPI specification"));
-        Assert.That(ex!.InnerException, Is.InstanceOf<ArgumentException>());
-        Assert.That(ex!.InnerException!.Message, Does.Contain("Invalid OpenAPI spec URL"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex!.Message, Does.Contain("Failed to fetch OpenAPI specification"));
+            Assert.That(ex!.InnerException, Is.InstanceOf<ArgumentException>());
+            Assert.That(ex!.InnerException!.Message, Does.Contain("Invalid OpenAPI spec URL"));
+        }
     }
 
     [Test]
@@ -533,9 +563,12 @@ public class OpenApiSpecFetcherTests
         var result = await fetcher.FetchOpenApiSpecFromUrlAsync(specUrl, null, CancellationToken.None, resolveReferences: false);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result["openapi"]?.ToString(), Is.EqualTo("3.0.0"));
-        Assert.That(result["paths"], Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result["openapi"]?.ToString(), Is.EqualTo("3.0.0"));
+            Assert.That(result["paths"], Is.Not.Null);
+        }
     }
 
     [Test]
@@ -569,10 +602,13 @@ public class OpenApiSpecFetcherTests
         var result = await fetcher.FetchOpenApiSpecFromUrlAsync(specUrl, null, CancellationToken.None, resolveReferences: true);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(capturedResolvedInput, Is.Not.Null);
-        Assert.That(capturedResolvedInput, Does.Contain("\"openapi\""));
-        Assert.That(capturedResolvedInput, Does.Not.Contain("openapi:"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(capturedResolvedInput, Is.Not.Null);
+            Assert.That(capturedResolvedInput, Does.Contain("\"openapi\""));
+            Assert.That(capturedResolvedInput, Does.Not.Contain("openapi:"));
+        }
     }
 
     [Test]
@@ -599,9 +635,12 @@ public class OpenApiSpecFetcherTests
         var ex = Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await fetcher.FetchOpenApiSpecFromUrlAsync(specUrl, null, CancellationToken.None, resolveReferences: false));
 
-        Assert.That(ex, Is.Not.Null);
-        Assert.That(ex!.InnerException, Is.InstanceOf<FormatException>());
-        Assert.That(ex.InnerException!.Message, Does.Contain("content was empty"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex, Is.Not.Null);
+            Assert.That(ex!.InnerException, Is.InstanceOf<FormatException>());
+            Assert.That(ex.InnerException!.Message, Does.Contain("content was empty"));
+        }
     }
 
     [Test]
@@ -628,9 +667,12 @@ public class OpenApiSpecFetcherTests
         var ex = Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await fetcher.FetchOpenApiSpecFromUrlAsync(specUrl, null, CancellationToken.None, resolveReferences: false));
 
-        Assert.That(ex, Is.Not.Null);
-        Assert.That(ex!.InnerException, Is.InstanceOf<FormatException>());
-        Assert.That(ex.InnerException!.Message, Does.Contain("neither valid JSON nor valid YAML"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex, Is.Not.Null);
+            Assert.That(ex!.InnerException, Is.InstanceOf<FormatException>());
+            Assert.That(ex.InnerException!.Message, Does.Contain("neither valid JSON nor valid YAML"));
+        }
     }
 
     #endregion

@@ -50,7 +50,7 @@ public class FeedValidationServiceTests
         // Mock MongoDB FindAsync to return an existing feed, allowing the service to proceed to the status update phase
         _cursorMock.Setup(c => c.MoveNextAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
-        _cursorMock.SetupGet(c => c.Current).Returns(new[] { new ServiceFeed { Id = "test-id" } });
+        _cursorMock.SetupGet(c => c.Current).Returns([new ServiceFeed { Id = "test-id" }]);
         
         _collectionMock
             .Setup(c => c.FindAsync(It.IsAny<FilterDefinition<ServiceFeed>>(), It.IsAny<FindOptions<ServiceFeed, ServiceFeed>>(), It.IsAny<CancellationToken>()))

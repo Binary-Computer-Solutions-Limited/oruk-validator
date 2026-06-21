@@ -8,8 +8,11 @@ public class ValidationPathNormalizerTests
     [Test]
     public void NormalizeArrayIndexes_WithNullOrEmpty_ReturnsEmptyString()
     {
-        Assert.That(ValidationPathNormalizer.NormalizeArrayIndexes(null), Is.EqualTo(string.Empty));
-        Assert.That(ValidationPathNormalizer.NormalizeArrayIndexes(string.Empty), Is.EqualTo(string.Empty));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ValidationPathNormalizer.NormalizeArrayIndexes(null), Is.EqualTo(string.Empty));
+            Assert.That(ValidationPathNormalizer.NormalizeArrayIndexes(string.Empty), Is.EqualTo(string.Empty));
+        }
     }
 
     [Test]
@@ -46,6 +49,8 @@ public class ValidationPathNormalizerTests
 [TestFixture]
 public class ValidationErrorNormalizerTests
 {
+    private static readonly string[] ExpectedPaths = ["data[].name", "data[].url"];
+    private static readonly string[] ExpectedErrorCodes = ["A", "B"];
     [Test]
     public void NormalizeAndDeduplicateByPath_KeepsFirstErrorPerNormalizedPath()
     {
@@ -73,11 +78,14 @@ public class ValidationErrorNormalizerTests
 
         var normalized = ValidationErrorNormalizer.NormalizeAndDeduplicateByPath(errors);
 
-        Assert.That(normalized, Has.Count.EqualTo(1));
-        Assert.That(normalized[0].Path, Is.EqualTo("data[].name"));
-        Assert.That(normalized[0].Message, Is.EqualTo("data[].name is required"));
-        Assert.That(normalized[0].LineNumber, Is.EqualTo(10));
-        Assert.That(normalized[0].ColumnNumber, Is.EqualTo(20));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(normalized, Has.Count.EqualTo(1));
+            Assert.That(normalized[0].Path, Is.EqualTo("data[].name"));
+            Assert.That(normalized[0].Message, Is.EqualTo("data[].name is required"));
+            Assert.That(normalized[0].LineNumber, Is.EqualTo(10));
+            Assert.That(normalized[0].ColumnNumber, Is.EqualTo(20));
+        }
     }
 
     [Test]
@@ -91,8 +99,11 @@ public class ValidationErrorNormalizerTests
 
         var normalized = ValidationErrorNormalizer.NormalizeAndDeduplicateByPath(errors);
 
-        Assert.That(normalized.Select(e => e.Path), Is.EquivalentTo(new[] { "data[].name", "data[].url" }));
-        Assert.That(normalized.Select(e => e.ErrorCode), Is.EquivalentTo(new[] { "A", "B" }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(normalized.Select(e => e.Path), Is.EquivalentTo(ExpectedPaths));
+            Assert.That(normalized.Select(e => e.ErrorCode), Is.EquivalentTo(ExpectedErrorCodes));
+        }
     }
 
     [Test]
@@ -111,9 +122,12 @@ public class ValidationErrorNormalizerTests
 
         var normalized = ValidationErrorNormalizer.NormalizeAndDeduplicateByPath(errors);
 
-        Assert.That(normalized, Has.Count.EqualTo(1));
-        Assert.That(normalized[0].Path, Is.EqualTo("paths[/services].get.responses[].content"));
-        Assert.That(normalized[0].Message, Is.EqualTo("paths[/services].get.responses[].content invalid"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(normalized, Has.Count.EqualTo(1));
+            Assert.That(normalized[0].Path, Is.EqualTo("paths[/services].get.responses[].content"));
+            Assert.That(normalized[0].Message, Is.EqualTo("paths[/services].get.responses[].content invalid"));
+        }
     }
 
     [Test]
@@ -133,7 +147,10 @@ public class ValidationErrorNormalizerTests
 
         var result = ValidationErrorNormalizer.NormalizeAndDeduplicateByPath(errors);
 
-        Assert.That(result, Has.Count.EqualTo(1));
-        Assert.That(result[0].SourceIdentifier, Is.EqualTo("request.jsonData (object)"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Has.Count.EqualTo(1));
+            Assert.That(result[0].SourceIdentifier, Is.EqualTo("request.jsonData (object)"));
+        }
     }
 }

@@ -29,8 +29,11 @@ public class SchemaWarmupBackgroundServiceTests
         await RunOnce(service, CancellationToken.None);
 
         var snapshot = statusTracker.GetSnapshot();
-        Assert.That(snapshot.State, Is.EqualTo("skipped"));
-        Assert.That(snapshot.SkipReason, Is.EqualTo("disabled"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.State, Is.EqualTo("skipped"));
+            Assert.That(snapshot.SkipReason, Is.EqualTo("disabled"));
+        }
         resolverMock.Verify(r => r.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), null), Times.Never);
     }
 
@@ -59,8 +62,11 @@ public class SchemaWarmupBackgroundServiceTests
         await RunOnce(service, CancellationToken.None);
 
         var snapshot = statusTracker.GetSnapshot();
-        Assert.That(snapshot.State, Is.EqualTo("skipped"));
-        Assert.That(snapshot.SkipReason, Is.EqualTo("cache-disabled"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.State, Is.EqualTo("skipped"));
+            Assert.That(snapshot.SkipReason, Is.EqualTo("cache-disabled"));
+        }
         resolverMock.Verify(r => r.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), null), Times.Never);
     }
 
@@ -106,12 +112,15 @@ public class SchemaWarmupBackgroundServiceTests
         await RunOnce(service, CancellationToken.None);
 
         var snapshot = statusTracker.GetSnapshot();
-        Assert.That(snapshot.State, Is.EqualTo("completed-with-errors"));
-        Assert.That(snapshot.ConfiguredUrlCount, Is.EqualTo(2));
-        Assert.That(snapshot.AttemptedCount, Is.EqualTo(2));
-        Assert.That(snapshot.SucceededCount, Is.EqualTo(1));
-        Assert.That(snapshot.FailedCount, Is.EqualTo(1));
-        Assert.That(snapshot.LastFailureUrl, Is.EqualTo(failUrl));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.State, Is.EqualTo("completed-with-errors"));
+            Assert.That(snapshot.ConfiguredUrlCount, Is.EqualTo(2));
+            Assert.That(snapshot.AttemptedCount, Is.EqualTo(2));
+            Assert.That(snapshot.SucceededCount, Is.EqualTo(1));
+            Assert.That(snapshot.FailedCount, Is.EqualTo(1));
+            Assert.That(snapshot.LastFailureUrl, Is.EqualTo(failUrl));
+        }
     }
 
     [Test]
@@ -148,10 +157,13 @@ public class SchemaWarmupBackgroundServiceTests
         await RunOnce(service, CancellationToken.None);
 
         var snapshot = statusTracker.GetSnapshot();
-        Assert.That(snapshot.State, Is.EqualTo("completed"));
-        Assert.That(snapshot.ConfiguredUrlCount, Is.EqualTo(1));
-        Assert.That(snapshot.AttemptedCount, Is.EqualTo(1));
-        Assert.That(snapshot.SucceededCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.State, Is.EqualTo("completed"));
+            Assert.That(snapshot.ConfiguredUrlCount, Is.EqualTo(1));
+            Assert.That(snapshot.AttemptedCount, Is.EqualTo(1));
+            Assert.That(snapshot.SucceededCount, Is.EqualTo(1));
+        }
 
         resolverMock.Verify(r => r.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), null), Times.Once);
     }
@@ -189,9 +201,12 @@ public class SchemaWarmupBackgroundServiceTests
         await RunOnce(service, cts.Token);
 
         var snapshot = statusTracker.GetSnapshot();
-        Assert.That(snapshot.State, Is.EqualTo("cancelled"));
-        Assert.That(snapshot.ConfiguredUrlCount, Is.EqualTo(1));
-        Assert.That(snapshot.AttemptedCount, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.State, Is.EqualTo("cancelled"));
+            Assert.That(snapshot.ConfiguredUrlCount, Is.EqualTo(1));
+            Assert.That(snapshot.AttemptedCount, Is.Zero);
+        }
 
         resolverMock.Verify(r => r.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), null), Times.Never);
     }

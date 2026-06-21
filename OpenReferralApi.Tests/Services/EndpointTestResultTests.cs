@@ -42,10 +42,13 @@ public class EndpointTestResultTests
 
         var flattened = endpoint.ValidationErrors;
 
-        Assert.That(flattened, Has.Count.EqualTo(3));
-        Assert.That(flattened.Any(e => e.Path == "data.name"), Is.True);
-        Assert.That(flattened.Any(e => e.Path == "data.postcode"), Is.True);
-        Assert.That(flattened.Any(e => e.Path == "data.email"), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(flattened, Has.Count.EqualTo(3));
+            Assert.That(flattened.Any(e => e.Path == "data.name"), Is.True);
+            Assert.That(flattened.Any(e => e.Path == "data.postcode"), Is.True);
+            Assert.That(flattened.Any(e => e.Path == "data.email"), Is.True);
+        }
     }
 
     [Test]
@@ -72,14 +75,16 @@ public class EndpointTestResultTests
             TestResults = [passing, failing]
         };
 
-        Assert.That(endpointWithFailure.PrimaryTestResult, Is.SameAs(failing));
-
         var endpointWithoutFailure = new EndpointTestResult
         {
             TestResults = [passing]
         };
 
-        Assert.That(endpointWithoutFailure.PrimaryTestResult, Is.SameAs(passing));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(endpointWithFailure.PrimaryTestResult, Is.SameAs(failing));
+            Assert.That(endpointWithoutFailure.PrimaryTestResult, Is.SameAs(passing));
+        }
     }
 
     [Test]
@@ -106,7 +111,10 @@ public class EndpointTestResultTests
         endpoint.RefreshFlattenedFields();
         endpoint.TestResults.Clear();
 
-        Assert.That(endpoint.ValidationErrors, Has.Count.EqualTo(1));
-        Assert.That(endpoint.ValidationErrors[0].Path, Is.EqualTo("data.name"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(endpoint.ValidationErrors, Has.Count.EqualTo(1));
+            Assert.That(endpoint.ValidationErrors[0].Path, Is.EqualTo("data.name"));
+        }
     }
 }

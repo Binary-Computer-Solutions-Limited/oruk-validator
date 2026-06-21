@@ -79,7 +79,7 @@ public class RequestProcessingServiceTests
                 {
                     concurrencyTracker.IncrementCurrent();
                     concurrencyTracker.RecordMaxConcurrency();
-                    await Task.Delay(50);
+                    await Task.Delay(50, ct);
                     concurrencyTracker.DecrementCurrent();
                     return true;
                 },
@@ -230,8 +230,11 @@ public class RequestProcessingServiceTests
         }, options);
 
         // Assert
-        Assert.That(result, Is.EqualTo("success"));
-        Assert.That(attemptCount, Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo("success"));
+            Assert.That(attemptCount, Is.EqualTo(2));
+        }
     }
 
     [Test]
@@ -320,8 +323,11 @@ public class RequestProcessingServiceTests
         using var cts = _service.CreateTimeoutToken(options);
 
         // Assert
-        Assert.That(cts.Token.CanBeCanceled, Is.True);
-        Assert.That(cts.Token.IsCancellationRequested, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cts.Token.CanBeCanceled, Is.True);
+            Assert.That(cts.Token.IsCancellationRequested, Is.False);
+        }
     }
 
     [Test]
@@ -375,22 +381,25 @@ public class RequestProcessingServiceTests
 
         // Execute a few operations
         await _service.ExecuteWithConcurrencyControlAsync(
-            async ct => { await Task.Delay(10); return 1; },
+            async ct => { await Task.Delay(10, ct); return 1; },
             options);
 
         await _service.ExecuteWithConcurrencyControlAsync(
-            async ct => { await Task.Delay(10); return 1; },
+            async ct => { await Task.Delay(10, ct); return 1; },
             options);
 
         // Act
         var metrics = await _service.GetResourceMetricsAsync();
 
         // Assert
-        Assert.That(metrics, Is.Not.Null);
-        Assert.That(metrics.MaxConcurrentRequests, Is.EqualTo(5));
-        Assert.That(metrics.TotalRequestsProcessed, Is.GreaterThanOrEqualTo(2));
-        Assert.That(metrics.ActiveRequests, Is.EqualTo(0));
-        Assert.That(metrics.LastRequestTime, Is.Not.EqualTo(DateTime.MinValue));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metrics, Is.Not.Null);
+            Assert.That(metrics.MaxConcurrentRequests, Is.EqualTo(5));
+            Assert.That(metrics.TotalRequestsProcessed, Is.GreaterThanOrEqualTo(2));
+            Assert.That(metrics.ActiveRequests, Is.Zero);
+            Assert.That(metrics.LastRequestTime, Is.Not.EqualTo(DateTime.MinValue));
+        }
     }
 
     [Test]
@@ -417,8 +426,11 @@ public class RequestProcessingServiceTests
         var metrics = await _service.GetResourceMetricsAsync();
 
         // Assert
-        Assert.That(metrics.FailedRequests, Is.EqualTo(1));
-        Assert.That(metrics.TotalRequestsProcessed, Is.GreaterThanOrEqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metrics.FailedRequests, Is.EqualTo(1));
+            Assert.That(metrics.TotalRequestsProcessed, Is.GreaterThanOrEqualTo(1));
+        }
     }
 
     #endregion

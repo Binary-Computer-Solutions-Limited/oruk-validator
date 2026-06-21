@@ -319,11 +319,14 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.ValidateOptionalEndpointResponse(404, pathItem);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.IsOptional, Is.True);
-        Assert.That(result.ValidationStatus, Is.EqualTo(OptionalEndpointStatus.NotImplemented));
-        Assert.That(result.IsValid, Is.True);
-        Assert.That(result.StatusCode, Is.EqualTo(404));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.IsOptional, Is.True);
+            Assert.That(result.ValidationStatus, Is.EqualTo(OptionalEndpointStatus.NotImplemented));
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(result.StatusCode, Is.EqualTo(404));
+        }
     }
 
     [Test]
@@ -342,11 +345,14 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.ValidateOptionalEndpointResponse(200, pathItem);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.IsOptional, Is.True);
-        Assert.That(result.ValidationStatus, Is.EqualTo(OptionalEndpointStatus.Implemented));
-        Assert.That(result.IsValid, Is.True);
-        Assert.That(result.RequiresSchemaValidation, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.IsOptional, Is.True);
+            Assert.That(result.ValidationStatus, Is.EqualTo(OptionalEndpointStatus.Implemented));
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(result.RequiresSchemaValidation, Is.True);
+        }
     }
 
     [Test]
@@ -365,10 +371,13 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.ValidateOptionalEndpointResponse(500, pathItem);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.IsOptional, Is.True);
-        Assert.That(result.ValidationStatus, Is.EqualTo(OptionalEndpointStatus.Error));
-        Assert.That(result.IsValid, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.IsOptional, Is.True);
+            Assert.That(result.ValidationStatus, Is.EqualTo(OptionalEndpointStatus.Error));
+            Assert.That(result.IsValid, Is.False);
+        }
     }
 
     [Test]
@@ -386,11 +395,14 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.ValidateOptionalEndpointResponse(200, pathItem);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.IsOptional, Is.False);
-        Assert.That(result.ValidationStatus, Is.EqualTo(OptionalEndpointStatus.Required));
-        Assert.That(result.IsValid, Is.True);
-        Assert.That(result.RequiresSchemaValidation, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.IsOptional, Is.False);
+            Assert.That(result.ValidationStatus, Is.EqualTo(OptionalEndpointStatus.Required));
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(result.RequiresSchemaValidation, Is.True);
+        }
     }
 
     [Test]
@@ -408,11 +420,14 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.ValidateOptionalEndpointResponse(500, pathItem);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.IsOptional, Is.False);
-        Assert.That(result.ValidationStatus, Is.EqualTo(OptionalEndpointStatus.Required));
-        Assert.That(result.IsValid, Is.False);
-        Assert.That(result.RequiresSchemaValidation, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.IsOptional, Is.False);
+            Assert.That(result.ValidationStatus, Is.EqualTo(OptionalEndpointStatus.Required));
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.RequiresSchemaValidation, Is.False);
+        }
     }
 
     [Test]
@@ -449,8 +464,11 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.ValidateOptionalEndpointResponse(201, pathItem);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
-        Assert.That(result.ValidationStatus, Is.EqualTo(OptionalEndpointStatus.Required));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(result.ValidationStatus, Is.EqualTo(OptionalEndpointStatus.Required));
+        }
     }
 
     [Test]
@@ -469,9 +487,12 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.ValidateOptionalEndpointResponse(503, pathItem);
 
         // Assert
-        Assert.That(result.IsOptional, Is.True);
-        Assert.That(result.ValidationStatus, Is.EqualTo(OptionalEndpointStatus.NotImplemented));
-        Assert.That(result.IsValid, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsOptional, Is.True);
+            Assert.That(result.ValidationStatus, Is.EqualTo(OptionalEndpointStatus.NotImplemented));
+            Assert.That(result.IsValid, Is.True);
+        }
     }
 
     #endregion
@@ -543,8 +564,11 @@ public class OptionalEndpointExtensionsTests
         var result = OptionalEndpointExtensions.ValidateOptionalEndpointResponse(404, pathItem);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
-        Assert.That(result.Message, Does.Contain("acceptable"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(result.Message, Does.Contain("acceptable"));
+        }
     }
 
     [Test]

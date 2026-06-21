@@ -104,11 +104,14 @@ public class JsonValidatorServiceTests
         var result = await _service.ValidateAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
-        Assert.That(result.Errors, Is.Empty);
-        Assert.That(result.Metadata, Is.Not.Null);
-        Assert.That(result.Metadata!.SchemaTitle, Is.EqualTo("Person"));
-        Assert.That(result.Metadata.DataSource, Is.EqualTo("direct"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(result.Errors, Is.Empty);
+            Assert.That(result.Metadata, Is.Not.Null);
+            Assert.That(result.Metadata!.SchemaTitle, Is.EqualTo("Person"));
+            Assert.That(result.Metadata.DataSource, Is.EqualTo("direct"));
+        }
     }
 
     [Test]
@@ -132,9 +135,12 @@ public class JsonValidatorServiceTests
         var result = await _service.ValidateAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.False);
-        Assert.That(result.Errors, Is.Not.Empty);
-        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(e => e.ErrorCode == "MISSING_REQUIRED_PROPERTY"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.Errors, Is.Not.Empty);
+            Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(e => e.ErrorCode == "MISSING_REQUIRED_PROPERTY"));
+        }
     }
 
     [Test]
@@ -170,10 +176,13 @@ public class JsonValidatorServiceTests
         var result = await _service.ValidateAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
-        Assert.That(result.Errors, Is.Empty);
-        Assert.That(result.Metadata, Is.Not.Null);
-        Assert.That(result.Metadata!.DataSource, Is.EqualTo(dataUrl));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(result.Errors, Is.Empty);
+            Assert.That(result.Metadata, Is.Not.Null);
+            Assert.That(result.Metadata!.DataSource, Is.EqualTo(dataUrl));
+        }
     }
 
     [Test]
@@ -192,8 +201,11 @@ public class JsonValidatorServiceTests
         var result = await _service.ValidateWithSchemaUriAsync(new { name = "Ada" }, schemaUri);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
-        Assert.That(result.Errors, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(result.Errors, Is.Empty);
+        }
     }
 
     [Test]
@@ -236,9 +248,12 @@ public class JsonValidatorServiceTests
         var secondResult = await _service.ValidateWithSchemaUriAsync(new { name = "Ada" }, schemaUri);
 
         // Assert
-        Assert.That(firstResult.IsValid, Is.True);
-        Assert.That(secondResult.IsValid, Is.True);
-        Assert.That(schemaRequestCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstResult.IsValid, Is.True);
+            Assert.That(secondResult.IsValid, Is.True);
+            Assert.That(schemaRequestCount, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -251,8 +266,11 @@ public class JsonValidatorServiceTests
         var result = await _service.ValidateSchemaAsync(schema);
 
         // Assert
-        Assert.That(result.IsValid, Is.False);
-        Assert.That(result.Errors, Has.Exactly(1).Matches<Core.Models.Validation.ValidationError>(error => error.ErrorCode == "MISSING_TYPE"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.Errors, Has.Exactly(1).Matches<Core.Models.Validation.ValidationError>(error => error.ErrorCode == "MISSING_TYPE"));
+        }
     }
 
     [Test]
@@ -333,8 +351,11 @@ public class JsonValidatorServiceTests
         var result = await _service.ValidateSchemaAsync(new { type = "object" });
 
         // Assert
-        Assert.That(result.IsValid, Is.False);
-        Assert.That(result.Errors, Has.Exactly(1).Matches<Core.Models.Validation.ValidationError>(error => error.ErrorCode == "SCHEMA_VALIDATION_ERROR"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.Errors, Has.Exactly(1).Matches<Core.Models.Validation.ValidationError>(error => error.ErrorCode == "SCHEMA_VALIDATION_ERROR"));
+        }
     }
 
     [Test]
@@ -377,15 +398,18 @@ public class JsonValidatorServiceTests
         var result = await _service.ValidateAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True, "Data should be valid even with additional fields");
-        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
-            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "email"),
-            "Should report 'email' as an additional field");
-        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
-            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "address"),
-            "Should report 'address' as an additional field");
-        Assert.That(result.Errors.Where(e => e.ErrorCode == "ADDITIONAL_FIELD").All(e => e.Severity == "Info"),
-            "Additional field warnings should have 'Info' severity");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.True, "Data should be valid even with additional fields");
+            Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
+                e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "email"),
+                "Should report 'email' as an additional field");
+            Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
+                e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "address"),
+                "Should report 'address' as an additional field");
+            Assert.That(result.Errors.Where(e => e.ErrorCode == "ADDITIONAL_FIELD").All(e => e.Severity == "Info"),
+                "Additional field warnings should have 'Info' severity");
+        }
     }
 
     [Test]
@@ -419,12 +443,15 @@ public class JsonValidatorServiceTests
 
         // Assert — extra field should be ADDITIONAL_FIELD (not VALIDATION_ERROR) so that
         // OwnSchemaValidation mode can control its severity
-        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
-            e => e.ErrorCode == "ADDITIONAL_FIELD"),
-            "Extra field from additionalProperties:false schema should be tagged ADDITIONAL_FIELD");
-        Assert.That(result.Errors, Has.None.Matches<Core.Models.Validation.ValidationError>(
-            e => e.ErrorCode == "VALIDATION_ERROR" && e.Path.Contains("email")),
-            "Extra field should not be reported as a generic VALIDATION_ERROR");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
+                e => e.ErrorCode == "ADDITIONAL_FIELD"),
+                "Extra field from additionalProperties:false schema should be tagged ADDITIONAL_FIELD");
+            Assert.That(result.Errors, Has.None.Matches<Core.Models.Validation.ValidationError>(
+                e => e.ErrorCode == "VALIDATION_ERROR" && e.Path.Contains("email")),
+                "Extra field should not be reported as a generic VALIDATION_ERROR");
+        }
     }
 
     [Test]
@@ -460,10 +487,13 @@ public class JsonValidatorServiceTests
         var result = await _service.ValidateAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
-        Assert.That(result.Errors, Has.None.Matches<Core.Models.Validation.ValidationError>(
-            e => e.ErrorCode == "ADDITIONAL_FIELD"),
-            "Should not report additional fields when option is disabled");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(result.Errors, Has.None.Matches<Core.Models.Validation.ValidationError>(
+                e => e.ErrorCode == "ADDITIONAL_FIELD"),
+                "Should not report additional fields when option is disabled");
+        }
     }
 
     [Test]
@@ -511,10 +541,13 @@ public class JsonValidatorServiceTests
         var result = await _service.ValidateAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
-        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
-            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "address.postcode"),
-            "Should report nested additional fields");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
+                e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "address.postcode"),
+                "Should report nested additional fields");
+        }
     }
 
     [Test]
@@ -564,19 +597,22 @@ public class JsonValidatorServiceTests
         var result = await _service.ValidateAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.True);
-        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
-            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users[].age"),
-            "Should report additional fields in array items");
-        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
-            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users[].role"),
-            "Should report additional fields in array items");
-        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
-            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Message == "Field 'users[].age' is not defined in the schema"),
-            "Should normalize array indices in additional-field message for users.age");
-        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
-            e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Message == "Field 'users[].role' is not defined in the schema"),
-            "Should normalize array indices in additional-field message for users.role");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
+                e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users[].age"),
+                "Should report additional fields in array items");
+            Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
+                e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users[].role"),
+                "Should report additional fields in array items");
+            Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
+                e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Message == "Field 'users[].age' is not defined in the schema"),
+                "Should normalize array indices in additional-field message for users.age");
+            Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
+                e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Message == "Field 'users[].role' is not defined in the schema"),
+                "Should normalize array indices in additional-field message for users.role");
+        }
     }
 
     [Test]
@@ -626,9 +662,12 @@ public class JsonValidatorServiceTests
 
         // Assert
         var additionalField = result.Errors.Single(e => e.ErrorCode == "ADDITIONAL_FIELD");
-        Assert.That(additionalField.Path, Is.EqualTo("service_at_locations[].regular_schedule"));
-        Assert.That(additionalField.Message, Is.EqualTo("Field 'service_at_locations[].regular_schedule' is not defined in the schema"));
-        Assert.That(additionalField.Message.Contains("[0]"), Is.False, "Message should not include array indices");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(additionalField.Path, Is.EqualTo("service_at_locations[].regular_schedule"));
+            Assert.That(additionalField.Message, Is.EqualTo("Field 'service_at_locations[].regular_schedule' is not defined in the schema"));
+            Assert.That(additionalField.Message, Does.Not.Contain("[0]"), "Message should not include array indices");
+        }
     }
 
     [Test]
@@ -682,9 +721,12 @@ public class JsonValidatorServiceTests
             .Where(e => e.ErrorCode == "ADDITIONAL_FIELD" && e.Path == "users[].age")
             .ToList();
 
-        Assert.That(ageWarnings.Count, Is.EqualTo(1), "Expected one deduplicated warning for users[].age");
-        Assert.That(ageWarnings[0].Message, Is.EqualTo("Field 'users[].age' is not defined in the schema"));
-        Assert.That(ageWarnings[0].Message.Contains("[0]"), Is.False, "Deduplicated message should not include concrete indexes");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ageWarnings, Has.Count.EqualTo(1), "Expected one deduplicated warning for users[].age");
+            Assert.That(ageWarnings[0].Message, Is.EqualTo("Field 'users[].age' is not defined in the schema"));
+            Assert.That(ageWarnings[0].Message, Does.Not.Contain("[0]"), "Deduplicated message should not include concrete indexes");
+        }
     }
 
     [Test]
@@ -710,11 +752,14 @@ public class JsonValidatorServiceTests
         var result = await _service.ValidateAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.False);
-        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
-            e => e.ErrorCode == "JSON_STRUCTURE_VIOLATION"));
-        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
-            e => e.ErrorCode == "JSON_STRUCTURE_VIOLATION" && e.Path.Contains("$.self", StringComparison.Ordinal)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
+                e => e.ErrorCode == "JSON_STRUCTURE_VIOLATION"));
+            Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
+                e => e.ErrorCode == "JSON_STRUCTURE_VIOLATION" && e.Path.Contains("$.self", StringComparison.Ordinal)));
+        }
     }
 
     [Test]
@@ -784,11 +829,14 @@ public class JsonValidatorServiceTests
         var result = await _service.ValidateAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.False);
-        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
-            e => e.ErrorCode == "JSON_STRUCTURE_VIOLATION"));
-        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
-            e => e.Message.Contains("maximum depth of 64", StringComparison.OrdinalIgnoreCase)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
+                e => e.ErrorCode == "JSON_STRUCTURE_VIOLATION"));
+            Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
+                e => e.Message.Contains("maximum depth of 64", StringComparison.OrdinalIgnoreCase)));
+        }
     }
 
     [Test]
@@ -811,11 +859,14 @@ public class JsonValidatorServiceTests
         var result = await _service.ValidateAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.False);
-        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
-            e => e.ErrorCode == "SCHEMA_STRUCTURE_VIOLATION"));
-        Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
-            e => e.ErrorCode == "SCHEMA_STRUCTURE_VIOLATION" && e.Path.Contains("$.self", StringComparison.Ordinal)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
+                e => e.ErrorCode == "SCHEMA_STRUCTURE_VIOLATION"));
+            Assert.That(result.Errors, Has.Some.Matches<Core.Models.Validation.ValidationError>(
+                e => e.ErrorCode == "SCHEMA_STRUCTURE_VIOLATION" && e.Path.Contains("$.self", StringComparison.Ordinal)));
+        }
     }
 
     [Test]
@@ -841,11 +892,14 @@ public class JsonValidatorServiceTests
         var result = await _service.ValidateAsync(request);
 
         // Assert
-        Assert.That(result.IsValid, Is.False);
-        var formatError = result.Errors.FirstOrDefault(e => e.Path == "url");
-        Assert.That(formatError, Is.Not.Null);
-        Assert.That(formatError!.Message, Contains.Substring("does not match format"));
-        Assert.That(formatError.Message, Contains.Substring("(failed value: \"not-a-valid-uri\")"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.False);
+            var formatError = result.Errors.FirstOrDefault(e => e.Path == "url");
+            Assert.That(formatError, Is.Not.Null);
+            Assert.That(formatError!.Message, Contains.Substring("does not match format"));
+            Assert.That(formatError.Message, Contains.Substring("(failed value: \"not-a-valid-uri\")"));
+        }
     }
 
     private static string BuildDeepJson(int depth)

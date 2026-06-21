@@ -10,7 +10,7 @@ namespace OpenReferralApi.Tests.Services;
 public class RemoteSchemaLoaderTests
 {
     private Mock<ILogger<SchemaResolverService>> _loggerMock;
-    private IMemoryCache _memoryCache;
+    private MemoryCache _memoryCache;
     private IOptions<CacheOptions> _cacheOptions;
 
     [SetUp]
@@ -79,10 +79,13 @@ public class RemoteSchemaLoaderTests
         var result = await loader.LoadRemoteSchemaAsync(schemaUrl);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Contains("X-Valid-Header"), Is.True, "Valid header should be applied");
-        Assert.That(capturedRequest.Headers.Contains("X-Another-Valid"), Is.True, "Another valid header should be applied");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(capturedRequest, Is.Not.Null);
+            Assert.That(capturedRequest!.Headers.Contains("X-Valid-Header"), Is.True, "Valid header should be applied");
+            Assert.That(capturedRequest.Headers.Contains("X-Another-Valid"), Is.True, "Another valid header should be applied");
+        }
         // HttpHeaders.Contains() throws FormatException for invalid header names, so we can't check directly
         // The important thing is the valid headers were added successfully, meaning invalid one was skipped
     }
@@ -122,8 +125,11 @@ public class RemoteSchemaLoaderTests
         var result = await loader.LoadRemoteSchemaAsync(schemaUrl);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(capturedRequest, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(capturedRequest, Is.Not.Null);
+        }
         // HttpHeaders.Contains() throws FormatException for invalid header names, so we can't check directly
         // The important thing is the request succeeded, meaning the invalid header was skipped
     }
@@ -164,9 +170,12 @@ public class RemoteSchemaLoaderTests
         var result = await loader.LoadRemoteSchemaAsync(schemaUrl);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Contains("X-Valid-Header"), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(capturedRequest, Is.Not.Null);
+            Assert.That(capturedRequest!.Headers.Contains("X-Valid-Header"), Is.True);
+        }
         // HttpHeaders.Contains() throws FormatException for invalid header names, so we can't check directly
         // The important thing is the valid header was added successfully
     }
@@ -208,10 +217,13 @@ public class RemoteSchemaLoaderTests
         var result = await loader.LoadRemoteSchemaAsync(schemaUrl);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Contains("X-Test-Key"), Is.True);
-        Assert.That(capturedRequest.Headers.Contains("X-From-Interface"), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(capturedRequest, Is.Not.Null);
+            Assert.That(capturedRequest!.Headers.Contains("X-Test-Key"), Is.True);
+            Assert.That(capturedRequest.Headers.Contains("X-From-Interface"), Is.True);
+        }
     }
 
     private sealed class TestAuthenticationConfig : IAuthenticationConfig
@@ -256,8 +268,11 @@ public class RemoteSchemaLoaderTests
         var result = await loader.LoadRemoteSchemaAsync(schemaUrl);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(capturedRequest, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(capturedRequest, Is.Not.Null);
+        }
         // HttpHeaders.Contains() throws FormatException for invalid header names, so we can't check directly
         // The important thing is the request succeeded without adding the invalid header
     }
@@ -286,8 +301,11 @@ public class RemoteSchemaLoaderTests
         var ex = Assert.ThrowsAsync<ArgumentException>(async () =>
             await loader.LoadRemoteSchemaAsync("file:///etc/passwd"));
 
-        Assert.That(ex!.Message, Does.Contain("Invalid schema URL"));
-        Assert.That(ex.Message, Does.Contain("HTTP and HTTPS"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex!.Message, Does.Contain("Invalid schema URL"));
+            Assert.That(ex.Message, Does.Contain("HTTP and HTTPS"));
+        }
     }
 
     [Test]
@@ -425,9 +443,12 @@ public class RemoteSchemaLoaderTests
         var result = await loader.LoadRemoteSchemaAsync(schemaUrl);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Authorization, Is.Null, "No authorization header should be added");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(capturedRequest, Is.Not.Null);
+            Assert.That(capturedRequest!.Headers.Authorization, Is.Null, "No authorization header should be added");
+        }
         // Don't check header count as HttpClient may add default headers like User-Agent
     }
 
@@ -467,9 +488,12 @@ public class RemoteSchemaLoaderTests
         var result = await loader.LoadRemoteSchemaAsync(schemaUrl);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Authorization, Is.Null, "BasicAuth with empty password should be skipped");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(capturedRequest, Is.Not.Null);
+            Assert.That(capturedRequest!.Headers.Authorization, Is.Null, "BasicAuth with empty password should be skipped");
+        }
     }
 
     [Test]
@@ -508,9 +532,12 @@ public class RemoteSchemaLoaderTests
         var result = await loader.LoadRemoteSchemaAsync(schemaUrl);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Authorization, Is.Null, "BasicAuth with null password should be skipped");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(capturedRequest, Is.Not.Null);
+            Assert.That(capturedRequest!.Headers.Authorization, Is.Null, "BasicAuth with null password should be skipped");
+        }
     }
 
     [Test]
@@ -549,10 +576,13 @@ public class RemoteSchemaLoaderTests
         var result = await loader.LoadRemoteSchemaAsync(schemaUrl);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Authorization, Is.Not.Null);
-        Assert.That(capturedRequest.Headers.Authorization!.Scheme, Is.EqualTo("Basic"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(capturedRequest, Is.Not.Null);
+            Assert.That(capturedRequest!.Headers.Authorization, Is.Not.Null);
+            Assert.That(capturedRequest.Headers.Authorization!.Scheme, Is.EqualTo("Basic"));
+        }
     }
 
     [Test]
@@ -584,9 +614,12 @@ public class RemoteSchemaLoaderTests
         var result = await loader.LoadRemoteSchemaAsync(schemaUrl);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Headers.Authorization, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(capturedRequest, Is.Not.Null);
+            Assert.That(capturedRequest!.Headers.Authorization, Is.Null);
+        }
     }
 
     #endregion
@@ -623,12 +656,15 @@ public class RemoteSchemaLoaderTests
         var result = await loader.LoadRemoteSchemaAsync(schemaUrl);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
 
-        var cacheKey = $"schema:{schemaUrl}";
-        var cached = _memoryCache.TryGetValue<CachedSchema>(cacheKey, out var cachedSchema);
-        Assert.That(cached, Is.True, "Schema should be cached");
-        Assert.That(cachedSchema?.RawJson, Is.EqualTo(schemaJson));
+            var cacheKey = $"schema:{schemaUrl}";
+            var cached = _memoryCache.TryGetValue<CachedSchema>(cacheKey, out var cachedSchema);
+            Assert.That(cached, Is.True, "Schema should be cached");
+            Assert.That(cachedSchema?.RawJson, Is.EqualTo(schemaJson));
+        }
     }
 
     [Test]
@@ -661,11 +697,14 @@ public class RemoteSchemaLoaderTests
         var result = await loader.LoadRemoteSchemaAsync(schemaUrl);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
 
-        var cacheKey = $"schema:{schemaUrl}";
-        var cached = _memoryCache.TryGetValue<CachedSchema>(cacheKey, out var cachedSchema);
-        Assert.That(cached, Is.True, "Schema should be cached with sliding expiration");
+            var cacheKey = $"schema:{schemaUrl}";
+            var cached = _memoryCache.TryGetValue<CachedSchema>(cacheKey, out var cachedSchema);
+            Assert.That(cached, Is.True, "Schema should be cached with sliding expiration");
+        }
     }
 
     [Test]
@@ -697,23 +736,26 @@ public class RemoteSchemaLoaderTests
             _loggerMock.Object,
             _memoryCache,
             cacheOptions,
-            knownJsonSchemaUrls: new[] { canonicalUrl });
+            knownJsonSchemaUrls: [canonicalUrl]);
 
         // Act
         var result = await loader.LoadRemoteSchemaAsync(requestedUrl);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
 
-        var canonicalCacheKey = $"schema:{canonicalUrl}";
-        var rawCacheKey = $"schema:{requestedUrl}";
+            var canonicalCacheKey = $"schema:{canonicalUrl}";
+            var rawCacheKey = $"schema:{requestedUrl}";
 
-        var hasCanonicalEntry = _memoryCache.TryGetValue<CachedSchema>(canonicalCacheKey, out var cachedSchema);
-        var hasRawEntry = _memoryCache.TryGetValue<CachedSchema>(rawCacheKey, out _);
+            var hasCanonicalEntry = _memoryCache.TryGetValue<CachedSchema>(canonicalCacheKey, out var cachedSchema);
+            var hasRawEntry = _memoryCache.TryGetValue<CachedSchema>(rawCacheKey, out _);
 
-        Assert.That(hasCanonicalEntry, Is.True, "Known schema URL should be cached using canonical normalized URL");
-        Assert.That(cachedSchema?.RawJson, Is.EqualTo(schemaJson));
-        Assert.That(hasRawEntry, Is.False, "Raw URL with query/fragment should not be used as cache key");
+            Assert.That(hasCanonicalEntry, Is.True, "Known schema URL should be cached using canonical normalized URL");
+            Assert.That(cachedSchema?.RawJson, Is.EqualTo(schemaJson));
+            Assert.That(hasRawEntry, Is.False, "Raw URL with query/fragment should not be used as cache key");
+        }
     }
 
     #endregion

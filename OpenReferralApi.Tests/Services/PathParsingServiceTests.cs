@@ -41,9 +41,12 @@ public class PathParsingServiceTests
         var result = await _service.ValidateAndParseUriAsync(validUrl);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.AbsoluteUri, Is.EqualTo(validUrl));
-        Assert.That(result.Scheme, Is.EqualTo("https"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.AbsoluteUri, Is.EqualTo(validUrl));
+            Assert.That(result.Scheme, Is.EqualTo("https"));
+        }
     }
 
     [Test]
@@ -95,8 +98,11 @@ public class PathParsingServiceTests
         var result = await _service.ValidateAndParseDataUrlAsync(validUrl);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.Scheme, Is.EqualTo("https"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.Scheme, Is.EqualTo("https"));
+        }
     }
 
     [Test]
@@ -125,8 +131,11 @@ public class PathParsingServiceTests
         var result = await _service.ValidateAndParseSchemaUriAsync(schemaUrl);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.Scheme, Is.EqualTo("https"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.Scheme, Is.EqualTo("https"));
+        }
     }
 
     [Test]
@@ -139,8 +148,11 @@ public class PathParsingServiceTests
         var result = await _service.ValidateAndParseSchemaUriAsync(fileUrl);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.Scheme, Is.EqualTo("file"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.Scheme, Is.EqualTo("file"));
+        }
     }
 
     #endregion
@@ -172,11 +184,14 @@ public class PathParsingServiceTests
         var result = await _service.CheckUriAccessibilityAsync(uri);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.IsAccessible, Is.True);
-        Assert.That(result.StatusCode, Is.EqualTo(200));
-        Assert.That(result.ContentType, Is.EqualTo("application/json"));
-        Assert.That(result.ContentLength, Is.EqualTo(12));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.IsAccessible, Is.True);
+            Assert.That(result.StatusCode, Is.EqualTo(200));
+            Assert.That(result.ContentType, Is.EqualTo("application/json"));
+            Assert.That(result.ContentLength, Is.EqualTo(12));
+        }
     }
 
     [Test]
@@ -202,10 +217,13 @@ public class PathParsingServiceTests
         var result = await _service.CheckUriAccessibilityAsync(uri);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.IsAccessible, Is.False);
-        Assert.That(result.StatusCode, Is.EqualTo(404));
-        Assert.That(result.ErrorMessage, Does.Contain("NotFound"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.IsAccessible, Is.False);
+            Assert.That(result.StatusCode, Is.EqualTo(404));
+            Assert.That(result.ErrorMessage, Does.Contain("NotFound"));
+        }
     }
 
     [Test]
@@ -222,10 +240,13 @@ public class PathParsingServiceTests
             var result = await _service.CheckUriAccessibilityAsync(fileUri);
 
             // Assert
-            Assert.That(result, Is.Not.Null);
-            Assert.That(result.IsAccessible, Is.True);
-            Assert.That(result.StatusCode, Is.EqualTo(200));
-            Assert.That(result.ContentLength, Is.GreaterThan(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.Not.Null);
+                Assert.That(result.IsAccessible, Is.True);
+                Assert.That(result.StatusCode, Is.EqualTo(200));
+                Assert.That(result.ContentLength, Is.GreaterThan(0));
+            }
         }
         finally
         {
@@ -243,10 +264,13 @@ public class PathParsingServiceTests
         var result = await _service.CheckUriAccessibilityAsync(fileUri);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.IsAccessible, Is.False);
-        Assert.That(result.StatusCode, Is.EqualTo(404));
-        Assert.That(result.ErrorMessage, Does.Contain("not found"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.IsAccessible, Is.False);
+            Assert.That(result.StatusCode, Is.EqualTo(404));
+            Assert.That(result.ErrorMessage, Does.Contain("not found"));
+        }
     }
 
     [Test]
@@ -259,9 +283,12 @@ public class PathParsingServiceTests
         var result = await _service.CheckUriAccessibilityAsync(ftpUri);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.IsAccessible, Is.False);
-        Assert.That(result.ErrorMessage, Does.Contain("Unsupported scheme"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.IsAccessible, Is.False);
+            Assert.That(result.ErrorMessage, Does.Contain("Unsupported scheme"));
+        }
     }
 
     [Test]
@@ -283,8 +310,11 @@ public class PathParsingServiceTests
         var result = await _service.CheckUriAccessibilityAsync(uri, options);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.IsAccessible, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.IsAccessible, Is.False);
+        }
     }
 
     #endregion
@@ -302,8 +332,11 @@ public class PathParsingServiceTests
         var result = _service.ResolveRelativeUri(baseUri, relativeUri);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.AbsoluteUri, Is.EqualTo("https://example.com/api/v1/schemas/schema.json"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.AbsoluteUri, Is.EqualTo("https://example.com/api/v1/schemas/schema.json"));
+        }
     }
 
     [Test]
@@ -317,8 +350,11 @@ public class PathParsingServiceTests
         var result = _service.ResolveRelativeUri(baseUri, absoluteUri);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.AbsoluteUri, Is.EqualTo(absoluteUri));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.AbsoluteUri, Is.EqualTo(absoluteUri));
+        }
     }
 
     [Test]
@@ -332,8 +368,11 @@ public class PathParsingServiceTests
         var result = _service.ResolveRelativeUri(baseUri, relativeUri);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.AbsoluteUri, Is.EqualTo("https://example.com/api/schemas/schema.json"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.AbsoluteUri, Is.EqualTo("https://example.com/api/schemas/schema.json"));
+        }
     }
 
     [Test]
@@ -370,8 +409,11 @@ public class PathParsingServiceTests
         var result = _service.ResolveRelativeUri(baseUri, relativeUri);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.AbsoluteUri, Is.EqualTo("https://example.com/schemas/schema.json"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.AbsoluteUri, Is.EqualTo("https://example.com/schemas/schema.json"));
+        }
     }
 
     #endregion
@@ -400,8 +442,11 @@ public class PathParsingServiceTests
         var result = await _service.ValidateAndParseUriAsync(urlWithAllowedPort);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.Port, Is.EqualTo(8443));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.Port, Is.EqualTo(8443));
+        }
     }
 
     [Test]
@@ -414,8 +459,11 @@ public class PathParsingServiceTests
         var result = await _service.ValidateAndParseUriAsync(url);
 
         // Assert
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.Port, Is.EqualTo(443));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.Port, Is.EqualTo(443));
+        }
     }
 
     #endregion
