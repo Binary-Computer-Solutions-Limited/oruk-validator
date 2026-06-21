@@ -188,7 +188,7 @@ public class PathParsingService(ILogger<PathParsingService> logger, HttpClient h
         {
             if (string.IsNullOrEmpty(relativeUri))
             {
-                throw new ArgumentException("Relative URI cannot be null or empty", nameof(relativeUri));
+                throw PathParsingErrors.RelativeUriNullOrEmpty(nameof(relativeUri));
             }
 
             ArgumentNullException.ThrowIfNull(baseUrl);
@@ -205,7 +205,7 @@ public class PathParsingService(ILogger<PathParsingService> logger, HttpClient h
         catch (Exception ex)
         {
             _logger.ErrorResolvingRelativeUri(ex, relativeUri, baseUrl);
-            throw new ArgumentException($"Failed to resolve relative URI '{relativeUri}' against base '{baseUrl}': {TextSanitizer.SanitizeExceptionMessage(ex.Message)}", ex);
+            throw PathParsingErrors.ResolveRelativeUriFailed(relativeUri, baseUrl, TextSanitizer.SanitizeExceptionMessage(ex.Message), ex);
         }
     }
 
@@ -215,7 +215,7 @@ public class PathParsingService(ILogger<PathParsingService> logger, HttpClient h
         {
             if (string.IsNullOrWhiteSpace(uriString))
             {
-                throw new ArgumentException($"{uriType} cannot be null or empty", nameof(uriString));
+                throw PathParsingErrors.UriNullOrEmpty(uriType, nameof(uriString));
             }
 
             _logger.ValidatingUri(uriType, uriString);
@@ -223,7 +223,7 @@ public class PathParsingService(ILogger<PathParsingService> logger, HttpClient h
             // Basic URI validation
             if (!Uri.IsWellFormedUriString(uriString, UriKind.Absolute))
             {
-                throw new ArgumentException($"Invalid {uriType.ToLower()}: {uriString}");
+                throw PathParsingErrors.InvalidUri(uriType, uriString);
             }
 
             var uri = new Uri(uriString);
@@ -231,7 +231,7 @@ public class PathParsingService(ILogger<PathParsingService> logger, HttpClient h
             // Scheme validation
             if (!allowedSchemes.Contains(uri.Scheme.ToLowerInvariant()))
             {
-                throw new ArgumentException($"{uriType} scheme '{uri.Scheme}' is not supported. Allowed schemes: {string.Join(", ", allowedSchemes)}");
+                throw PathParsingErrors.UnsupportedScheme(uriType, uri.Scheme, string.Join(", ", allowedSchemes));
             }
 
             // Additional validation based on options
@@ -249,7 +249,7 @@ public class PathParsingService(ILogger<PathParsingService> logger, HttpClient h
         catch (UriFormatException ex)
         {
             _logger.UriFormatError(ex, uriType, uriString);
-            throw new ArgumentException($"Invalid {uriType.ToLower()} format: {uriString}", ex);
+            throw PathParsingErrors.InvalidUriFormatString(uriType, uriString, ex);
         }
         catch (Exception ex)
         {
@@ -289,7 +289,7 @@ public class PathParsingService(ILogger<PathParsingService> logger, HttpClient h
         // Validate port ranges
         if (uri.Port > 0 && !IsAllowedPort(uri.Port))
         {
-            throw new ArgumentException($"{uriType} uses disallowed port: {uri.Port}");
+            throw PathParsingErrors.DisallowedPort(uriType, uri.Port);
         }
     }
 

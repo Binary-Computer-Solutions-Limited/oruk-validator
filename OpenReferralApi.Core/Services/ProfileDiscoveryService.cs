@@ -221,8 +221,7 @@ public partial class ProfileDiscoveryService(
             }
             else
             {
-                throw new ArgumentException(
-                    "Can only validate against known profile versions. No HSDS profile version was discovered from the base URL and no default profile is configured.");
+                throw ProfileValidationErrors.NoProfileDiscoveredAndNoDefault();
             }
         }
 
@@ -241,22 +240,19 @@ public partial class ProfileDiscoveryService(
 
                 if (!TryGetSchemaUrlForProfileVersion(discoveredVersion!, out hsdsProfileSchemaUrl))
                 {
-                    throw new ArgumentException(
-                        $"Can only validate against known profile versions. Discovered profile '{oldDiscoveredVersion}' is not supported and the default profile '{defaultProfileVersion}' is also not supported.");
+                    throw ProfileValidationErrors.DiscoveredAndDefaultUnsupported(oldDiscoveredVersion, defaultProfileVersion);
                 }
             }
             else
             {
-                throw new ArgumentException(
-                    $"Can only validate against known profile versions. Discovered profile '{discoveredVersion}' is not supported.");
+                throw ProfileValidationErrors.DiscoveredUnsupported(discoveredVersion);
             }
         }
 
-        var hsdsProfileSchemaContent = await GetHsdsProfileSchemaContentAsync(discoveredVersion, cancellationToken);
+         var hsdsProfileSchemaContent = await GetHsdsProfileSchemaContentAsync(discoveredVersion, cancellationToken);
         if (string.IsNullOrWhiteSpace(hsdsProfileSchemaContent))
         {
-            throw new ArgumentException(
-                $"Can only validate against known profile versions. Schema for profile '{discoveredVersion}' is not available in cache.");
+            throw ProfileValidationErrors.ProfileSchemaNotCached(discoveredVersion);
         }
 
         discoveryReason ??= "Discovery completed with available information.";
