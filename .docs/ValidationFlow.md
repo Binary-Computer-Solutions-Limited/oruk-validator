@@ -106,7 +106,7 @@ The following values are configured under `OpenApiValidation` in server settings
 Current default app configuration (`appsettings.json`) is:
 
 - `OwnSchemaValidation = None`
-- `HsdsValidationMode = SpecAndFeedRuntimeFast`
+- `HsdsValidationMode = Fast`
 - `AllowUserSuppliedAuth = true`
 
 ## Flow Details
@@ -201,7 +201,7 @@ Behavior:
 
 - `None`: endpoint responses are validated against HSDS profile schema (when available) instead of the feed's schema
 - `AllowAdditionalProperties`: feed own-schema validation stays enabled, but own-schema `ADDITIONAL_FIELD` findings become warnings
-- `StrictOwnSchemaValidation`: feed own-schema validation stays enabled and own-schema `ADDITIONAL_FIELD` findings remain errors
+- `Strict`: feed own-schema validation stays enabled and own-schema `ADDITIONAL_FIELD` findings remain errors
 
 This policy is applied centrally by `HsdsComplianceService.ApplyAdditionalFieldPolicy`.
 
@@ -209,17 +209,17 @@ This policy is applied centrally by `HsdsComplianceService.ApplyAdditionalFieldP
 
 `HsdsValidationMode` is read from server configuration and applied after endpoint testing:
 
-- `SpecAndFeedRuntimeFast`: no HSDS runtime response-schema pass is executed
-- `FullHsdsRuntime`: successful endpoint responses are additionally validated against HSDS profile response schemas (for matched required HSDS operations)
+- `Fast`: no HSDS runtime response-schema pass is executed
+- `Full`: successful endpoint responses are additionally validated against HSDS profile response schemas (for matched required HSDS operations)
 
-If `FullHsdsRuntime` is set but no known HSDS profile schema can be resolved, processing continues with a notification.
+If `Full` is set but no known HSDS profile schema can be resolved, processing continues with a notification.
 
 #### Compact Truth Table: `HsdsValidationMode`
 
 | `HsdsValidationMode` | Feed spec vs HSDS profile (spec-time) | Runtime validate responses vs feed schema | Runtime validate responses vs HSDS schema | Practical effect |
 | --- | --- | --- | --- | --- |
-| `SpecAndFeedRuntimeFast` | Yes (when profile schema is resolved and `validateSpecification=true`) | Yes (when `testEndpoints=true`) | No | Faster run; catches feed-spec issues and feed-runtime mismatches, but skips HSDS runtime response conformance pass |
-| `FullHsdsRuntime` | Yes (same as above) | Yes (same as above) | Yes (when HSDS profile schema resolved) | Deepest validation; can add HSDS runtime warnings/errors and change endpoint status to `FailedValidation` when HSDS runtime errors occur |
+| `Fast` | Yes (when profile schema is resolved and `validateSpecification=true`) | Yes (when `testEndpoints=true`) | No | Faster run; catches feed-spec issues and feed-runtime mismatches, but skips HSDS runtime response conformance pass |
+| `Full` | Yes (same as above) | Yes (same as above) | Yes (when HSDS profile schema resolved) | Deepest validation; can add HSDS runtime warnings/errors and change endpoint status to `FailedValidation` when HSDS runtime errors occur |
 
 Notes:
 

@@ -252,8 +252,8 @@ Server-side OpenAPI validation settings that are not overridable by client reque
 | Property | Type | Default | Description |
 | --- | --- | --- | --- |
 | `ValidateSpecification` | bool | `true` | Whether to validate OpenAPI specification structure and quality analysis (server-side setting, not overridable per-request) |
-| `OwnSchemaValidation` | string | `"StrictOwnSchemaValidation"` | Own-schema validation mode: `"None"`, `"AllowAdditionalProperties"`, or `"StrictOwnSchemaValidation"` |
-| `HsdsValidationMode` | string | `"SpecAndFeedRuntimeFast"` | HSDS conformance depth: `"SpecAndFeedRuntimeFast"` or `"FullHsdsRuntime"` |
+| `OwnSchemaValidation` | string | `"Strict"` | Own-schema validation mode: `"None"`, `"AllowAdditionalProperties"`, or `"Strict"` |
+| `HsdsValidationMode` | string | `"Fast"` | HSDS conformance depth: `"Fast"` or `"Full"` |
 | `AllowUserSuppliedAuth` | bool | `false` | Whether to allow user-supplied authentication credentials for OpenAPI schema and data source requests |
 
 ### OpenApiValidation Example
@@ -263,7 +263,7 @@ Server-side OpenAPI validation settings that are not overridable by client reque
   "OpenApiValidation": {
     "ValidateSpecification": true,
     "OwnSchemaValidation": "AllowAdditionalProperties",
-    "HsdsValidationMode": "SpecAndFeedRuntimeFast",
+    "HsdsValidationMode": "Fast",
     "AllowUserSuppliedAuth": true
   }
 }
@@ -275,10 +275,10 @@ Server-side OpenAPI validation settings that are not overridable by client reque
 - **`OwnSchemaValidation`**:
   - `"None"`: Validate endpoint responses against HSDS profile schema instead of feed schema (when profile schema is available)
   - `"AllowAdditionalProperties"`: Keep own-schema validation enabled, but downgrade own-schema `ADDITIONAL_FIELD` findings to warnings
-  - `"StrictOwnSchemaValidation"`: Keep own-schema validation enabled and treat own-schema `ADDITIONAL_FIELD` findings as errors
+  - `"Strict"`: Keep own-schema validation enabled and treat own-schema `ADDITIONAL_FIELD` findings as errors
 - **`HsdsValidationMode`**:
-  - `"SpecAndFeedRuntimeFast"` (default): Performs strict feed-vs-own-spec runtime validation and feed-spec-vs-HSDS-spec comparison
-  - `"FullHsdsRuntime"`: Additionally validates live feed responses against HSDS response schemas
+  - `"Fast"` (default): Performs strict feed-vs-own-spec runtime validation and feed-spec-vs-HSDS-spec comparison
+  - `"Full"`: Additionally validates live feed responses against HSDS response schemas
 - **`AllowUserSuppliedAuth`**: Security consideration - only enable if you trust the source of validation requests
 
 ---
@@ -402,7 +402,7 @@ RateLimiting__Window=60
 # OpenApiValidation
 OpenApiValidation__ValidateSpecification=true
 OpenApiValidation__OwnSchemaValidation=AllowAdditionalProperties
-OpenApiValidation__HsdsValidationMode="SpecAndFeedRuntimeFast"
+OpenApiValidation__HsdsValidationMode="Fast"
 OpenApiValidation__AllowUserSuppliedAuth=true
 
 # OpenTelemetry

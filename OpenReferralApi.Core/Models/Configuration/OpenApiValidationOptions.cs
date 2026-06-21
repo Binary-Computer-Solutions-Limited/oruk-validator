@@ -5,15 +5,15 @@ namespace OpenReferralApi.Core.Models.Configuration;
 
 public enum HsdsValidationMode
 {
-    SpecAndFeedRuntimeFast,
-    FullHsdsRuntime
+    Fast,
+    Full
 }
 
 public enum OwnSchemaValidationMode
 {
     None,
     AllowAdditionalProperties,
-    StrictOwnSchemaValidation
+    Strict
 }
 
 /// <summary>
@@ -54,18 +54,18 @@ public class OpenApiValidationServerOptions
     /// Selects how the feed should be validated against its own discovered OpenAPI schema.
     /// None validates endpoint responses against the HSDS profile schema instead of the feed's schema.
     /// AllowAdditionalProperties validates against the feed's own schema but downgrades additional-field findings to warnings.
-    /// StrictOwnSchemaValidation (default) validates against the feed's own schema and keeps additional-field findings as errors.
+    /// Strict (default) validates against the feed's own schema and keeps additional-field findings as errors.
     /// </summary>
-    [DefaultValue(OwnSchemaValidationMode.StrictOwnSchemaValidation)]
-    public OwnSchemaValidationMode OwnSchemaValidation { get; set; } = OwnSchemaValidationMode.StrictOwnSchemaValidation;
+    [DefaultValue(OwnSchemaValidationMode.Strict)]
+    public OwnSchemaValidationMode OwnSchemaValidation { get; set; } = OwnSchemaValidationMode.Strict;
 
     /// <summary>
     /// Selects the HSDS conformance depth.
-    /// SpecAndFeedRuntimeFast performs strict feed-vs-own-spec runtime validation and feed-spec-vs-HSDS-spec comparison.
-    /// FullHsdsRuntime additionally validates live feed responses against HSDS response schemas.
+    /// Fast performs strict feed-vs-own-spec runtime validation and feed-spec-vs-HSDS-spec comparison.
+    /// Full additionally validates live feed responses against HSDS response schemas.
     /// </summary>
-    [DefaultValue(HsdsValidationMode.SpecAndFeedRuntimeFast)]
-    public HsdsValidationMode HsdsValidationMode { get; set; } = HsdsValidationMode.SpecAndFeedRuntimeFast;
+    [DefaultValue(HsdsValidationMode.Fast)]
+    public HsdsValidationMode HsdsValidationMode { get; set; } = HsdsValidationMode.Fast;
 
     /// <summary>
     /// Whether to allow user-supplied authentication credentials for OpenAPI schema and data source requests.

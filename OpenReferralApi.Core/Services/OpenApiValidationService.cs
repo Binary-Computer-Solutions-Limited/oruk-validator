@@ -29,7 +29,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
     private readonly OpenApiValidationServerOptions _openApiValidationOptions;
     private readonly CacheOptions _cacheOptions;
     private readonly SpecificationOptions _specificationOptions;
-    internal static readonly ReadOnlyMemory<byte>TruncatedPlaceholder = System.Text.Encoding.UTF8.GetBytes("\"[Response body omitted by server configuration]\"");
+    internal static readonly ReadOnlyMemory<byte> TruncatedPlaceholder = System.Text.Encoding.UTF8.GetBytes("\"[Response body omitted by server configuration]\"");
 
     public OpenApiValidationService(
         ILogger<OpenApiValidationService> logger,
@@ -219,7 +219,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         FinalizeSpecificationValidation(result, schemaResolutionIssues, specificationStage);
 
         // Step 5: Full HSDS runtime validation.
-        await ExecuteFullHsdsRuntimeValidationAsync(
+        await ExecuteFullValidationAsync(
             request,
             result,
             endpointTests,
@@ -515,7 +515,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         result.SpecificationValidation = specificationStage.SpecValidation;
     }
 
-    private async Task ExecuteFullHsdsRuntimeValidationAsync(
+    private async Task ExecuteFullValidationAsync(
         OpenApiValidationRequest request,
         OpenApiValidationResult result,
         List<EndpointTestResult> endpointTests,
@@ -523,7 +523,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         JsonObject? hsdsProfileSpec,
         CancellationToken cancellationToken)
     {
-        if (_openApiValidationOptions.HsdsValidationMode != HsdsValidationMode.FullHsdsRuntime)
+        if (_openApiValidationOptions.HsdsValidationMode != HsdsValidationMode.Full)
         {
             return;
         }

@@ -149,8 +149,8 @@ export ORUK_API_SchemaResolution__KnownUrlsJson='["https://json-schema.org/draft
 
 #### `OpenApiValidation` (server-side)
 
-- `OwnSchemaValidation`: `None` | `AllowAdditionalProperties` | `StrictOwnSchemaValidation`.
-- `HsdsValidationMode`: `SpecAndFeedRuntimeFast` | `FullHsdsRuntime`.
+- `OwnSchemaValidation`: `None` | `AllowAdditionalProperties` | `Strict`.
+- `HsdsValidationMode`: `Fast` | `Full`.
 - `AllowUserSuppliedAuth` (bool): allow/reject request `dataSourceAuth`.
 - `ValidateSpecification` (bool): enable OpenAPI structure/profile comparison checks.
 - `TestEndpoints` (bool): enable live endpoint testing.
@@ -425,11 +425,11 @@ All `OpenApiValidation` settings are configured on the server and are **not over
 - **`OwnSchemaValidation`**: Controls how the validation engine treats data feed OpenAPI specs:
   - `None` (default): Validates endpoint responses against the resolved HSDS profile schema
   - `AllowAdditionalProperties`: Keeps feed-schema validation but downgrades own-schema `ADDITIONAL_FIELD` findings to warnings
-  - `StrictOwnSchemaValidation`: Treats additional properties as errors
+  - `Strict`: Treats additional properties as errors
 
 - **`HsdsValidationMode`**: Controls the depth of HSDS specification compliance checking:
-  - `SpecAndFeedRuntimeFast` (default): Validates feed spec against HSDS profile, tests live endpoints
-  - `FullHsdsRuntime`: Also re-validates live endpoint responses against HSDS profile schemas
+  - `Fast` (default): Validates feed spec against HSDS profile, tests live endpoints
+  - `Full`: Also re-validates live endpoint responses against HSDS profile schemas
 
 - **`ValidateSpecification`**: Enables/disables OpenAPI structural validation and HSDS profile comparison
   - `false` (default): Skips structural validation

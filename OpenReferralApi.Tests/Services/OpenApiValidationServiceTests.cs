@@ -1,10 +1,10 @@
+using System.Text.Json.Nodes;
+using Json.Schema;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Json.Schema;
 using Moq;
 using OpenReferralApi.Core.Services;
-using System.Text.Json.Nodes;
 
 namespace OpenReferralApi.Tests.Services;
 
@@ -120,7 +120,7 @@ public class OpenApiValidationServiceTests
 
         _openApiValidationServerOptions = Options.Create(new OpenApiValidationServerOptions
         {
-            HsdsValidationMode = HsdsValidationMode.SpecAndFeedRuntimeFast,
+            HsdsValidationMode = HsdsValidationMode.Fast,
             AllowUserSuppliedAuth = true,
             ValidateSpecification = true,
             TestEndpoints = true,
@@ -246,7 +246,7 @@ public class OpenApiValidationServiceTests
             {
                 ValidateSpecification = false,
                 TestEndpoints = false,
-                OwnSchemaValidation = OwnSchemaValidationMode.StrictOwnSchemaValidation
+                OwnSchemaValidation = OwnSchemaValidationMode.Strict
             }));
 
         var request = new OpenApiValidationRequest
@@ -489,7 +489,7 @@ public class OpenApiValidationServiceTests
         // Create service with ValidateSpecification disabled
         var serviceOptions = Options.Create(new OpenApiValidationServerOptions
         {
-            HsdsValidationMode = HsdsValidationMode.SpecAndFeedRuntimeFast,
+            HsdsValidationMode = HsdsValidationMode.Fast,
             AllowUserSuppliedAuth = true,
             ValidateSpecification = false
         });
@@ -1585,7 +1585,7 @@ _openApiSpecificationService,
     }
 
     [Test]
-    public async Task ValidateOpenApiSpecificationAsync_FastMode_DoesNotRunFullHsdsRuntimeValidationPass()
+    public async Task ValidateOpenApiSpecificationAsync_FastMode_DoesNotRunFullValidationPass()
     {
         // Arrange
         var feedSpecUrl = "https://feed.example.com/openapi.json";
@@ -1740,7 +1740,7 @@ _openApiSpecificationService,
 
         var fullModeServerOptions = Options.Create(new OpenApiValidationServerOptions
         {
-            HsdsValidationMode = HsdsValidationMode.FullHsdsRuntime,
+            HsdsValidationMode = HsdsValidationMode.Full,
             TestEndpoints = true
         });
 
@@ -1884,7 +1884,7 @@ _openApiSpecificationService,
 
         var fullModeServerOptions = Options.Create(new OpenApiValidationServerOptions
         {
-            HsdsValidationMode = HsdsValidationMode.FullHsdsRuntime,
+            HsdsValidationMode = HsdsValidationMode.Full,
             TestEndpoints = true
         });
 
@@ -1991,7 +1991,7 @@ _openApiSpecificationService,
 
         SetupHttpMock(CreateOpenApi30SpecWithResponseSchema(), endpointResponseBody: "[{\"name\":\"ok\",\"extra\":\"x\"}]");
 
-        var strictValidationOptions = Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.StrictOwnSchemaValidation, ValidateSpecification = false, TestEndpoints = true });
+        var strictValidationOptions = Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.Strict, ValidateSpecification = false, TestEndpoints = true });
         var serviceWithStrictPolicy = new OpenApiValidationService(
             _loggerMock.Object,
             CreateFactory(_httpClient),
@@ -2004,7 +2004,7 @@ _openApiSpecificationService,
             _openApiBootstrapServiceMock.Object,
             openApiValidationServerOptions: strictValidationOptions);
 
-        // Act — default server setting OwnSchemaValidation = StrictOwnSchemaValidation causes errors
+        // Act — default server setting OwnSchemaValidation = Strict causes errors
         var result = await serviceWithStrictPolicy.ValidateOpenApiSpecificationAsync(request);
 
         // Assert
@@ -2116,7 +2116,7 @@ _openApiSpecificationService,
 
         var serverOptions = Options.Create(new OpenApiValidationServerOptions
         {
-            OwnSchemaValidation = OwnSchemaValidationMode.StrictOwnSchemaValidation,
+            OwnSchemaValidation = OwnSchemaValidationMode.Strict,
             ValidateSpecification = false,
             TestEndpoints = true
         });
@@ -2333,7 +2333,7 @@ _openApiSpecificationService,
     }
 
     [Test]
-    public async Task ValidateOpenApiSpecificationAsync_WhenOwnSchemaValidationNone_WithFullHsdsRuntime_SkipsSecondPass()
+    public async Task ValidateOpenApiSpecificationAsync_WhenOwnSchemaValidationNone_WithFull_SkipsSecondPass()
     {
         // Arrange
         var feedSpecUrl = "https://feed.example.com/openapi.json";
@@ -2370,7 +2370,7 @@ _openApiSpecificationService,
         var serverOptions = Options.Create(new OpenApiValidationServerOptions
         {
             OwnSchemaValidation = OwnSchemaValidationMode.None,
-            HsdsValidationMode = HsdsValidationMode.FullHsdsRuntime,
+            HsdsValidationMode = HsdsValidationMode.Full,
             ValidateSpecification = false,
             TestEndpoints = true
         });
@@ -2838,7 +2838,7 @@ _openApiSpecificationService,
             }),
             openApiValidationServerOptions: Options.Create(new OpenApiValidationServerOptions
             {
-                HsdsValidationMode = HsdsValidationMode.SpecAndFeedRuntimeFast,
+                HsdsValidationMode = HsdsValidationMode.Fast,
                 AllowUserSuppliedAuth = true,
                 ValidateSpecification = true,
                 TestEndpoints = true,
@@ -3276,7 +3276,8 @@ _openApiSpecificationService,
             var result = await service.ValidateOpenApiSpecificationAsync(request);
 
             // Assert
-            foreach (var n in result.Notifications) {
+            foreach (var n in result.Notifications)
+            {
                 Console.WriteLine("NOTIFICATION: " + n);
             }
             using (Assert.EnterMultipleScope())

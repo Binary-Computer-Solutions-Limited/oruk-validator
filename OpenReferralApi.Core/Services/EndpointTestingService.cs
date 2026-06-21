@@ -1,19 +1,19 @@
 using System.Buffers;
-using System.Text.Json.Nodes;
-using System.Text.Json;
 using System.Collections.Concurrent;
-using Json.Schema;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using Json.Schema;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Logging;
 using ValidationError = OpenReferralApi.Core.Models.Validation.ValidationError;
-using OpenReferralApi.Core.Helpers;
 
 namespace OpenReferralApi.Core.Services;
 
@@ -58,7 +58,7 @@ public partial class EndpointTestingService(
     private readonly IHsdsComplianceService _hsdsComplianceService = hsdsComplianceService;
     private readonly OpenApiValidationServerOptions? _openApiValidationOptions = openApiValidationOptions?.Value;
     private readonly ConcurrentDictionary<string, JsonSchema> _validationSchemaCache = new(StringComparer.Ordinal);
-    
+
     private static readonly string[][] TotalPagesPaths =
     [
         ["total_pages"],
@@ -838,7 +838,7 @@ public partial class EndpointTestingService(
             var timeToHeaders = sendStart.Elapsed;
 
             // Stream response content to avoid materialising a full string on every request.
-            // On the retain path (FullHsdsRuntime / IncludeResponseBody) we still need the string;
+            // On the retain path (Full / IncludeResponseBody) we still need the string;
             // on the fast path we stream directly into a JsonDocument with no string allocation.
             byte[]? responseBody = null;
             JsonDocument? parsedResponseJson = null;
@@ -940,7 +940,7 @@ public partial class EndpointTestingService(
                         }
                     }
 
-                    if (jsonContentObject? ["schema"] is JsonNode schema)
+                    if (jsonContentObject?["schema"] is JsonNode schema)
                     {
                         var schemaForValidation = GetValidationSchemaForResponse(schema, openApiDocument);
 
@@ -970,8 +970,8 @@ public partial class EndpointTestingService(
                                 MaxErrors = ResolveMaxValidationErrorsPerResponse(),
                                 ReportAdditionalFields = (options?.ReportAdditionalFields ?? false)
                                     || ((_openApiValidationOptions?.OwnSchemaValidation
-                                         ?? OwnSchemaValidationMode.StrictOwnSchemaValidation)
-                                        == OwnSchemaValidationMode.StrictOwnSchemaValidation)
+                                         ?? OwnSchemaValidationMode.Strict)
+                                        == OwnSchemaValidationMode.Strict)
                             }
                         };
                         var validationResult = await _jsonValidatorService.ValidateAsync(validationRequest, cancellationToken);
@@ -1201,7 +1201,7 @@ public partial class EndpointTestingService(
     private bool ShouldRetainResponseBodies(OpenApiValidationOptions options)
     {
         return options.IncludeResponseBody
-            || (_openApiValidationOptions?.HsdsValidationMode == HsdsValidationMode.FullHsdsRuntime);
+            || (_openApiValidationOptions?.HsdsValidationMode == HsdsValidationMode.Full);
     }
 
     private int ResolveMaxValidationErrorsPerResponse()

@@ -297,7 +297,7 @@ public partial class HsdsComplianceService(
         }
 
         var strictOwnSchemaValidation = (_openApiValidationOptions?.OwnSchemaValidation
-            ?? OwnSchemaValidationMode.StrictOwnSchemaValidation) == OwnSchemaValidationMode.StrictOwnSchemaValidation;
+            ?? OwnSchemaValidationMode.Strict) == OwnSchemaValidationMode.Strict;
         var additionalFieldSeverity = strictOwnSchemaValidation ? "Error" : "Warning";
         foreach (var error in additionalFieldErrors)
         {

@@ -162,7 +162,7 @@ public class ProfileDiscoveryServiceTests
                     ["HSDS-UK-3.0"] = "https://hsds.example.org/3.0/openapi.json"
                 }
             }),
-            Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.StrictOwnSchemaValidation }),
+            Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.Strict }),
             _memoryCache);
 
         var result = await service.DiscoverFromBaseUrlAsync(null, "https://api.example.com");
@@ -198,7 +198,7 @@ public class ProfileDiscoveryServiceTests
                     ["HSDS-UK-3.0"] = ["V3"]
                 }
             }),
-            Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.StrictOwnSchemaValidation }),
+            Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.Strict }),
             _memoryCache);
 
         var result = await service.DiscoverFromBaseUrlAsync(null, "https://api.example.com");
@@ -233,7 +233,7 @@ public class ProfileDiscoveryServiceTests
                     ["HSDS-UK-3.0"] = ["V3"]
                 }
             }),
-            Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.StrictOwnSchemaValidation }),
+            Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.Strict }),
             _memoryCache);
 
         var result = await service.DiscoverFromBaseUrlAsync(null, "https://api.example.com");
@@ -304,7 +304,7 @@ public class ProfileDiscoveryServiceTests
         Assert.That(result.OpenApiSchemaContent, Does.Contain("openapi"));
     }
 
-    private ProfileDiscoveryService CreateService(OwnSchemaValidationMode ownSchemaValidation = OwnSchemaValidationMode.StrictOwnSchemaValidation)
+    private ProfileDiscoveryService CreateService(OwnSchemaValidationMode ownSchemaValidation = OwnSchemaValidationMode.Strict)
     {
         return new ProfileDiscoveryService(
             _loggerMock.Object,
