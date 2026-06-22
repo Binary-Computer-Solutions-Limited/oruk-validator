@@ -132,6 +132,11 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
                 e.Status == EndpointTestStatus.FailedValidation || e.Status == EndpointTestStatus.Error);
             result.IsValid = result.Summary.FailedTests == 0 && !hasFailedEndpoints;
 
+            if (!result.IsValid)
+            {
+                result.Notifications.Add("Validation failed. One or more specification validation errors or endpoint test failures were encountered.");
+            }
+
             result.Metadata = new CommonValidationMetadata
             {
                 BaseUrl = request.BaseUrl,
@@ -146,6 +151,13 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
 
             ApplyResultShaping(result, request.Options);
             LogMemoryCheckpoint("result-shaping");
+        }
+        catch (ArgumentException ex) when (ex.Message == ProfileValidationErrors.NoProfileDiscoveredAndNoDefault().Message)
+        {
+            _logger.ErrorDuringOpenApiTesting(ex);
+            result.IsValid = false;
+            result.Summary = new OpenApiValidationSummary();
+            result.Notifications.Add(ex.Message);
         }
         catch (Exception ex)
         {

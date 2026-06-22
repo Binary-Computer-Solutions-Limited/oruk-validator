@@ -423,6 +423,61 @@ public class OpenApiValidationServiceTests
         }
     }
 
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WhenNoProfileDiscoveredAndNoDefault_AddsNotificationAndReturnsResult()
+    {
+        // Arrange
+        var request = new OpenApiValidationRequest
+        {
+            OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com",
+            Options = new OpenApiValidationOptions()
+        };
+
+        var expectedException = ProfileValidationErrors.NoProfileDiscoveredAndNoDefault();
+
+        var discoveryMock = new Mock<IProfileDiscoveryService>();
+        discoveryMock
+            .Setup(s => s.DiscoverFromBaseUrlAsync(
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<DataSourceAuthentication?>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(expectedException);
+
+        var service = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(_httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
+            discoveryMock.Object,
+            specificationOptions: Options.Create(new SpecificationOptions
+            {
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-1.0"] = "https://openreferraluk.org/specifications/1.0/openapi.json",
+                    ["HSDS-UK-3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json"
+                }
+            }),
+            openApiValidationServerOptions: _openApiValidationServerOptions);
+
+        // Act
+        var result = await service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.Notifications, Has.Count.EqualTo(1));
+            Assert.That(result.Notifications[0], Is.EqualTo(expectedException.Message));
+        }
+    }
+
     #endregion
 
     #region OpenAPI Version Detection
@@ -1407,9 +1462,37 @@ _openApiSpecificationService,
         {
             Assert.That(result.Metadata?.Profile, Is.EqualTo("HSDS-UK-3.0"));
             Assert.That(result.Metadata?.ProfileReason, Does.Contain("3.0"));
-            Assert.That(result.Notifications, Is.Empty);
+            Assert.That(result.Notifications, Has.Count.EqualTo(1));
+            Assert.That(result.Notifications[0], Does.Contain("Validation failed"));
         }
     }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WhenValidationFails_AddsValidationFailedNotification()
+    {
+        // Arrange
+        var feedSpecUrl = "https://feed.example.com/openapi.json";
+        var request = new OpenApiValidationRequest
+        {
+            OwnSchemaUrl = feedSpecUrl,
+            BaseUrl = "https://feed.example.com",
+            Options = new OpenApiValidationOptions()
+        };
+
+        // Setup mock spec that is invalid (e.g. missing required endpoints/spec errors)
+        SetupHttpMock(CreateOpenApi30Spec());
+
+        // Act
+        var result = await _service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.Notifications.Any(n => n.Contains("Validation failed. One or more specification validation errors or endpoint test failures were encountered.")), Is.True);
+        }
+    }
+
 
     [Test]
     public async Task ValidateOpenApiSpecificationAsync_ExtractsProfileVersionFromOpenApiFieldAndWarns()
