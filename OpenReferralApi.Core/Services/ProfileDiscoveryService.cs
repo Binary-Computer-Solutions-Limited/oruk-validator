@@ -20,6 +20,8 @@ public interface IProfileDiscoveryService
         string? baseUrl,
         DataSourceAuthentication? authentication = null,
         CancellationToken cancellationToken = default);
+
+    ProfileDiscoveryResult GetExplicitProfile(string profileVersion);
 }
 
 public sealed class ProfileDiscoveryResult
@@ -271,6 +273,49 @@ public partial class ProfileDiscoveryService(
             HsdsProfileSchemaContent = hsdsProfileSchemaContent,
             HsdsProfileReason = discoveryReason,
             UsedDefaultProfile = usedDefaultProfile
+        };
+    }
+
+    public ProfileDiscoveryResult GetExplicitProfile(string profileVersion)
+    {
+        if (string.IsNullOrWhiteSpace(profileVersion))
+        {
+            throw new ArgumentException("Profile version cannot be empty", nameof(profileVersion));
+        }
+
+        if (!TryGetSchemaUrlForProfileVersion(profileVersion, out var hsdsProfileSchemaUrl))
+        {
+            throw ProfileValidationErrors.DiscoveredUnsupported(profileVersion);
+        }
+
+        string? hsdsProfileSchemaContent = null;
+        if (memoryCache != null)
+        {
+            foreach (var cacheKey in GetSchemaCacheKeyCandidates(hsdsProfileSchemaUrl))
+            {
+                if (memoryCache.TryGetValue<CachedSchema>(cacheKey, out var cachedSchema)
+                    && cachedSchema != null
+                    && !string.IsNullOrWhiteSpace(cachedSchema.RawJson))
+                {
+                    hsdsProfileSchemaContent = cachedSchema.RawJson;
+                    break;
+                }
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(hsdsProfileSchemaContent))
+        {
+            throw ProfileValidationErrors.ProfileSchemaNotCached(profileVersion);
+        }
+
+        return new ProfileDiscoveryResult
+        {
+            HsdsProfileVersion = profileVersion,
+            HsdsProfileSchemaUrl = hsdsProfileSchemaUrl,
+            OpenApiSchemaContent = null,
+            HsdsProfileSchemaContent = hsdsProfileSchemaContent,
+            HsdsProfileReason = $"Explicit profile '{profileVersion}' provided in request.",
+            UsedDefaultProfile = false
         };
     }
 

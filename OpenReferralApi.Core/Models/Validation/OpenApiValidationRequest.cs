@@ -44,4 +44,10 @@ public class OpenApiValidationRequest
     [JsonPropertyName("options")]
     public OpenApiValidationOptions? Options { get; set; }
 
+    /// <summary>
+    /// Explicit profile version to override or bypass automatic profile discovery (e.g. "HSDS-UK-1.0")
+    /// </summary>
+    [JsonPropertyName("profile")]
+    public string? Profile { get; set; }
+
 }

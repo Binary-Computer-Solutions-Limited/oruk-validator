@@ -304,6 +304,72 @@ public class ProfileDiscoveryServiceTests
         Assert.That(result.OpenApiSchemaContent, Does.Contain("openapi"));
     }
 
+    [Test]
+    public void GetExplicitProfile_WithNullOrEmptyProfile_ThrowsArgumentException()
+    {
+        var service = CreateService();
+
+        Assert.Throws<ArgumentException>(() => service.GetExplicitProfile(null!));
+        Assert.Throws<ArgumentException>(() => service.GetExplicitProfile(string.Empty));
+    }
+
+    [Test]
+    public void GetExplicitProfile_WithUnsupportedProfile_ThrowsArgumentException()
+    {
+        var service = CreateService();
+
+        var ex = Assert.Throws<ArgumentException>(() => service.GetExplicitProfile("HSDS-UNSUPPORTED"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex!.Message, Does.Contain("Can only validate against known profile versions"));
+            Assert.That(ex.Message, Does.Contain("is not supported"));
+        }
+
+    }
+
+    [Test]
+    public void GetExplicitProfile_WithSupportedProfileButNotCached_ThrowsArgumentException()
+    {
+        var service = new ProfileDiscoveryService(
+            _loggerMock.Object,
+            _httpClientFactoryMock.Object,
+            Options.Create(new SpecificationOptions
+            {
+                Urls = new Dictionary<string, string>
+                {
+                    ["3.1"] = "https://hsds.example.org/3.1/openapi.json"
+                }
+            }),
+            Options.Create(new OpenApiValidationServerOptions { OwnSchemaValidation = OwnSchemaValidationMode.Strict }),
+            _memoryCache);
+
+        var ex = Assert.Throws<ArgumentException>(() => service.GetExplicitProfile("3.1"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex!.Message, Does.Contain("Can only validate against known profile versions"));
+            Assert.That(ex.Message, Does.Contain("is not available in cache"));
+        }
+
+    }
+
+    [Test]
+    public void GetExplicitProfile_WithSupportedAndCachedProfile_ReturnsProfileDiscoveryResult()
+    {
+        var service = CreateService();
+
+        var result = service.GetExplicitProfile("HSDS-UK-3.0");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.HsdsProfileVersion, Is.EqualTo("HSDS-UK-3.0"));
+            Assert.That(result.HsdsProfileSchemaUrl, Is.EqualTo("https://hsds.example.org/3.0/openapi.json"));
+            Assert.That(result.HsdsProfileSchemaContent, Is.EqualTo(CachedHsdsSchema));
+            Assert.That(result.OpenApiSchemaContent, Is.Null);
+            Assert.That(result.HsdsProfileReason, Is.EqualTo("Explicit profile 'HSDS-UK-3.0' provided in request."));
+        }
+    }
+
     private ProfileDiscoveryService CreateService(OwnSchemaValidationMode ownSchemaValidation = OwnSchemaValidationMode.Strict)
     {
         return new ProfileDiscoveryService(

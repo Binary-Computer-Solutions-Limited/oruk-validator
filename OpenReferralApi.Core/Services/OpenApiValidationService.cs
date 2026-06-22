@@ -152,7 +152,7 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
             ApplyResultShaping(result, request.Options);
             LogMemoryCheckpoint("result-shaping");
         }
-        catch (ArgumentException ex) when (ex.Message == ProfileValidationErrors.NoProfileDiscoveredAndNoDefault().Message)
+        catch (ArgumentException ex) when (ex.Message.StartsWith("Can only validate against known profile versions.", StringComparison.Ordinal))
         {
             _logger.ErrorDuringOpenApiTesting(ex);
             result.IsValid = false;
@@ -264,11 +264,19 @@ public class OpenApiValidationService : OpenApiValidationServiceBase, IOpenApiVa
         var dataSourceRequestAuth =
             _authenticationValidationService.TryGetValidatedRequestAuthentication("datasource", request.DataSourceAuth);
 
-        var bootstrap = await _profileDiscoveryService.DiscoverFromBaseUrlAsync(
-            request.OwnSchemaUrl,
-            request.BaseUrl,
-            dataSourceRequestAuth,
-            cancellationToken);
+        ProfileDiscoveryResult bootstrap;
+        if (!string.IsNullOrWhiteSpace(request.Profile))
+        {
+            bootstrap = _profileDiscoveryService.GetExplicitProfile(request.Profile);
+        }
+        else
+        {
+            bootstrap = await _profileDiscoveryService.DiscoverFromBaseUrlAsync(
+                request.OwnSchemaUrl,
+                request.BaseUrl,
+                dataSourceRequestAuth,
+                cancellationToken);
+        }
 
         var ownSchema = TryParseJsonObject(bootstrap.OpenApiSchemaContent);
         var resolvedHsdsProfileSpec = TryParseJsonObject(bootstrap.HsdsProfileSchemaContent);

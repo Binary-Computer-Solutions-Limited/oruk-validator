@@ -478,6 +478,122 @@ public class OpenApiValidationServiceTests
         }
     }
 
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WithExplicitProfile_BypassesDiscoveryAndUsesExplicitProfile()
+    {
+        // Arrange
+        var request = new OpenApiValidationRequest
+        {
+            OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com",
+            Profile = "HSDS-UK-3.0",
+            Options = new OpenApiValidationOptions()
+        };
+
+        var expectedResult = new ProfileDiscoveryResult
+        {
+            HsdsProfileVersion = "HSDS-UK-3.0",
+            HsdsProfileSchemaUrl = "https://openreferraluk.org/specifications/3.0/openapi.json",
+            HsdsProfileSchemaContent = CreateOpenApi30Spec(),
+            OpenApiSchemaContent = null,
+            HsdsProfileReason = "Explicit profile 'HSDS-UK-3.0' provided in request."
+        };
+
+        var discoveryMock = new Mock<IProfileDiscoveryService>();
+        discoveryMock
+            .Setup(s => s.GetExplicitProfile("HSDS-UK-3.0"))
+            .Returns(expectedResult);
+
+        SetupHttpMock(CreateOpenApi30Spec());
+
+        var service = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(_httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
+            discoveryMock.Object,
+            specificationOptions: Options.Create(new SpecificationOptions
+            {
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-1.0"] = "https://openreferraluk.org/specifications/1.0/openapi.json",
+                    ["HSDS-UK-3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json"
+                }
+            }),
+            openApiValidationServerOptions: _openApiValidationServerOptions);
+
+        // Act
+        var result = await service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.IsValid, Is.True);
+            discoveryMock.Verify(s => s.DiscoverFromBaseUrlAsync(
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<DataSourceAuthentication?>(),
+                It.IsAny<CancellationToken>()), Times.Never);
+            discoveryMock.Verify(s => s.GetExplicitProfile("HSDS-UK-3.0"), Times.Once);
+        }
+    }
+
+    [Test]
+    public async Task ValidateOpenApiSpecificationAsync_WithExplicitProfileUnsupported_AddsNotificationAndReturnsResult()
+    {
+        // Arrange
+        var request = new OpenApiValidationRequest
+        {
+            OwnSchemaUrl = "https://example.com/openapi.json",
+            BaseUrl = "https://api.example.com",
+            Profile = "HSDS-UNSUPPORTED",
+            Options = new OpenApiValidationOptions()
+        };
+
+        var expectedException = ProfileValidationErrors.DiscoveredUnsupported("HSDS-UNSUPPORTED");
+
+        var discoveryMock = new Mock<IProfileDiscoveryService>();
+        discoveryMock
+            .Setup(s => s.GetExplicitProfile("HSDS-UNSUPPORTED"))
+            .Throws(expectedException);
+
+        var service = new OpenApiValidationService(
+            _loggerMock.Object,
+            CreateFactory(_httpClient),
+            _jsonValidatorServiceMock.Object,
+            _schemaResolverServiceMock.Object,
+            _openApiSpecificationService,
+            null!,
+            null!,
+            null!,
+            discoveryMock.Object,
+            specificationOptions: Options.Create(new SpecificationOptions
+            {
+                Urls = new Dictionary<string, string>
+                {
+                    ["HSDS-UK-3.0"] = "https://openreferraluk.org/specifications/3.0/openapi.json"
+                }
+            }),
+            openApiValidationServerOptions: _openApiValidationServerOptions);
+
+        // Act
+        var result = await service.ValidateOpenApiSpecificationAsync(request);
+
+        // Assert
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.Notifications, Has.Count.EqualTo(1));
+            Assert.That(result.Notifications[0], Is.EqualTo(expectedException.Message));
+        }
+    }
+
     #endregion
 
     #region OpenAPI Version Detection
