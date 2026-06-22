@@ -16,6 +16,9 @@ namespace OpenReferralApi.Core.Logging
         [LoggerMessage(EventId = 14003, Level = LogLevel.Error, Message = "Failed to fetch remote schema: {SchemaUrl}")]
         public static partial void FailedToFetchRemoteSchema(this ILogger logger, Exception exception, string schemaUrl);
 
+        [LoggerMessage(EventId = 14011, Level = LogLevel.Warning, Message = "Failed to fetch remote schema from {SchemaUrl} due to connection or timeout issue: {Message}")]
+        public static partial void ConnectionFailureFetchingRemoteSchema(this ILogger logger, Exception exception, string schemaUrl, string message);
+
         [LoggerMessage(EventId = 14004, Level = LogLevel.Warning, Message = "Invalid API key header name provided, skipping API key authentication")]
         public static partial void InvalidApiKeyHeaderName(this ILogger logger);
 

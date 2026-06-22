@@ -472,7 +472,7 @@ public class SchemaResolverServiceTests
         }
     }
 
-    #endregion
+#endregion
 
     private static IHttpClientFactory CreateFactory(HttpClient httpClient)
     {

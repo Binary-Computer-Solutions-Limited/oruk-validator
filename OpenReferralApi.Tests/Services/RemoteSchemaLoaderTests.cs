@@ -760,6 +760,71 @@ public class RemoteSchemaLoaderTests
 
     #endregion
 
+    #region Connection Resiliency Tests
+
+    [Test]
+    public async Task LoadRemoteSchemaAsync_WhenHttpRequestExceptionThrown_LogsWarningAndReturnsNull()
+    {
+        // Arrange
+        var schemaUrl = "https://example.com/schema.json";
+        var handler = new MockHttpMessageHandler(request =>
+        {
+            throw new HttpRequestException("DNS resolution failed");
+        });
+
+        var httpClientFactory = TestHttpClientFactory.CreateFactory(handler);
+        var loader = new RemoteSchemaLoader(httpClientFactory, _loggerMock.Object, _memoryCache, _cacheOptions);
+
+        // Act
+        var result = await loader.LoadRemoteSchemaAsync(schemaUrl);
+
+        // Assert
+        Assert.That(result, Is.Null);
+    }
+
+    [Test]
+    public async Task LoadRemoteSchemaAsync_WhenOperationCanceledExceptionThrownDueToTimeout_LogsWarningAndReturnsNull()
+    {
+        // Arrange
+        var schemaUrl = "https://example.com/schema.json";
+        var handler = new MockHttpMessageHandler(request =>
+        {
+            throw new OperationCanceledException("The operation was canceled.");
+        });
+
+        var httpClientFactory = TestHttpClientFactory.CreateFactory(handler);
+        var loader = new RemoteSchemaLoader(httpClientFactory, _loggerMock.Object, _memoryCache, _cacheOptions);
+
+        // Act
+        var result = await loader.LoadRemoteSchemaAsync(schemaUrl, CancellationToken.None);
+
+        // Assert
+        Assert.That(result, Is.Null);
+    }
+
+    [Test]
+    public void LoadRemoteSchemaAsync_WhenOperationCanceledExceptionThrownDueToUserCancellation_PropagatesException()
+    {
+        // Arrange
+        var schemaUrl = "https://example.com/schema.json";
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var handler = new MockHttpMessageHandler(request =>
+        {
+            throw new OperationCanceledException(cts.Token);
+        });
+
+        var httpClientFactory = TestHttpClientFactory.CreateFactory(handler);
+        var loader = new RemoteSchemaLoader(httpClientFactory, _loggerMock.Object, _memoryCache, _cacheOptions);
+
+        // Act & Assert
+        Assert.ThrowsAsync<OperationCanceledException>(async () =>
+            await loader.LoadRemoteSchemaAsync(schemaUrl, cts.Token));
+    }
+
+    #endregion
+
     /// <summary>
     /// Mock HTTP message handler for testing
     /// </summary>

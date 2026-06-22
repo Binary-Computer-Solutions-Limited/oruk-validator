@@ -133,16 +133,36 @@ public class SchemaResolverService : ISchemaResolverService
                 }
             }
 
-            var resolvedUrl = uri.GetLeftPart(UriPartial.Path).TrimEnd('/');
+            // Correct TLD for json-everything domain to avoid dns resolution timeouts
+            var host = uri.Host;
+            if (host.Equals("json-everything.lib", StringComparison.OrdinalIgnoreCase))
+            {
+                host = "json-everything.net";
+            }
 
-            // Bypass network calls for standard JSON schema drafts and OpenAPI meta-schemas
-            // to avoid ThreadPool starvation deadlocks and speed up compilation.
-            if (uri.Host.Equals("json-schema.org", StringComparison.OrdinalIgnoreCase) ||
-                uri.Host.Equals("spec.openapis.org", StringComparison.OrdinalIgnoreCase))
+            // Bypass network calls for standard JSON schema drafts, OpenAPI meta-schemas,
+            // and json-everything schemas to avoid ThreadPool starvation deadlocks and speed up compilation.
+            if (host.Equals("json-schema.org", StringComparison.OrdinalIgnoreCase) ||
+                host.Equals("spec.openapis.org", StringComparison.OrdinalIgnoreCase))
             {
                 return null;
             }
 
+            if (host.Equals("json-everything.net", StringComparison.OrdinalIgnoreCase))
+            {
+                var fileName = uri.Segments.LastOrDefault()?.TrimEnd('/');
+                if (!string.IsNullOrEmpty(fileName))
+                {
+                    var localSchema = FindRegisteredSchemaByFileName(fileName);
+                    if (localSchema != null)
+                    {
+                        return localSchema;
+                    }
+                }
+                return null;
+            }
+
+            var resolvedUrl = uri.GetLeftPart(UriPartial.Path).TrimEnd('/');
             var cacheKey = $"schema:{resolvedUrl}";
             if (_memoryCache.TryGetValue<CachedSchema>(cacheKey, out var cachedSchema) && cachedSchema != null)
             {
@@ -164,6 +184,50 @@ public class SchemaResolverService : ISchemaResolverService
 
             return null;
         };
+    }
+
+    private static IBaseDocument? FindRegisteredSchemaByFileName(string fileName)
+    {
+        try
+        {
+            var registry = Json.Schema.SchemaRegistry.Global;
+            var field = typeof(SchemaRegistry).GetField("_registered", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (field == null) return null;
+
+            var dict = field.GetValue(registry) as System.Collections.IEnumerable;
+            if (dict == null) return null;
+
+            foreach (var entry in dict)
+            {
+                var keyProp = entry.GetType().GetProperty("Key");
+                var valueProp = entry.GetType().GetProperty("Value");
+                if (keyProp == null || valueProp == null) continue;
+
+                var uri = keyProp.GetValue(entry) as Uri;
+                if (uri == null) continue;
+
+                var path = uri.GetLeftPart(UriPartial.Path).TrimEnd('/');
+                if (path.EndsWith("/" + fileName, StringComparison.OrdinalIgnoreCase) || path.Equals(fileName, StringComparison.OrdinalIgnoreCase))
+                {
+                    var registration = valueProp.GetValue(entry);
+                    if (registration == null) continue;
+
+                    var rootProp = registration.GetType().GetProperty("Root");
+                    if (rootProp == null) continue;
+
+                    var doc = rootProp.GetValue(registration) as IBaseDocument;
+                    if (doc != null)
+                    {
+                        return doc;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Ignore reflection errors and fallback
+        }
+        return null;
     }
 
     /// <summary>

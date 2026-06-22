@@ -73,6 +73,10 @@ public class RemoteSchemaLoader
 
     public async Task<JsonNode?> LoadRemoteSchemaAsync(string schemaUrl, CancellationToken cancellationToken = default)
     {
+        if (schemaUrl.Contains("json-everything.lib", StringComparison.OrdinalIgnoreCase))
+        {
+            schemaUrl = schemaUrl.Replace("json-everything.lib", "json-everything.net", StringComparison.OrdinalIgnoreCase);
+        }
         var resolvedUrl = NormalizeKnownSchemaUrl(schemaUrl) ?? schemaUrl;
 
         // Check persistent cache first if caching is enabled
@@ -122,9 +126,23 @@ public class RemoteSchemaLoader
             }
 
             var httpClient = _httpClientFactory.CreateClient("OpenApiValidationService");
-            using var response = await httpClient.SendAsync(request, cancellationToken);
-            _ = response.EnsureSuccessStatusCode();
-            var content = await response.Content.ReadAsStringAsync(cancellationToken);
+            string content;
+            try
+            {
+                using var response = await httpClient.SendAsync(request, cancellationToken);
+                _ = response.EnsureSuccessStatusCode();
+                content = await response.Content.ReadAsStringAsync(cancellationToken);
+            }
+            catch (HttpRequestException ex)
+            {
+                RemoteSchemaLoaderLog.ConnectionFailureFetchingRemoteSchema(_logger, ex, TextSanitizer.SanitizeUrlForLogging(resolvedUrl), ex.Message);
+                return null;
+            }
+            catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                RemoteSchemaLoaderLog.ConnectionFailureFetchingRemoteSchema(_logger, ex, TextSanitizer.SanitizeUrlForLogging(resolvedUrl), "Request timed out.");
+                return null;
+            }
 
             var jsonNode = JsonNode.Parse(content) ?? throw new InvalidOperationException("Fetched content is not valid JSON.");
             var cacheKey = GenerateCacheKey(resolvedUrl);
@@ -311,6 +329,16 @@ public class RemoteSchemaLoader
 
     private static string? NormalizeAbsoluteUrl(string schemaUrl)
     {
+        if (string.IsNullOrWhiteSpace(schemaUrl))
+        {
+            return null;
+        }
+
+        if (schemaUrl.Contains("json-everything.lib", StringComparison.OrdinalIgnoreCase))
+        {
+            schemaUrl = schemaUrl.Replace("json-everything.lib", "json-everything.net", StringComparison.OrdinalIgnoreCase);
+        }
+
         if (!Uri.TryCreate(schemaUrl, UriKind.Absolute, out var uri))
         {
             return null;
