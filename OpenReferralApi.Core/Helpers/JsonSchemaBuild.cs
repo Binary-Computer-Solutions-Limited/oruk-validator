@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using Json.Schema;
 using Json.Schema.OpenApi;
@@ -17,23 +18,76 @@ internal static class JsonSchemaBuild
             // Registration is global; if another startup path got there first, continue.
         }
 
+        try
+        {
+            RegisterIfMissing(Json.Schema.MetaSchemas.Draft202012Id, Json.Schema.MetaSchemas.Draft202012);
+            RegisterIfMissing(Json.Schema.MetaSchemas.Core202012Id, Json.Schema.MetaSchemas.Core202012);
+            RegisterIfMissing(Json.Schema.MetaSchemas.Applicator202012Id, Json.Schema.MetaSchemas.Applicator202012);
+            RegisterIfMissing(Json.Schema.MetaSchemas.Unevaluated202012Id, Json.Schema.MetaSchemas.Unevaluated202012);
+            RegisterIfMissing(Json.Schema.MetaSchemas.Validation202012Id, Json.Schema.MetaSchemas.Validation202012);
+            RegisterIfMissing(Json.Schema.MetaSchemas.Metadata202012Id, Json.Schema.MetaSchemas.Metadata202012);
+            RegisterIfMissing(Json.Schema.MetaSchemas.FormatAnnotation202012Id, Json.Schema.MetaSchemas.FormatAnnotation202012);
+            RegisterIfMissing(Json.Schema.MetaSchemas.Content202012Id, Json.Schema.MetaSchemas.Content202012);
+        }
+        catch
+        {
+            // Ignore
+        }
+
         return true;
     }, LazyThreadSafetyMode.ExecutionAndPublication);
-
-    private static readonly BuildOptions OpenApiBuildOptions = new()
-    {
-        // Draft 2020-12 allows extension keywords used by OpenAPI profiles.
-        Dialect = Json.Schema.Dialect.Draft202012
-    };
 
     public static JsonSchema FromText(string schemaJson)
     {
         EnsureInitialized();
-        return JsonSchema.FromText(schemaJson, OpenApiBuildOptions);
+
+        // Check if the schema is already registered to prevent duplicate key exceptions
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(schemaJson);
+            if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                doc.RootElement.TryGetProperty("$id", out var idProp) &&
+                idProp.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                var id = idProp.GetString();
+                if (!string.IsNullOrEmpty(id) && Uri.TryCreate(id, UriKind.Absolute, out var uri))
+                {
+                    if (SchemaRegistry.Global.Get(uri) is JsonSchema registered)
+                    {
+                        return registered;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Ignore parsing/lookup errors and fall back to compiling the schema.
+        }
+
+        var options = new BuildOptions
+        {
+            Dialect = Json.Schema.Dialect.Draft202012
+        };
+        return JsonSchema.FromText(schemaJson, options);
     }
 
-    private static void EnsureInitialized()
+    internal static void EnsureInitialized()
     {
         _ = OpenApiMetaSchemaRegistration.Value;
+    }
+
+    private static void RegisterIfMissing(Uri uri, JsonSchema schema)
+    {
+        if (SchemaRegistry.Global.Get(uri) == null)
+        {
+            try
+            {
+                SchemaRegistry.Global.Register(uri, schema);
+            }
+            catch (ArgumentException)
+            {
+                // Already registered concurrently.
+            }
+        }
     }
 }

@@ -1,7 +1,9 @@
 // Enable nullable reference types for better null-safety
 #nullable enable
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Json.Schema;
 using Microsoft.Extensions.Caching.Memory;
@@ -9,6 +11,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenReferralApi.Core.Helpers;
 using OpenReferralApi.Core.Logging;
+
 
 namespace OpenReferralApi.Core.Services;
 
@@ -30,6 +33,7 @@ public class RemoteSchemaLoader
     private readonly HashSet<string> _knownJsonSchemaUrls;
     private readonly HashSet<string> _unknownDraftWarnings = new(StringComparer.OrdinalIgnoreCase);
     private readonly bool _warnOnUnknownJsonSchemaDraft;
+    private readonly ConcurrentDictionary<string, Task<JsonNode?>> _activeLoads = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger _logger;
@@ -61,6 +65,16 @@ public class RemoteSchemaLoader
                 _ = _knownJsonSchemaUrls.Add(normalized);
             }
         }
+
+        // Trigger initialization of standard meta-schemas to populate SchemaRegistry.Global
+        try
+        {
+            _ = OpenReferralApi.Core.Helpers.JsonSchemaBuild.FromText("{}");
+        }
+        catch
+        {
+            // Ignore initialization errors
+        }
     }
 
     /// <summary>
@@ -79,7 +93,42 @@ public class RemoteSchemaLoader
         }
         var resolvedUrl = NormalizeKnownSchemaUrl(schemaUrl) ?? schemaUrl;
 
-        // Check persistent cache first if caching is enabled
+        // 1. Check SchemaRegistry.Global first for known public meta-schemas
+        if (Uri.TryCreate(resolvedUrl, UriKind.Absolute, out var schemaUri))
+        {
+            var isPublicMetaSchema = schemaUri.Host.Equals("json-schema.org", StringComparison.OrdinalIgnoreCase) ||
+                                     schemaUri.Host.Equals("spec.openapis.org", StringComparison.OrdinalIgnoreCase) ||
+                                     schemaUri.Host.Equals("json-everything.net", StringComparison.OrdinalIgnoreCase);
+
+            if (isPublicMetaSchema)
+            {
+                var registered = Json.Schema.SchemaRegistry.Global.Get(schemaUri);
+                if (registered != null)
+                {
+                    var cacheKey = GenerateCacheKey(resolvedUrl);
+                    if (_cacheOptions.Enabled && _memoryCache.TryGetValue<CachedSchema>(cacheKey, out var cachedSchema) && cachedSchema != null)
+                    {
+                        return cachedSchema.JsonRepresentation.DeepClone();
+                    }
+
+                    try
+                    {
+                        var serialized = JsonSerializer.SerializeToNode(registered);
+                        if (serialized != null)
+                        {
+                            return serialized;
+                        }
+                    }
+                    catch
+                    {
+                        // Fallback
+                    }
+                    return new JsonObject();
+                }
+            }
+        }
+
+        // 2. Check persistent cache first if caching is enabled
         if (_cacheOptions.Enabled)
         {
             var cacheKey = GenerateCacheKey(resolvedUrl);
@@ -92,9 +141,10 @@ public class RemoteSchemaLoader
                 
                 try
                 {
-                    if (Json.Schema.SchemaRegistry.Global.Get(new Uri(resolvedUrl)) == null)
+                    if (Uri.TryCreate(resolvedUrl, UriKind.Absolute, out var cacheUri) &&
+                        Json.Schema.SchemaRegistry.Global.Get(cacheUri) == null)
                     {
-                        Json.Schema.SchemaRegistry.Global.Register(new Uri(resolvedUrl), cachedSchema.CompiledSchema);
+                        Json.Schema.SchemaRegistry.Global.Register(cacheUri, cachedSchema.CompiledSchema);
                     }
                 }
                 catch { /* Ignore */ }
@@ -103,13 +153,45 @@ public class RemoteSchemaLoader
             }
         }
 
+        // 3. Gate concurrent loads using _activeLoads
+        Task<JsonNode?>? loadTask;
+        bool isNewTask = false;
+        
+        lock (_activeLoads)
+        {
+            if (!_activeLoads.TryGetValue(resolvedUrl, out loadTask))
+            {
+                loadTask = LoadRemoteSchemaInternalAsync(resolvedUrl, cancellationToken);
+                _activeLoads[resolvedUrl] = loadTask;
+                isNewTask = true;
+            }
+        }
+
+        try
+        {
+            return await loadTask;
+        }
+        finally
+        {
+            if (isNewTask)
+            {
+                lock (_activeLoads)
+                {
+                    _activeLoads.TryRemove(resolvedUrl, out _);
+                }
+            }
+        }
+    }
+
+    private async Task<JsonNode?> LoadRemoteSchemaInternalAsync(string resolvedUrl, CancellationToken cancellationToken)
+    {
         try
         {
             // Validate URL before making HTTP request to prevent SSRF attacks
             if (!Uri.TryCreate(resolvedUrl, UriKind.Absolute, out var schemaUri) ||
                 (schemaUri.Scheme != Uri.UriSchemeHttp && schemaUri.Scheme != Uri.UriSchemeHttps))
             {
-                throw new ArgumentException($"Invalid schema URL: Only HTTP and HTTPS URLs are allowed", nameof(schemaUrl));
+                throw new ArgumentException($"Invalid schema URL: Only HTTP and HTTPS URLs are allowed", nameof(resolvedUrl));
             }
 
             if (_logger.IsEnabled(LogLevel.Debug))
@@ -173,6 +255,16 @@ public class RemoteSchemaLoader
                 _memoryCache.Set(cacheKey, placeholder, cacheEntryOptions);
             }
 
+            // Double check SchemaRegistry.Global right before compiling to avoid duplicate key exceptions
+            if (Json.Schema.SchemaRegistry.Global.Get(schemaUri) != null)
+            {
+                if (_logger.IsEnabled(LogLevel.Debug))
+                {
+                    _logger.LogDebug("Schema for {Url} was registered concurrently in SchemaRegistry.Global.", resolvedUrl);
+                }
+                return jsonNode.DeepClone();
+            }
+
             var schema = OpenReferralApi.Core.Helpers.JsonSchemaBuild.FromText(content);
 
             // Store in persistent cache if caching is enabled
@@ -188,9 +280,9 @@ public class RemoteSchemaLoader
 
             try
             {
-                if (Json.Schema.SchemaRegistry.Global.Get(new Uri(resolvedUrl)) == null)
+                if (Json.Schema.SchemaRegistry.Global.Get(schemaUri) == null)
                 {
-                    Json.Schema.SchemaRegistry.Global.Register(new Uri(resolvedUrl), schema);
+                    Json.Schema.SchemaRegistry.Global.Register(schemaUri, schema);
                 }
             }
             catch { /* Ignore registration errors if it's not a valid schema (e.g. partial component) */ }
@@ -199,7 +291,7 @@ public class RemoteSchemaLoader
         }
         catch (Exception ex)
         {
-            _logger.FailedToFetchRemoteSchema(ex, TextSanitizer.SanitizeUrlForLogging(schemaUrl));
+            _logger.FailedToFetchRemoteSchema(ex, TextSanitizer.SanitizeUrlForLogging(resolvedUrl));
             throw;
         }
     }

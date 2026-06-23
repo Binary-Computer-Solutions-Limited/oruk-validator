@@ -362,6 +362,28 @@ public class JsonValidatorService : IJsonValidatorService
 
         var normalizedSchemaUri = validatedUri.ToString();
 
+        // Check if the schema is already registered in SchemaRegistry.Global
+        JsonSchemaBuild.EnsureInitialized();
+        if (Uri.TryCreate(normalizedSchemaUri, UriKind.Absolute, out var schemaUriObj))
+        {
+            if (Json.Schema.SchemaRegistry.Global.Get(schemaUriObj) is JsonSchema registered)
+            {
+                _logger.UsingPreRegisteredSchema(normalizedSchemaUri);
+                System.Text.Json.Nodes.JsonNode schemaNode;
+                try
+                {
+                    schemaNode = System.Text.Json.JsonSerializer.SerializeToNode(registered) ?? new System.Text.Json.Nodes.JsonObject();
+                }
+                catch
+                {
+                    schemaNode = new System.Text.Json.Nodes.JsonObject();
+                }
+                var title = TryReadSchemaStringField(schemaNode, "title");
+                var description = TryReadSchemaStringField(schemaNode, "description");
+                return new ResolvedSchemaDetails(registered, schemaNode, title, description);
+            }
+        }
+
         if (TryGetCachedSchemaJson(normalizedSchemaUri, out var cachedSchemaJson))
         {
             _logger.UsingCachedSchemaDocument(normalizedSchemaUri);

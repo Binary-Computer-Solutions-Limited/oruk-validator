@@ -75,5 +75,8 @@ namespace OpenReferralApi.Core.Logging
 
         [LoggerMessage(EventId = 6023, Level = LogLevel.Warning, Message = "User provided schema failed validation due to circular reference or depth > {MaxDepth}. Source: {SourceIdentifier}")]
         public static partial void UserSchemaCycleOrDepthLimitExceeded(this ILogger logger, Exception exception, int maxDepth, string sourceIdentifier);
+
+        [LoggerMessage(EventId = 6024, Level = LogLevel.Information, Message = "Using pre-registered schema for URI: {SchemaUri}")]
+        public static partial void UsingPreRegisteredSchema(this ILogger logger, string schemaUri);
     }
 }
