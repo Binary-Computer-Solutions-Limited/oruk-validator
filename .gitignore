@@ -52,8 +52,7 @@ logs/
 test-output.log
 test-result.txt
 
-**/.DS_Store
-
-AGENTS.md
+# macOS folder layout configuration files
+.DS_Store
 
 *.lscache
