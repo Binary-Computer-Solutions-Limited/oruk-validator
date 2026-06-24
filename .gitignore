@@ -13,7 +13,7 @@ riderModule.iml
 .idea/
 
 # VS Code Personal Workspace
-.vscode/*
+.vscode/
 !.vscode/extensions.json
 !.vscode/launch.json
 
